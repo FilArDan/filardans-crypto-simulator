@@ -1,0 +1,14 @@
+/* ===== LEADERBOARD ===== */
+.lb-table{width:100%;border-collapse:collapse;font-size:13px;}
+.lb-table th{text-align:left;color:var(--mu);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;padding:0 8px 10px;}
+.lb-table td{padding:8px 8px;border-top:1px solid var(--bd);font-variant-numeric:tabular-nums;vertical-align:middle;}
+.lb-table tr:first-child td{border-top:none;}
+.lb-table tr.me td{background:color-mix(in oklch,var(--pri) 8%,transparent);}
+.rank{font-weight:800;font-size:15px;width:28px;text-align:center;}
+.rank-1{color:var(--warn);}
+.rank-2{color:var(--mu);}
+.rank-3{color:#cd7f32;}
+.inv-name{font-weight:700;}
+.inv-name.me{color:var(--pri);}
+.bar-wrap{width:80px;background:var(--sf3);border-radius:999px;height:6px;overflow:hidden;display:inline-block;vertical-align:middle;margin-left:6px;}
+.bar-fill{height:100%;border-radius:999px;background:var(--pri);transition:width .4s;}

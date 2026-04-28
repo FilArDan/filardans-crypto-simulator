@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head> <link rel="icon" href="data:,">
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Mothership Crypto Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/base.css"/>
+<link rel="stylesheet" href="css/layout.css"/>
+<link rel="stylesheet" href="css/trade.css"/>
+<link rel="stylesheet" href="css/chart.css"/>
+<link rel="stylesheet" href="css/leaderboard.css"/>
+<link rel="stylesheet" href="css/market-panel.css"/>
+</head>
+<body>
+<div class="app">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="logo-row">
+      <img src="./assets/Avatar_UPD.png" alt="Логотип" width="42" height="42"
+           style="border-radius:50%;object-fit:cover;"
+           onerror="this.style.display='none';document.getElementById('logoFallback').style.display='block'"/>
+      <svg id="logoFallback" style="display:none" class="logo" viewBox="0 0 64 64" fill="none" aria-label="Логотип">
+        <circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="4"/>
+        <path d="M22 36c2.8 3.8 7 6 11.5 6 7.2 0 12.5-4.8 12.5-11 0-6.6-5.6-11-13.8-11H28" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+        <path d="M42 28c-2.4-3.6-6.4-6-10.7-6-7 0-12.3 4.6-12.3 10.6 0 2.2.8 4.2 2.2 5.9" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+        <line x1="32" y1="16" x2="32" y2="48" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+      </svg>
+      <div><h1>Mothership Crypto Simulator</h1><div class="sub">Учебный симулятор торговли криптовалютой</div></div>
+    </div>
+    <button class="tbtn" id="themeBtn" aria-label="Сменить тему">☀️</button>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats">
+  <div class="stat"><div class="lbl">Баланс USD</div><div class="val" id="sCash">–</div></div>
+  <div class="stat"><div class="lbl">Монеты (стоимость)</div><div class="val" id="sPort">–</div></div>
+  <div class="stat"><div class="lbl">Весь капитал</div><div class="val" id="sTotal">–</div></div>
+  <div class="stat"><div class="lbl">Прибыль / убыток</div><div class="val" id="sPnl">–</div></div>
+  <div class="stat"><div class="lbl">Банк (комиссии)</div><div class="val" id="bankCash">$0.00</div></div>
+  </div>
+
+  <!-- CHART + TRADE -->
+  <div class="g2">
+    <div class="card">
+      <h2>График цены</h2>
+      <div class="tabs" id="tabs"></div>
+      <div id="cinfo"></div>
+      <div class="cw"><canvas id="chart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Сделка</h2>
+      <div class="tr">
+        <div class="fld"><label for="sCoin">Монета</label><select id="sCoin"></select></div>
+        <div class="fld"><label for="sAmt">Количество</label><input id="sAmt" type="number" min="0.0001" step="0.0001" value="1"/></div>
+        <div class="bts">
+          <button class="ba bb" id="buyBtn">📈 Купить</button>
+          <button class="ba bs" id="sellBtn">📉 Продать</button>
+        </div>
+      </div>
+      <div class="msg" id="msgBox">Выбери монету и нажми «Купить». Цена меняется каждые 1.5 сек.</div>
+      <ul class="tips">
+        <li>Начальный баланс: <b>10 000 USD</b></li>
+        <li>Комиссия: <b>1%</b> с каждой сделки</li>
+        <li>Это симулятор — реальные деньги не используются</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- HOLDINGS + HISTORY -->
+  <div class="g2b">
+    <div class="card"><h2>Мои монеты</h2><div class="ilist" id="holdings"></div></div>
+    <div class="card"><h2>История сделок</h2><div class="ilist" id="history"></div></div>
+  </div>
+
+  <!-- LEADERBOARD + MCAP -->
+  <div class="g3">
+    <div class="card">
+      <h2>🏆 Топ инвесторов</h2>
+      <table class="lb-table">
+        <thead><tr><th>#</th><th>Инвестор</th><th>Капитал</th><th>Доля рынка</th></tr></thead>
+        <tbody id="lbBody"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>📊 Рыночная капитализация</h2>
+      <div class="ilist" id="mcapList"></div>
+    </div>
+  </div>
+
+  <!-- MARKET CONTROL -->
+  <div class="card" style="margin-top:20px;">
+    <h2>
+      🎛️ Управление рынком
+      <span class="badge badge-warn">РЕЖИМ БОГА</span>
+      <span class="badge badge-pause" id="pauseBadge">⏸ ПАУЗА</span>
+    </h2>
+    <div style="margin-bottom:16px;">
+      <div class="lbl" style="margin-bottom:8px;">Глобальные события — влияют на все монеты сразу</div>
+      <div class="events-row">
+        <button class="ev-btn crash" id="evCrash">💥 Обвал рынка (−40%)</button>
+        <button class="ev-btn crash" id="evDip">📉 Коррекция (−20%)</button>
+        <button class="ev-btn bull" id="evBull">🚀 Бычий рынок (+40%)</button>
+        <button class="ev-btn bull" id="evPump">📈 Небольшой рост (+20%)</button>
+        <button class="ev-btn" id="evFreeze">🧊 Заморозить цены</button>
+        <button class="ev-btn" id="evResume">▶️ Возобновить</button>
+      </div>
+    </div>
+    <div class="lbl" style="margin-bottom:12px;">Управление монетами — цена, тренд, волатильность, эмиссия</div>
+    <div class="mp-grid" id="mpGrid"></div>
+  </div>
+
+  <!-- BOT SETTINGS -->
+  <div class="card" style="margin-top:20px;">
+    <h2>🤖 Настройки ботов</h2>
+    <div class="lbl" style="margin-bottom:4px;">Задай стартовый бюджет каждого бота. Боты автоматически торгуют на рынке.</div>
+    <div class="bot-grid" id="botGrid"></div>
+  </div>
+
+</div><!-- /.app -->
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="js/coins.js"></script>
+<script src="js/state.js"></script>
+<script src="js/bots.js"></script>
+<script src="js/market.js"></script>
+<script src="js/chart.js"></script>
+<script src="js/render.js"></script>
+<script src="js/leaderboard.js"></script>
+<script src="js/trade.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+/* ===== CHART & TABS ===== */
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+.ctab{border:1px solid var(--bd);background:var(--sf2);border-radius:999px;padding:8px 14px;min-height:40px;font-size:13px;font-weight:600;transition:background .15s,color .15s;}
+.ctab.on{background:var(--pri);color:#fff;border-color:transparent;}
+.ctab:hover:not(.on){background:var(--sf3);}
+#cinfo{color:var(--mu);font-size:13px;margin-bottom:10px;}
+.cw{position:relative;height:280px;}

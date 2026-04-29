@@ -73,7 +73,7 @@ function tick(){
     st.pd[s].push(c.price);
     if(st.pd[s].length>40) st.pd[s].shift();
   });
-  botTick(); updateLoanRate(); accrueInterest();
+  botTick(); updateLoanRate(); accrueInterest(); renderBank();
   renderControls(); renderStats(); renderHoldings(); renderHistory();
   renderLeaderboard(); updateChartLive(); updateMcPrices(); updateBotCashes();
 }

@@ -4,7 +4,6 @@ const bank = {
   cash:     0,
   loan:     0,       // текущий долг игрока
   loanRate: 0.001,   // ставка за тик (обновляется динамически)
-  lockedRate: 0,     //ставка, зафиксированная при выдаче
 };
 
 /* --- Динамическая ставка --- */
@@ -30,7 +29,6 @@ function takeLoan(amount){
   if(bank.cash < amount) { return '❌ В банке недостаточно средств.'; }
   if(amount > 500_000)   { return '❌ Максимум кредита — $500,000.'; }
 
-  bank.lockedRate = bank.loanRate; // ← фиксируем ставку
   bank.cash -= amount;
   bank.loan += amount;
   st.cash   += amount;
@@ -54,7 +52,7 @@ function repayLoan(amount){
 /* --- Начисление процентов (вызывать в tick()) --- */
 function accrueInterest(){
   if(bank.loan <= 0) return;
-  bank.loan *= (1 + bank.lockedRate); // фиксированная ставка на время кредита
+  bank.loan *= (1 + bank.loanRate); // вместо lockedRate
 
   // Маржин-колл — долг превысил 90% капитала игрока
   if(bank.loan > totalV(st.cash, st.held) * 0.9){

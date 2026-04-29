@@ -117,20 +117,27 @@ function buildBotPanel(){
 }
 
 function renderBank(){
-  const bankEl = $('bankCash');
-  const loanEl = $('bankLoan');
-  const rateEl = $('bankRate');
+  const bankEl  = $('bankCash');
+  const loanEl  = $('bankLoan');
+  const rateEl  = $('bankRate');
+  const loanAmt = $('loanAmt');
 
   if(bankEl) bankEl.textContent = fmt(bank.cash);
 
   if(loanEl){
-    loanEl.textContent = fmt(bank.loan);
-    loanEl.style.color = bank.loan > 0 ? 'var(--dan)' : '';
+    if(bank.loan > 0){
+      const perTick = bank.loan * bank.loanRate;
+      loanEl.textContent = `${fmt(bank.loan)} (+${fmt(perTick)}/тик)`;
+      loanEl.style.color = 'var(--dan)';
+      // Автоматически вставляем текущий долг в поле ввода
+      if(loanAmt) loanAmt.value = bank.loan.toFixed(2);
+    } else {
+      loanEl.textContent = fmt(0);
+      loanEl.style.color = '';
+    }
   }
 
-  if(rateEl) rateEl.textContent = bank.loan > 0
-    ? `${(bank.lockedRate * 100).toFixed(3)}% (зафикс.)`
-    : `${(bank.loanRate  * 100).toFixed(3)}%`;
+  if(rateEl) rateEl.textContent = `${(bank.loanRate * 100).toFixed(3)}%`;
 }
 
 function renderAll(){

@@ -1,10 +1,5 @@
 /* ===== СОСТОЯНИЕ ИГРЫ ===== */
 
-/* --- Банк --- */
-const bank = {
-  cash: 0
-};
-
 /* --- Игрок --- */
 const st = {
   cash: START,
@@ -49,3 +44,7 @@ SYMS.forEach(s => {
   }
   COINS[s].price = st.pd[s].at(-1);
 });
+
+/* --- Переменная скорости --- */
+let tickSpeed = 1500; // мс между тиками (по умолчанию)
+let tickTimer  = null;

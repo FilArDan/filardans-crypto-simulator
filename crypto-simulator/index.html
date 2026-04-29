@@ -98,6 +98,11 @@
       <span class="badge badge-warn">РЕЖИМ БОГА</span>
       <span class="badge badge-pause" id="pauseBadge">⏸ ПАУЗА</span>
     </h2>
+    <div style="margin-top:16px;">
+      <div class="lbl">Скорость симуляции: <span id="speedLabel">1.5 сек/тик</span></div>
+       <input type="range" id="speedSlider" min="200" max="5000" step="100" value="1500"
+         style="width:100%;margin-top:8px;">
+    </div>
     <div style="margin-bottom:16px;">
       <div class="lbl" style="margin-bottom:8px;">Глобальные события — влияют на все монеты сразу</div>
       <div class="events-row">
@@ -119,12 +124,48 @@
     <div class="lbl" style="margin-bottom:4px;">Задай стартовый бюджет каждого бота. Боты автоматически торгуют на рынке.</div>
     <div class="bot-grid" id="botGrid"></div>
   </div>
+  
+  <!-- BANK -->
+<div class="card" style="margin-top:20px;">
+  <h2>🏦 Банк</h2>
+
+  <!-- Статы банка -->
+  <div class="stats" style="margin-bottom:16px;">
+    <div class="stat">
+      <div class="lbl">Резерв банка</div>
+      <div class="val" id="bankCash">$0.00</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Твой долг</div>
+      <div class="val" id="bankLoan">$0.00</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Ставка за тик</div>
+      <div class="val" id="bankRate">0.100%</div>
+    </div>
+  </div>
+
+  <!-- Кредит -->
+  <div class="tr" style="margin-bottom:12px;">
+    <div class="fld">
+      <label for="loanAmt">Сумма кредита</label>
+      <input id="loanAmt" type="number" min="100" max="500000" step="100" value="10000"/>
+    </div>
+    <div class="bts" style="margin-top:24px;">
+      <button class="ba bb" id="loanTakeBtn">💳 Взять кредит</button>
+      <button class="ba bs" id="loanRepayBtn">💰 Погасить</button>
+    </div>
+  </div>
+
+  <div class="msg" id="loanMsg">Кредит выдаётся под динамическую ставку. Не допусти маржин-колл!</div>
+ </div>
 
 </div><!-- /.app -->
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="js/coins.js"></script>
 <script src="js/state.js"></script>
+<script src="js/bank.js"></script>
 <script src="js/bots.js"></script>
 <script src="js/market.js"></script>
 <script src="js/chart.js"></script>

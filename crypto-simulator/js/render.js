@@ -116,7 +116,24 @@ function buildBotPanel(){
   });
 }
 
+function renderBank(){
+  const bankEl = $('bankCash');
+  const loanEl = $('bankLoan');
+  const rateEl = $('bankRate');
+
+  if(bankEl) bankEl.textContent = fmt(bank.cash);
+
+  if(loanEl){
+    loanEl.textContent = fmt(bank.loan);
+    loanEl.style.color = bank.loan > 0 ? 'var(--dan)' : '';
+  }
+
+  if(rateEl) rateEl.textContent = bank.loan > 0
+    ? `${(bank.lockedRate * 100).toFixed(3)}% (зафикс.)`
+    : `${(bank.loanRate  * 100).toFixed(3)}%`;
+}
+
 function renderAll(){
-  renderControls(); renderStats(); renderHoldings(); renderHistory();
+  renderControls(); renderStats(); renderHoldings(); renderHistory(); renderBank();
   renderLeaderboard(); renderChart(); updateMcPrices(); updateBotCashes();
 }

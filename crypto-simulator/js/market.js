@@ -73,7 +73,7 @@ function tick(){
     st.pd[s].push(c.price);
     if(st.pd[s].length>40) st.pd[s].shift();
   });
-  botTick();
+  botTick(); updateLoanRate(); accrueInterest();
   renderControls(); renderStats(); renderHoldings(); renderHistory();
   renderLeaderboard(); updateChartLive(); updateMcPrices(); updateBotCashes();
 }
@@ -82,7 +82,8 @@ function tick(){
 function applyTradePressure(sym, amount, action){
   const c = COINS[sym];
   // Сила влияния: объём сделки / supply * коэффициент
-  const impact = (amount / c.supply) * 50;
+  const rawImpact = (amount / c.supply) * 100;
+  const impact = Math.min(Math.log1p(rawImpact) * 0.015, 0.20); // максимум 20% за сделку
   if(action === 'buy'){
     c.price = Math.max(0.01, +(c.price * (1 + impact)).toFixed(2));
   } else {

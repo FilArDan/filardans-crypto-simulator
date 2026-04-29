@@ -36,6 +36,10 @@ function bullTick(bot){
   const avgLong = getAvgPrice(sym, 20);
   const roll    = Math.random();
 
+// Бонус шанса если цена ниже базовой
+  const belowBase = c.price < c.basePrice;
+  const buyChance = belowBase ? 0.95 : 0.85; // было просто 0.85
+
   if(c.price < avgLong * 0.98 && roll < 0.85){
     // Дёшево — покупаем агрессивно
     const spend = bot.cash * (0.30 + Math.random() * 0.30);
@@ -70,6 +74,9 @@ function foxTick(bot){
   const avgShort = getAvgPrice(sym, 5);
   const avgLong  = getAvgPrice(sym, 20);
   const roll     = Math.random();
+  
+  const belowBase = c.price < c.basePrice;
+  const buyChance = belowBase ? 0.80 : 0.60; // было 0.60
 
   if(c.price < avgLong * 0.97 && roll < 0.60){
     // Чуть дешевле нормы — маленькая покупка
@@ -102,6 +109,9 @@ function crocTick(bot){
   const sym = SYMS[Math.floor(Math.random() * SYMS.length)];
   const c   = COINS[sym];
   const avg = bot.avgP[sym];
+
+  const belowBase = c.price < c.basePrice;
+  const buyProb   = belowBase ? 0.85 : 0.65; // было 0.65
 
   // Фаза накопления — покупает понемногу почти всегда
   if(Math.random() < 0.65){

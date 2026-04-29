@@ -21,4 +21,19 @@ document.getElementById('evResume').onclick = ()=>{ st.paused=false; document.ge
 buildMarketPanel();
 buildBotPanel();
 renderAll();
-setInterval(tick, 1500);
+function startTicker(){
+  if(tickTimer) clearInterval(tickTimer);
+  tickTimer = setInterval(tick, tickSpeed);
+}
+
+startTicker(); // вместо старого setInterval
+
+/* --- Слайдер скорости --- */
+document.getElementById('speedSlider').oninput = function(){
+  tickSpeed = +this.value;
+  const label = tickSpeed < 1000
+    ? `${tickSpeed} мс/тик`
+    : `${(tickSpeed/1000).toFixed(1)} сек/тик`;
+  document.getElementById('speedLabel').textContent = label;
+  startTicker(); // перезапускаем с новой скоростью
+};

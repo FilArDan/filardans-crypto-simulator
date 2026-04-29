@@ -28,3 +28,15 @@ document.getElementById('sellBtn').onclick = ()=>{
 };
 
 document.getElementById('sCoin').onchange = e=>{ st.sel=e.target.value; renderAll(); };
+
+document.getElementById('loanTakeBtn').onclick = () => {
+  const amount = +document.getElementById('loanAmt').value;
+  $('loanMsg').textContent = takeLoan(amount);
+  renderAll();
+};
+
+document.getElementById('loanRepayBtn').onclick = () => {
+  const amount = +document.getElementById('loanAmt').value;
+  $('loanMsg').textContent = repayLoan(amount);
+  renderAll();
+};

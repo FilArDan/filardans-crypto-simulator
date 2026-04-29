@@ -40,3 +40,10 @@ document.getElementById('loanRepayBtn').onclick = () => {
   $('loanMsg').textContent = repayLoan(amount);
   renderAll();
 };
+
+document.getElementById('loanRepayMaxBtn').onclick = () => {
+  const max = Math.min(st.cash, bank.loan);
+  if(max <= 0){ $('loanMsg').textContent = '❌ Нечего погашать.'; return; }
+  $('loanMsg').textContent = repayLoan(max);
+  renderAll();
+};

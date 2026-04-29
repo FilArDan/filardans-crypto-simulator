@@ -129,8 +129,6 @@ function renderBank(){
       const perTick = bank.loan * bank.loanRate;
       loanEl.textContent = `${fmt(bank.loan)} (+${fmt(perTick)}/тик)`;
       loanEl.style.color = 'var(--dan)';
-      // Автоматически вставляем текущий долг в поле ввода
-      if(loanAmt) loanAmt.value = bank.loan.toFixed(2);
     } else {
       loanEl.textContent = fmt(0);
       loanEl.style.color = '';

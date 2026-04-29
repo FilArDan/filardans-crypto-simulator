@@ -2,8 +2,8 @@
 
 const bank = {
   cash:     0,
-  loan:     0,       // текущий долг игрока
-  loanRate: 0.001,   // ставка за тик (обновляется динамически)
+  loan:     0,
+  loanRate: 0.001,
 };
 
 /* --- Динамическая ставка --- */
@@ -32,14 +32,14 @@ function takeLoan(amount){
   bank.cash -= amount;
   bank.loan += amount;
   st.cash   += amount;
-  return `✅ Кредит ${fmt(amount)} выдан. Ставка зафиксирована: ${(bank.lockedRate*100).toFixed(3)}%/тик`;
+  return `✅ Кредит ${fmt(amount)} выдан. Ставка: ${(bank.loanRate * 100).toFixed(3)}%/тик`;
 }
 
 /* --- Погасить кредит --- */
 function repayLoan(amount){
-  if(amount <= 0)           { return '❌ Сумма должна быть больше нуля.'; }
-  if(bank.loan <= 0)        { return '❌ У тебя нет долга.'; }
-  if(st.cash < amount)      { return '❌ Недостаточно средств.'; }
+  if(amount <= 0)      { return '❌ Сумма должна быть больше нуля.'; }
+  if(bank.loan <= 0)   { return '❌ У тебя нет долга.'; }
+  if(st.cash < amount) { return '❌ Недостаточно средств.'; }
 
   const pay  = Math.min(amount, bank.loan);
   st.cash   -= pay;
@@ -52,9 +52,8 @@ function repayLoan(amount){
 /* --- Начисление процентов (вызывать в tick()) --- */
 function accrueInterest(){
   if(bank.loan <= 0) return;
-  bank.loan *= (1 + bank.loanRate); // вместо lockedRate
+  bank.loan *= (1 + bank.loanRate);
 
-  // Маржин-колл — долг превысил 90% капитала игрока
   if(bank.loan > totalV(st.cash, st.held) * 0.9){
     marginCall();
   }
@@ -62,7 +61,6 @@ function accrueInterest(){
 
 /* --- Маржин-колл --- */
 function marginCall(){
-  // Принудительно продаём все активы игрока
   SYMS.forEach(s => {
     if(st.held[s] > 0){
       const proceeds = st.held[s] * COINS[s].price * (1 - FEE);
@@ -73,7 +71,6 @@ function marginCall(){
     }
   });
 
-  // Списываем долг из кэша
   const pay  = Math.min(st.cash, bank.loan);
   st.cash   -= pay;
   bank.cash += pay;

@@ -145,17 +145,18 @@
     </div>
   </div>
 
-  <!-- Кредит -->
-  <div class="tr" style="margin-bottom:12px;">
-    <div class="fld">
-      <label for="loanAmt">Сумма кредита</label>
-      <input id="loanAmt" type="number" min="100" max="500000" step="100" value="10000"/>
-    </div>
-    <div class="bts" style="margin-top:24px;">
-      <button class="ba bb" id="loanTakeBtn">💳 Взять кредит</button>
-      <button class="ba bs" id="loanRepayBtn">💰 Погасить</button>
-    </div>
+<!-- Кредит -->
+<div class="tr" style="margin-bottom:12px;">
+  <div class="fld">
+    <label for="loanAmt">Сумма кредита</label>
+    <input id="loanAmt" type="number" min="100" max="500000" step="100" value="10000"/>
   </div>
+  <div class="bts" style="margin-top:24px;">
+    <button class="ba bb" id="loanTakeBtn">💳 Взять кредит</button>
+    <button class="ba bs" id="loanRepayBtn">💰 Погасить</button>
+    <button class="ba bs" id="loanRepayMaxBtn">💸 Погасить макс.</button>
+  </div>
+</div>
 
   <div class="msg" id="loanMsg">Кредит выдаётся под динамическую ставку. Не допусти маржин-колл!</div>
  </div>

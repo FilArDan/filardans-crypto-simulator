@@ -1,6 +1,33 @@
 /* ===== БОТЫ С ХАРАКТЕРАМИ ===== */
 
-const BOT_COUNT = 10;
+
+
+/* --- Добавление и удаление ботов --- */
+function addBot(name, type, cash){
+  const newBot = {
+    name,
+    type,
+    cash,
+    held: Object.fromEntries(SYMS.map(s=>[s,0])),
+    avgP: Object.fromEntries(SYMS.map(s=>[s,0])),
+    ...(type === 'croc' ? { target: Object.fromEntries(SYMS.map(s=>[s, 1.25 + Math.random()*0.20])) } : {})
+  };
+  bots.push(newBot);
+  buildBotPanel(); // перестраиваем панель
+}
+
+function removeBot(i){
+  bots.splice(i, 1);
+  buildBotPanel();
+}
+
+function renameBot(i, newName){
+  if(!newName.trim()) return;
+  bots[i].name = newName.trim();
+  buildBotPanel();
+}
+
+
 const bots = [
   /* 🐂 Агрессоры */
   { name:'Агрессор-1', type:'bull', cash:15000, held:Object.fromEntries(SYMS.map(s=>[s,0])), avgP:Object.fromEntries(SYMS.map(s=>[s,0])) },
@@ -143,7 +170,6 @@ function crocTick(bot){
         bot.avgP[sym] = 0;
         bot.target[sym] = 1.25 + Math.random() * 0.20;
       } 
-applyTradePressure(sym, amt, 'sell');
       // Сброс цели — ждём следующего цикла
       bot.target[sym] = 1.25 + Math.random() * 0.20;
       applyTradePressure(sym, amt, 'sell');

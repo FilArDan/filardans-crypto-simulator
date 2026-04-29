@@ -100,27 +100,75 @@ function buildMarketPanel(){
   });
 }
 
+const BOT_ICONS = { bull:'🐂', fox:'🦊', croc:'🐊' };
+
 function buildBotPanel(){
   const grid=$('botGrid'); grid.innerHTML='';
+
+  // Карточки существующих ботов
   bots.forEach((bot,i)=>{
     const div=document.createElement('div'); div.className='bot-card';
     div.innerHTML=`
-      <div class="bot-name">🤖 ${bot.name}</div>
+      <div class="bot-name">${BOT_ICONS[bot.type]||'🤖'} <span id="botNameLbl-${i}">${bot.name}</span></div>
       <div class="bot-cash" id="botCash-${i}">Баланс: ${fmt(bot.cash)}</div>
+
+      <label style="margin-top:10px;">Переименовать</label>
+      <div class="bot-inp-row">
+        <input type="text" id="botRename-${i}" placeholder="${bot.name}"/>
+        <button title="Переименовать" onclick="
+          const v=$('botRename-${i}').value.trim();
+          if(!v) return;
+          bots[${i}].name=v;
+          $('botNameLbl-${i}').textContent=v;
+          $('botRename-${i}').value='';
+          $('botRename-${i}').placeholder=v;
+        ">✏️</button>
+      </div>
+
       <label style="margin-top:8px;">Задать бюджет (USD)</label>
       <div class="bot-inp-row">
         <input type="number" id="botInp-${i}" placeholder="Сумма" min="0" step="100"/>
         <button onclick="setBotBudget(${i})">Задать</button>
-      </div>`;
+      </div>
+
+      <button class="btn-remove" onclick="removeBot(${i})">🗑 Удалить бота</button>`;
     grid.appendChild(div);
   });
+
+  // Карточка добавления нового бота
+  const add=document.createElement('div'); add.className='bot-card bot-add';
+  add.innerHTML=`
+    <div class="bot-name">➕ Новый бот</div>
+
+    <label>Имя</label>
+    <div class="bot-inp-row" style="margin-bottom:8px;">
+      <input type="text" id="newBotName" placeholder="Имя бота" style="border-radius:10px;"/>
+    </div>
+
+    <label>Тип</label>
+    <select id="newBotType">
+      <option value="bull">🐂 Агрессор</option>
+      <option value="fox">🦊 Осторожный</option>
+      <option value="croc">🐊 Накопитель</option>
+    </select>
+
+    <label style="margin-top:8px;">Стартовый капитал ($)</label>
+    <div class="bot-inp-row" style="margin-bottom:8px;">
+      <input type="number" id="newBotCash" value="10000" min="100" step="500" style="border-radius:10px;"/>
+    </div>
+
+    <button class="btn-primary" onclick="addBot(
+      $('newBotName').value.trim() || 'Бот-'+(bots.length+1),
+      $('newBotType').value,
+      +$('newBotCash').value || 10000
+    )">➕ Добавить бота</button>`;
+  grid.appendChild(add);
 }
 
 function renderBank(){
-  const bankEl  = $('bankCash');
-  const loanEl  = $('bankLoan');
-  const rateEl  = $('bankRate');
-  const loanAmt = $('loanAmt');
+  const bankEl = $('bankCash');
+  const loanEl = $('bankLoan');
+  const rateEl = $('bankRate');
 
   if(bankEl) bankEl.textContent = fmt(bank.cash);
 

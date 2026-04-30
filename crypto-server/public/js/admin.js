@@ -1,10 +1,10 @@
 const socket = io();
 let prices     = {};
-let coinMeta   = {};   // vol, drift, supply, basePrice, isCustom per coin
+let coinMeta   = {};
 let allWallets = [];
 let allLoans   = [];
 let dealCount  = 0;
-let COINS      = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE']; // обновляется динамически
+let COINS      = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 const BASE_COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
@@ -210,13 +210,12 @@ document.getElementById('speedSlider').addEventListener('input', function () {
 
 socket.on('tickSpeedChanged', ({ ms }) => setSliderValue(ms));
 
-// ── ТАБЛИЦА ИГРОКОВ (динамические колонки) ───────────────────────────────────
+// ── ТАБЛИЦА ИГРОКОВ ──────────────────────────────────────────────────────────
 function renderPlayers() {
   const thead = document.getElementById('playersHead');
   const tbody = document.getElementById('adminPlayersBody');
   if (!thead || !tbody) return;
 
-  // Заголовок — динамический по COINS
   thead.innerHTML = `<tr>
     <th>Игрок</th>
     <th>Наличные</th>
@@ -461,13 +460,14 @@ api('GET', '/auth/me').then(res => {
   loadTickSpeed();
 });
 
-const botsBody = document.getElementById('botsBody');
+// ── БОТЫ ─────────────────────────────────────────────────────────────────────
+const botsBody     = document.getElementById('botsBody');
 const createBotForm = document.getElementById('createBotForm');
-const botName = document.getElementById('botName');
-const botPreset = document.getElementById('botPreset');
-const botUsd = document.getElementById('botUsd');
+const botName      = document.getElementById('botName');
+const botPreset    = document.getElementById('botPreset');
+const botUsd       = document.getElementById('botUsd');
 
-async function api(url, options = {}) {
+async function apiFetch(url, options = {}) {
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -481,14 +481,14 @@ async function api(url, options = {}) {
 async function loadBots() {
   if (!botsBody) return;
   try {
-    const { bots } = await api('/api/game/admin/bots');
+    const { bots } = await apiFetch('/api/admin/bots');
     botsBody.innerHTML = bots.map(bot => `
       <tr>
         <td>${bot.botEmoji || '🤖'} ${bot.username}</td>
         <td>
           <select data-bot-preset="${bot.username}">
             <option value="bull" ${bot.botType === 'bull' ? 'selected' : ''}>🐂 Агрессор</option>
-            <option value="fox" ${bot.botType === 'fox' ? 'selected' : ''}>🦊 Осторожный</option>
+            <option value="fox"  ${bot.botType === 'fox'  ? 'selected' : ''}>🦊 Осторожный</option>
             <option value="croc" ${bot.botType === 'croc' ? 'selected' : ''}>🐊 Накопитель</option>
           </select>
         </td>
@@ -501,62 +501,62 @@ async function loadBots() {
       </tr>
     `).join('');
   } catch (e) {
-    botsBody.innerHTML = `<tr><td colspan="5">${e.message}</td></tr>`;
+    if (botsBody) botsBody.innerHTML = `<tr><td colspan="5">${e.message}</td></tr>`;
   }
 }
 
 createBotForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
-    await api('/api/game/admin/bot/create', {
+    await apiFetch('/api/admin/bot/create', {
       method: 'POST',
       body: JSON.stringify({
         name: botName.value.trim(),
         type: botPreset.value,
-        usd: Number(botUsd.value || 0)
-      })
+        usd:  Number(botUsd.value || 0),
+      }),
     });
-    botName.value = '';
+    botName.value   = '';
     botPreset.value = 'fox';
-    botUsd.value = 10000;
+    botUsd.value    = 10000;
     await loadBots();
-    if (typeof loadAdmin === 'function') await loadAdmin();
+    await loadAdminData();
   } catch (e) {
     alert(e.message);
   }
 });
 
 document.addEventListener('click', async (e) => {
-  const del = e.target.closest('[data-bot-delete]');
+  const del  = e.target.closest('[data-bot-delete]');
   const save = e.target.closest('[data-bot-save]');
 
   if (del) {
     const name = del.getAttribute('data-bot-delete');
     if (!confirm(`Удалить бота «${name}»?`)) return;
     try {
-      await api(`/api/game/admin/bot/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      await apiFetch(`/api/admin/bot/${encodeURIComponent(name)}`, { method: 'DELETE' });
       await loadBots();
-      if (typeof loadAdmin === 'function') await loadAdmin();
+      await loadAdminData();
     } catch (e) {
       alert(e.message);
     }
   }
 
   if (save) {
-    const name = save.getAttribute('data-bot-save');
-    const cashEl = document.querySelector(`[data-bot-cash="${CSS.escape(name)}"]`);
+    const name     = save.getAttribute('data-bot-save');
+    const cashEl   = document.querySelector(`[data-bot-cash="${CSS.escape(name)}"]`);
     const presetEl = document.querySelector(`[data-bot-preset="${CSS.escape(name)}"]`);
     try {
-      await api('/api/game/admin/bot/set-cash', {
+      await apiFetch('/api/admin/bot/set-cash', {
         method: 'POST',
-        body: JSON.stringify({ name, usd: Number(cashEl.value || 0) })
+        body: JSON.stringify({ name, usd: Number(cashEl.value || 0) }),
       });
-      await api('/api/game/admin/bot/set-preset', {
+      await apiFetch('/api/admin/bot/set-preset', {
         method: 'POST',
-        body: JSON.stringify({ name, type: presetEl.value })
+        body: JSON.stringify({ name, type: presetEl.value }),
       });
       await loadBots();
-      if (typeof loadAdmin === 'function') await loadAdmin();
+      await loadAdminData();
     } catch (e) {
       alert(e.message);
     }

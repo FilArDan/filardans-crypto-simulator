@@ -1,10 +1,11 @@
 const socket = io();
-let prices    = {};
-let coinMeta  = {};   // vol, drift, supply, basePrice per coin
+let prices     = {};
+let coinMeta   = {};   // vol, drift, supply, basePrice, isCustom per coin
 let allWallets = [];
 let allLoans   = [];
 let dealCount  = 0;
-const COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
+let COINS      = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE']; // обновляется динамически
+const BASE_COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 async function api(method, path, body) {
@@ -29,8 +30,14 @@ function fmtTime(ts) {
          t.getMinutes().toString().padStart(2,'0');
 }
 
-function coinDec(c) { return (c === 'DOGE' || c === 'XRP') ? 4 : 5; }
-function priceDec(c) { return (c === 'XRP' || c === 'DOGE') ? 4 : 2; }
+function coinDec(c)  { return BASE_COINS.includes(c) ? 5 : 3; }
+function priceDec(c) {
+  const p = prices[c] || 0;
+  if (BASE_COINS.includes(c)) return (c === 'XRP' || c === 'DOGE') ? 4 : 2;
+  if (p >= 100) return 2;
+  if (p >= 1)   return 3;
+  return 5;
+}
 
 // ── УДАЛЕНИЕ ИГРОКА ──────────────────────────────────────────────────────────
 async function deletePlayer(username) {
@@ -38,6 +45,45 @@ async function deletePlayer(username) {
   const r = await fetch(`/api/admin/player/${encodeURIComponent(username)}`, { method: 'DELETE' });
   const data = await r.json();
   if (data.error) { alert(data.error); return; }
+  await loadAdminData();
+}
+
+// ── СОЗДАНИЕ МОНЕТЫ ──────────────────────────────────────────────────────────
+document.getElementById('createCoinForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('createCoinBtn');
+  btn.disabled = true; btn.textContent = '⏳ Создание...';
+
+  const body = {
+    ticker: document.getElementById('newTicker').value.toUpperCase().trim(),
+    name:   document.getElementById('newName').value.trim()   || undefined,
+    emoji:  document.getElementById('newEmoji').value.trim()  || '🪙',
+    price:  parseFloat(document.getElementById('newPrice').value),
+    vol:    parseFloat(document.getElementById('newVol').value)   / 100,
+    drift:  parseFloat(document.getElementById('newDrift').value) / 100,
+    supply: parseFloat(document.getElementById('newSupply').value),
+  };
+
+  const res = await api('POST', '/api/admin/coin/create', body);
+  if (res.error) {
+    alert(res.error);
+  } else {
+    if (res.coins) COINS = res.coins;
+    if (res.prices) prices = res.prices;
+    document.getElementById('createCoinForm').reset();
+    await loadAdminData();
+  }
+  btn.disabled = false; btn.textContent = '🚀 Создать монету';
+});
+
+// ── УДАЛЕНИЕ КАСТОМНОЙ МОНЕТЫ ────────────────────────────────────────────────
+async function deleteCoin(ticker) {
+  const m = coinMeta[ticker] || {};
+  if (!confirm(`Удалить монету ${m.emoji || '🪙'} ${ticker}?\n\nИгрокам будут возвращены USD по текущей цене.`)) return;
+  const r = await fetch(`/api/admin/coin/${encodeURIComponent(ticker)}`, { method: 'DELETE' });
+  const data = await r.json();
+  if (data.error) { alert(data.error); return; }
+  if (data.coins) COINS = data.coins;
   await loadAdminData();
 }
 
@@ -53,9 +99,13 @@ function renderCoinParams() {
     const supply   = m.supply    || '';
     const base     = m.basePrice || '';
     const driftCol = driftPct > 0 ? 'var(--up)' : driftPct < 0 ? 'var(--dn)' : 'var(--mu)';
+    const isCustom = m.isCustom || !BASE_COINS.includes(coin);
+    const label    = isCustom
+      ? `${m.emoji || '🪙'} ${coin} <span class="tag-custom">custom</span>`
+      : `<strong>${coin}</strong>`;
 
     return `<tr id="coin-row-${coin}">
-      <td><strong>${coin}</strong></td>
+      <td>${label}</td>
       <td style="font-variant-numeric:tabular-nums">$${fmt(prices[coin] || 0, priceDec(coin))}</td>
 
       <td>
@@ -91,10 +141,13 @@ function renderCoinParams() {
           value="${base}" min="0.0001" step="any" placeholder="Базовая цена">
       </td>
 
-      <td>
+      <td style="display:flex;gap:6px;align-items:center">
         <button class="btn btn-secondary btn-sm" onclick="saveCoinParams('${coin}')">
           Сохранить
         </button>
+        ${isCustom
+          ? `<button class="btn btn-dan btn-sm" onclick="deleteCoin('${coin}')" title="Удалить монету">🗑️</button>`
+          : ''}
       </td>
     </tr>`;
   }).join('');
@@ -111,7 +164,7 @@ async function saveCoinParams(coin) {
   if (!isNaN(baseVal)   && baseVal   > 0) body.basePrice = baseVal;
 
   const btn = document.querySelector(`#coin-row-${coin} .btn`);
-  btn.disabled = true; btn.textContent = '⏳...';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
 
   const res = await api('POST', '/api/admin/coin/params', body);
   if (res.error) alert(res.error);
@@ -119,7 +172,7 @@ async function saveCoinParams(coin) {
     if (res.prices) prices = res.prices;
     await loadAdminData();
   }
-  btn.disabled = false; btn.textContent = 'Сохранить';
+  if (btn) { btn.disabled = false; btn.textContent = 'Сохранить'; }
 }
 
 // ── СЛАЙДЕР СКОРОСТИ ТИКА ────────────────────────────────────────────────────
@@ -157,15 +210,30 @@ document.getElementById('speedSlider').addEventListener('input', function () {
 
 socket.on('tickSpeedChanged', ({ ms }) => setSliderValue(ms));
 
-// ── ТАБЛИЦА ИГРОКОВ ──────────────────────────────────────────────────────────
+// ── ТАБЛИЦА ИГРОКОВ (динамические колонки) ───────────────────────────────────
 function renderPlayers() {
+  const thead = document.getElementById('playersHead');
   const tbody = document.getElementById('adminPlayersBody');
-  if (!tbody) return;
+  if (!thead || !tbody) return;
+
+  // Заголовок — динамический по COINS
+  thead.innerHTML = `<tr>
+    <th>Игрок</th>
+    <th>Наличные</th>
+    <th>Долг</th>
+    ${COINS.map(c => {
+      const m = coinMeta[c] || {};
+      const isCustom = m.isCustom || !BASE_COINS.includes(c);
+      return `<th title="${m.name || c}">${isCustom ? (m.emoji || '🪙') + ' ' : ''}${c}</th>`;
+    }).join('')}
+    <th>Статус</th>
+    <th>Действия</th>
+  </tr>`;
 
   const players = allWallets.filter(w => w.username !== 'WARDEN');
 
   if (!players.length) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--mu);padding:20px">
+    tbody.innerHTML = `<tr><td colspan="${COINS.length + 5}" style="text-align:center;color:var(--mu);padding:20px">
       Данных пока нет. Игроки ещё не зарегистрировались.
     </td></tr>`;
     return;
@@ -220,13 +288,14 @@ function renderPrices() {
   const tbody = document.getElementById('priceRows');
   if (!tbody) return;
   tbody.innerHTML = COINS.map(c => {
-    const m   = coinMeta[c] || {};
-    const dec = priceDec(c);
+    const m        = coinMeta[c] || {};
+    const dec      = priceDec(c);
     const driftPct = (m.drift || 0) * 100;
     const driftStr = driftPct === 0 ? '—'
       : `<span class="${driftPct > 0 ? 'up' : 'dn'}">${driftPct > 0 ? '+' : ''}${driftPct.toFixed(1)}%</span>`;
+    const isCustom = m.isCustom || !BASE_COINS.includes(c);
     return `<tr>
-      <td><strong>${c}</strong></td>
+      <td><strong>${isCustom ? (m.emoji || '🪙') + ' ' : ''}${c}</strong></td>
       <td style="font-variant-numeric:tabular-nums">$${fmt(prices[c] || 0, dec)}</td>
       <td>${driftStr}</td>
     </tr>`;
@@ -280,6 +349,7 @@ async function loadAdminData() {
 
   if (!stateData.error) {
     prices = stateData.prices || {};
+    if (stateData.coins) COINS = stateData.coins;
     const trades = (stateData.events || []).filter(e =>
       e.text.includes('купил') || e.text.includes('продал')
     );
@@ -345,14 +415,17 @@ socket.on('priceUpdate', p => {
   prices = p;
   renderPrices();
   renderPlayers();
-  // Обновить цены в таблице параметров (не перерисовывать всё — только цены)
   COINS.forEach(coin => {
     const row = document.getElementById(`coin-row-${coin}`);
-    if (row) {
-      const priceCell = row.cells[1];
-      if (priceCell) priceCell.textContent = '$' + fmt(prices[coin] || 0, priceDec(coin));
+    if (row && row.cells[1]) {
+      row.cells[1].textContent = '$' + fmt(prices[coin] || 0, priceDec(coin));
     }
   });
+});
+
+socket.on('coinsUpdated', ({ coins }) => {
+  COINS = coins;
+  loadAdminData();
 });
 
 socket.on('newEvent', ev => {

@@ -1,6 +1,5 @@
-const { db, COINS } = require('../db');
+const { db, getAllCoins } = require('../db');
 
-// Умное округление: сохраняет нужную точность в зависимости от масштаба цены
 function roundPrice(p) {
   if (p >= 1000) return Math.round(p * 100)   / 100;
   if (p >= 10)   return Math.round(p * 1000)  / 1000;
@@ -8,17 +7,14 @@ function roundPrice(p) {
   return           Math.round(p * 100000)     / 100000;
 }
 
-/**
- * Тик рынка:
- *   price *= (1 + noise + drift + pull)
- *   noise  — случайный шум, масштабируется на vol каждой монеты
- *   drift  — постоянный тренд ±%, задаётся администратором
- *   pull   — притяжение к basePrice (mean reversion)
- */
 async function tick(io) {
+  const coins  = await getAllCoins();
   const prices = {};
-  for (const coin of COINS) {
+
+  for (const coin of coins) {
     const doc = await db.prices.findOne({ coin });
+    if (!doc) continue;
+
     const vol   = doc.vol       || 0.04;
     const drift = doc.drift     || 0;
     const base  = doc.basePrice || doc.price;
@@ -35,11 +31,6 @@ async function tick(io) {
   if (io) io.emit('priceUpdate', prices);
 }
 
-/**
- * Trade pressure: крупная сделка двигает цену.
- *   impact = min(log1p(amount / supply * 100) * 0.015, 0.20)
- *   Возвращает новую цену монеты.
- */
 async function applyTradePressure(coin, amount, action) {
   const doc = await db.prices.findOne({ coin });
   if (!doc || !doc.supply || doc.supply <= 0) return doc ? doc.price : 0;

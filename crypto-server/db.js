@@ -1,32 +1,33 @@
-const NeDB = require('@seald-io/nedb');
-const path = require('path');
+const NeDB  = require('@seald-io/nedb');
+const path  = require('path');
 const bcrypt = require('bcryptjs');
 
 const dbDir = path.join(__dirname, 'data');
 
 const db = {
-  users:   new NeDB({ filename: path.join(dbDir, 'users.db'),   autoload: true }),
-  wallets: new NeDB({ filename: path.join(dbDir, 'wallets.db'), autoload: true }),
-  loans:   new NeDB({ filename: path.join(dbDir, 'loans.db'),   autoload: true }),
-  events:  new NeDB({ filename: path.join(dbDir, 'events.db'),  autoload: true }),
-  prices:  new NeDB({ filename: path.join(dbDir, 'prices.db'),  autoload: true }),
+  users:       new NeDB({ filename: path.join(dbDir, 'users.db'),       autoload: true }),
+  wallets:     new NeDB({ filename: path.join(dbDir, 'wallets.db'),     autoload: true }),
+  loans:       new NeDB({ filename: path.join(dbDir, 'loans.db'),       autoload: true }),
+  events:      new NeDB({ filename: path.join(dbDir, 'events.db'),      autoload: true }),
+  prices:      new NeDB({ filename: path.join(dbDir, 'prices.db'),      autoload: true }),
+  customCoins: new NeDB({ filename: path.join(dbDir, 'customCoins.db'), autoload: true }),
 };
 
 const INITIAL_USERS = [
-  { username: 'WARDEN',    password: 'sherpaIsGay', role: 'admin',  startUsd: 0     },
-  { username: 'Артур',     password: 'alpha101',    role: 'player', startUsd: 10000 },
-  { username: 'Даня',      password: 'beta202',     role: 'player', startUsd: 12000 },
-  { username: 'Злодей',    password: 'gamma303',    role: 'player', startUsd: 8000  },
-  { username: 'Игорь',     password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Лукашенко', password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Миха',      password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Серега',    password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Юра',       password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: 'WARDEN',      password: 'sherpaIsGay', role: 'admin',  startUsd: 0     },
+  { username: 'Артур',       password: 'alpha101',    role: 'player', startUsd: 10000 },
+  { username: 'Даня',        password: 'beta202',     role: 'player', startUsd: 12000 },
+  { username: 'Злодей',      password: 'gamma303',    role: 'player', startUsd: 8000  },
+  { username: 'Игорь',       password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: 'Лукашенко',   password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: 'Миха',        password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: 'Серега',      password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: 'Юра',         password: 'delta404',    role: 'player', startUsd: 15000 },
 ];
 
+// Базовые (несъёмные) монеты
 const COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 
-// Метаданные монет: якорная цена, волатильность, тренд, оборот
 const COIN_META = {
   BTC:  { basePrice: 45000, vol: 0.030, drift: 0, supply: 21000000        },
   ETH:  { basePrice: 2800,  vol: 0.045, drift: 0, supply: 120000000       },
@@ -36,6 +37,12 @@ const COIN_META = {
 };
 
 const INITIAL_PRICES = { BTC: 45000, ETH: 2800, SOL: 120, XRP: 0.52, DOGE: 0.08 };
+
+// Возвращает все активные тикеры: базовые + кастомные
+async function getAllCoins() {
+  const custom = await db.customCoins.find({});
+  return [...COINS, ...custom.map(c => c.ticker)];
+}
 
 async function initDb() {
   const fs = require('fs');
@@ -66,7 +73,6 @@ async function initDb() {
         supply:    meta.supply,
       });
     } else {
-      // Дополнить старые записи без метаданных
       const meta = COIN_META[coin];
       const patch = {};
       if (exists.basePrice == null) patch.basePrice = meta.basePrice;
@@ -80,4 +86,4 @@ async function initDb() {
   }
 }
 
-module.exports = { db, initDb, COINS, COIN_META };
+module.exports = { db, initDb, COINS, COIN_META, getAllCoins };

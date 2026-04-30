@@ -14,6 +14,24 @@
     .coin-input  { width: 130px; }
     .drift-lbl   { min-width: 44px; font-size: 12px; font-variant-numeric: tabular-nums; }
     .vol-lbl     { min-width: 36px; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .create-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .create-grid label.fld { margin: 0; }
+    .tag-custom {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      background: color-mix(in oklch, var(--pri) 15%, transparent);
+      color: var(--pri);
+      margin-left: 6px;
+      vertical-align: middle;
+    }
   </style>
 </head>
 <body>
@@ -99,6 +117,38 @@
     </div>
   </div>
 
+  <!-- СОЗДАТЬ МОНЕТУ -->
+  <div class="card section-gap">
+    <h2>✨ Создать новую монету</h2>
+    <form id="createCoinForm">
+      <div class="create-grid">
+        <label class="fld">Тикер *
+          <input id="newTicker" type="text" maxlength="8" placeholder="MEME" required
+            style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+        </label>
+        <label class="fld">Название
+          <input id="newName" type="text" maxlength="32" placeholder="MemeToken">
+        </label>
+        <label class="fld">Emoji
+          <input id="newEmoji" type="text" maxlength="4" placeholder="🪙">
+        </label>
+        <label class="fld">Начальная цена ($) *
+          <input id="newPrice" type="number" min="0.0001" step="any" value="1" required>
+        </label>
+        <label class="fld">Волатильность (%)
+          <input id="newVol" type="number" min="0.5" max="30" step="0.5" value="5">
+        </label>
+        <label class="fld">Тренд (%)
+          <input id="newDrift" type="number" min="-10" max="10" step="0.1" value="0">
+        </label>
+        <label class="fld">Supply
+          <input id="newSupply" type="number" min="1" step="1" value="1000000">
+        </label>
+      </div>
+      <button class="btn btn-secondary" type="submit" id="createCoinBtn">🚀 Создать монету</button>
+    </form>
+  </div>
+
   <!-- ROW: CONTROLS + PRICES -->
   <div class="g2b section-gap">
 
@@ -134,19 +184,12 @@
   <!-- ТАБЛИЦА ИГРОКОВ -->
   <div class="card section-gap">
     <h2>👥 Балансы и портфели игроков</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Игрок</th>
-          <th>Наличные</th>
-          <th>Долг</th>
-          <th>BTC</th><th>ETH</th><th>SOL</th><th>XRP</th><th>DOGE</th>
-          <th>Статус</th>
-          <th>Действия</th>
-        </tr>
-      </thead>
-      <tbody id="adminPlayersBody"></tbody>
-    </table>
+    <div style="overflow-x:auto">
+      <table id="playersTable">
+        <thead id="playersHead"></thead>
+        <tbody id="adminPlayersBody"></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- LOANS + FEED -->

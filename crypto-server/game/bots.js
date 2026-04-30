@@ -1,26 +1,24 @@
-/* ===== СЕРВЕРНЫЕ БОТЫ (порт из singleplayer/js/bots.js) ===== */
+/* ===== \u0421\u0415\u0420\u0412\u0415\u0420\u041d\u042b\u0415 \u0411\u041e\u0422\u042b (\u043f\u043e\u0440\u0442 \u0438\u0437 singleplayer/js/bots.js) ===== */
 
 const { db } = require('../db');
 
-const FEE = 0.001; // 0.1% комиссия
-
-// ── Начальные боты (идентичны singleplayer) ───────────────────────────────────
-const BOTS = [
-  { name: 'Агрессор-1', type: 'bull', usd: 15000, held: {}, avgP: {} },
-  { name: 'Агрессор-2', type: 'bull', usd: 18000, held: {}, avgP: {} },
-  { name: 'Лис-1',      type: 'fox',  usd: 10000, held: {}, avgP: {} },
-  { name: 'Лис-2',      type: 'fox',  usd: 10000, held: {}, avgP: {} },
-  { name: 'Лис-3',      type: 'fox',  usd: 12000, held: {}, avgP: {} },
-  { name: 'Крок-1',     type: 'croc', usd: 20000, held: {}, avgP: {}, target: {} },
-  { name: 'Крок-2',     type: 'croc', usd: 20000, held: {}, avgP: {}, target: {} },
-  { name: 'Лис-4',      type: 'fox',  usd:  9000, held: {}, avgP: {} },
-  { name: 'Лис-5',      type: 'fox',  usd: 11000, held: {}, avgP: {} },
-  { name: 'Лис-6',      type: 'fox',  usd: 10000, held: {}, avgP: {} },
-];
-
-// ── История цен в памяти (30 тиков) ──────────────────────────────────────────
-const priceHistory = {};
+const FEE = 0.001;
+const BOT_EMOJI = { bull: '\uD83D\uDC02', fox: '\uD83E\uDD8A', croc: '\uD83D\uDC0A' };
 const HIST_LEN = 30;
+const priceHistory = {};
+
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+
+function sanitizeBot(bot) {
+  return {
+    name:   String(bot.name || '').trim(),
+    type:   ['bull','fox','croc'].includes(bot.type) ? bot.type : 'fox',
+    usd:    Number(bot.usd)  || 0,
+    held:   (bot.held   && typeof bot.held   === 'object') ? bot.held   : {},
+    avgP:   (bot.avgP   && typeof bot.avgP   === 'object') ? bot.avgP   : {},
+    target: (bot.target && typeof bot.target === 'object') ? bot.target : {},
+  };
+}
 
 function updatePriceHistory(prices) {
   for (const [coin, price] of Object.entries(prices)) {
@@ -37,167 +35,195 @@ function getAvgPrice(coin, n) {
   return slice.reduce((s, p) => s + p, 0) / slice.length;
 }
 
-// ── Ленивый импорт market (разрыв циклической зависимости) ───────────────────
 async function applyTP(coin, amt, action) {
   const { applyTradePressure } = require('./market');
   return applyTradePressure(coin, amt, action);
 }
 
-// ── Стоимость портфеля бота ───────────────────────────────────────────────────
 function botPortfolioValue(bot, prices) {
-  let total = bot.usd;
-  for (const [coin, amt] of Object.entries(bot.held)) {
+  let total = Number(bot.usd) || 0;
+  for (const [coin, amt] of Object.entries(bot.held || {})) {
     if (amt > 0 && prices[coin]) total += amt * prices[coin];
   }
   return total;
 }
 
-// ── 🐂 Агрессор ───────────────────────────────────────────────────────────────
-async function bullTick(bot, coins, prices, basePrices) {
-  const coin  = coins[Math.floor(Math.random() * coins.length)];
+// \u2500\u2500 \uD83D\uDC02 \u0410\u0433\u0440\u0435\u0441\u0441\u043e\u0440 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+async function bullTick(bot, coins, prices) {
+  const coin = coins[Math.floor(Math.random() * coins.length)];
   const price = prices[coin];
   if (!price) return;
-
   const avgLong = getAvgPrice(coin, 20) || price;
-  const roll    = Math.random();
+  const roll = Math.random();
 
   if (price < avgLong * 0.98 && roll < 0.85) {
     const spend = bot.usd * (0.30 + Math.random() * 0.30);
     if (spend < 1) return;
-    const amt  = spend / price;
+    const amt = spend / price;
     const cost = amt * price * (1 + FEE);
     if (cost > bot.usd) return;
-    const prevTotal     = (bot.held[coin] || 0) * (bot.avgP[coin] || 0);
-    bot.usd            -= cost;
-    bot.held[coin]      = (bot.held[coin] || 0) + amt;
-    bot.avgP[coin]      = (prevTotal + amt * price) / bot.held[coin];
-    const newP          = await applyTP(coin, amt, 'buy');
-    prices[coin]        = newP;
-
+    const prevTotal = (bot.held[coin] || 0) * (bot.avgP[coin] || 0);
+    bot.usd -= cost;
+    bot.held[coin] = (bot.held[coin] || 0) + amt;
+    bot.avgP[coin] = (prevTotal + amt * price) / bot.held[coin];
+    prices[coin] = await applyTP(coin, amt, 'buy');
   } else if (price > avgLong * 1.03 && (bot.held[coin] || 0) > 0 && roll < 0.80) {
-    const frac     = 0.50 + Math.random() * 0.40;
-    const amt      = (bot.held[coin] || 0) * frac;
-    bot.usd       += amt * price * (1 - FEE);
-    bot.held[coin] = (bot.held[coin] || 0) - amt;
+    const frac = 0.50 + Math.random() * 0.40;
+    const amt = (bot.held[coin] || 0) * frac;
+    bot.usd += amt * price * (1 - FEE);
+    bot.held[coin] -= amt;
     if (bot.held[coin] < 0.0001) bot.held[coin] = 0;
-    const newP     = await applyTP(coin, amt, 'sell');
-    prices[coin]   = newP;
+    prices[coin] = await applyTP(coin, amt, 'sell');
   }
 }
 
-// ── 🦊 Осторожный ─────────────────────────────────────────────────────────────
-async function foxTick(bot, coins, prices, basePrices) {
-  if (Math.random() > 0.40) return; // часто пропускает ход
-  const coin  = coins[Math.floor(Math.random() * coins.length)];
+// \u2500\u2500 \uD83E\uDD8A \u041e\u0441\u0442\u043e\u0440\u043e\u0436\u043d\u044b\u0439 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+async function foxTick(bot, coins, prices) {
+  if (Math.random() > 0.40) return;
+  const coin = coins[Math.floor(Math.random() * coins.length)];
   const price = prices[coin];
   if (!price) return;
-
   const avgLong = getAvgPrice(coin, 20) || price;
-  const roll    = Math.random();
+  const roll = Math.random();
 
   if (price < avgLong * 0.97 && roll < 0.60) {
     const spend = bot.usd * (0.02 + Math.random() * 0.06);
     if (spend < 1) return;
-    const amt  = spend / price;
+    const amt = spend / price;
     const cost = amt * price * (1 + FEE);
     if (cost > bot.usd) return;
-    const prevTotal     = (bot.held[coin] || 0) * (bot.avgP[coin] || 0);
-    bot.usd            -= cost;
-    bot.held[coin]      = (bot.held[coin] || 0) + amt;
-    bot.avgP[coin]      = (prevTotal + amt * price) / bot.held[coin];
-    const newP          = await applyTP(coin, amt, 'buy');
-    prices[coin]        = newP;
-
+    const prevTotal = (bot.held[coin] || 0) * (bot.avgP[coin] || 0);
+    bot.usd -= cost;
+    bot.held[coin] = (bot.held[coin] || 0) + amt;
+    bot.avgP[coin] = (prevTotal + amt * price) / bot.held[coin];
+    prices[coin] = await applyTP(coin, amt, 'buy');
   } else if (price > avgLong * 1.05 && (bot.held[coin] || 0) > 0 && roll < 0.50) {
-    const frac     = 0.10 + Math.random() * 0.20;
-    const amt      = (bot.held[coin] || 0) * frac;
-    bot.usd       += amt * price * (1 - FEE);
-    bot.held[coin] = (bot.held[coin] || 0) - amt;
+    const frac = 0.10 + Math.random() * 0.20;
+    const amt = (bot.held[coin] || 0) * frac;
+    bot.usd += amt * price * (1 - FEE);
+    bot.held[coin] -= amt;
     if (bot.held[coin] < 0.0001) bot.held[coin] = 0;
-    const newP     = await applyTP(coin, amt, 'sell');
-    prices[coin]   = newP;
+    prices[coin] = await applyTP(coin, amt, 'sell');
   }
 }
 
-// ── 🐊 Накопитель ─────────────────────────────────────────────────────────────
-async function crocTick(bot, coins, prices, basePrices) {
-  const coin  = coins[Math.floor(Math.random() * coins.length)];
+// \u2500\u2500 \uD83D\uDC0A \u041d\u0430\u043a\u043e\u043f\u0438\u0442\u0435\u043b\u044c \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+async function crocTick(bot, coins, prices) {
+  const coin = coins[Math.floor(Math.random() * coins.length)];
   const price = prices[coin];
   if (!price) return;
-  if (!bot.target)           bot.target           = {};
-  if (!bot.target[coin])     bot.target[coin]      = 1.25 + Math.random() * 0.20;
+  if (!bot.target)        bot.target        = {};
+  if (!bot.target[coin])  bot.target[coin]  = 1.25 + Math.random() * 0.20;
 
-  // Фаза накопления — покупает понемногу почти всегда
   if (Math.random() < 0.65) {
     const spend = bot.usd * (0.01 + Math.random() * 0.03);
     if (spend >= 1) {
-      const amt  = spend / price;
+      const amt = spend / price;
       const cost = amt * price * (1 + FEE);
       if (cost <= bot.usd) {
-        const prevTotal     = (bot.held[coin] || 0) * (bot.avgP[coin] || 0);
-        bot.usd            -= cost;
-        bot.held[coin]      = (bot.held[coin] || 0) + amt;
-        bot.avgP[coin]      = (prevTotal + amt * price) / bot.held[coin];
-        const newP          = await applyTP(coin, amt, 'buy');
-        prices[coin]        = newP;
+        const prevTotal = (bot.held[coin] || 0) * (bot.avgP[coin] || 0);
+        bot.usd -= cost;
+        bot.held[coin] = (bot.held[coin] || 0) + amt;
+        bot.avgP[coin] = (prevTotal + amt * price) / bot.held[coin];
+        prices[coin] = await applyTP(coin, amt, 'buy');
       }
     }
   }
 
-  // Фаза сброса — ждёт цели и продаёт по 20% за тик
   const avg = bot.avgP[coin] || 0;
   if (avg > 0 && (bot.held[coin] || 0) > 0) {
     const targetMult = bot.target[coin] || 1.30;
     if (prices[coin] >= avg * targetMult) {
-      const amt      = (bot.held[coin] || 0) * 0.20;
-      bot.usd       += amt * prices[coin] * (1 - FEE);
-      bot.held[coin] = (bot.held[coin] || 0) - amt;
-      if (bot.held[coin] < 0.0001) {
-        bot.held[coin] = 0;
-        bot.avgP[coin] = 0;
-      }
+      const amt = (bot.held[coin] || 0) * 0.20;
+      bot.usd += amt * prices[coin] * (1 - FEE);
+      bot.held[coin] -= amt;
+      if (bot.held[coin] < 0.0001) { bot.held[coin] = 0; bot.avgP[coin] = 0; }
       bot.target[coin] = 1.25 + Math.random() * 0.20;
-      const newP       = await applyTP(coin, amt, 'sell');
-      prices[coin]     = newP;
+      prices[coin] = await applyTP(coin, amt, 'sell');
     }
   }
 }
 
-// ── Главный тик всех ботов ────────────────────────────────────────────────────
+// \u2500\u2500 DB helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction listBotsRaw() {
+  return db.bots.find({});
+}
+
+async function replaceBotState(name, state) {
+  const clean = sanitizeBot(state);
+  await db.bots.update({ name }, { $set: { usd: clean.usd, held: clean.held, avgP: clean.avgP, target: clean.target } });
+}
+
+// \u2500\u2500 \u0413\u043b\u0430\u0432\u043d\u044b\u0439 \u0442\u0438\u043a \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 async function botTick(io, currentPrices) {
   if (!currentPrices || Object.keys(currentPrices).length === 0) return;
-  const coins  = Object.keys(currentPrices);
-  const prices = { ...currentPrices }; // рабочая копия — изменяется по мере сделок
+  const coins = Object.keys(currentPrices);
+  const prices = { ...currentPrices };
+  const bots = await listBotsRaw();
 
-  // Кешируем базовые цены для belowBase проверок
-  const basePrices = {};
-  for (const coin of coins) {
-    const doc = await db.prices.findOne({ coin });
-    if (doc) basePrices[coin] = doc.basePrice || doc.price;
-  }
-
-  for (const bot of BOTS) {
+  for (const bot of bots) {
+    const b = sanitizeBot(bot);
     try {
-      if      (bot.type === 'bull') await bullTick(bot, coins, prices, basePrices);
-      else if (bot.type === 'fox')  await foxTick (bot, coins, prices, basePrices);
-      else if (bot.type === 'croc') await crocTick(bot, coins, prices, basePrices);
-    } catch (_) { /* не прерываем тик из-за ошибки одного бота */ }
+      if      (b.type === 'bull') await bullTick(b, coins, prices);
+      else if (b.type === 'fox')  await foxTick (b, coins, prices);
+      else if (b.type === 'croc') await crocTick(b, coins, prices);
+      await replaceBotState(b.name, b);
+    } catch (_) {}
   }
 }
 
-// ── Статистика для лидерборда / админки ──────────────────────────────────────
-const BOT_EMOJI = { bull: '🐂', fox: '🦊', croc: '🐊' };
-
-function getBotStats(prices) {
-  return BOTS.map(bot => ({
-    username:  bot.name,
-    isBot:     true,
-    botType:   bot.type,
-    botEmoji:  BOT_EMOJI[bot.type] || '🤖',
-    usd:       Math.round(bot.usd * 100) / 100,
-    total:     Math.round(botPortfolioValue(bot, prices || {}) * 100) / 100,
-    held:      { ...bot.held },
-  }));
+// \u2500\u2500 \u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043a\u0430 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+async function getBotStats(prices) {
+  const bots = await listBotsRaw();
+  return bots.map(bot => {
+    const b = sanitizeBot(bot);
+    return {
+      username: b.name,
+      isBot:    true,
+      botType:  b.type,
+      botEmoji: BOT_EMOJI[b.type] || '\uD83E\uDD16',
+      usd:      round2(b.usd),
+      total:    round2(botPortfolioValue(b, prices || {})),
+      held:     { ...(b.held || {}) },
+    };
+  });
 }
 
-module.exports = { botTick, updatePriceHistory, getBotStats };
+// \u2500\u2500 CRUD (\u0434\u043b\u044f \u0430\u0434\u043c\u0438\u043d\u043a\u0438) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+async function createBot({ name, type, usd }) {
+  const cleanName = String(name || '').trim();
+  if (!cleanName) throw new Error('\u0423\u043a\u0430\u0436\u0438\u0442\u0435 \u0438\u043c\u044f \u0431\u043e\u0442\u0430');
+  if (!['bull','fox','croc'].includes(type)) throw new Error('\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u044b\u0439 \u043f\u0440\u0435\u0441\u0435\u0442');
+  const exists = await db.bots.findOne({ name: cleanName });
+  if (exists) throw new Error('\u0411\u043e\u0442 \u0441 \u0442\u0430\u043a\u0438\u043c \u0438\u043c\u0435\u043d\u0435\u043c \u0443\u0436\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u0435\u0442');
+  const bot = sanitizeBot({ name: cleanName, type, usd: Number(usd) || 0, held: {}, avgP: {}, target: {} });
+  await db.bots.insert(bot);
+  return bot;
+}
+
+async function deleteBot(name) {
+  return db.bots.remove({ name: String(name || '').trim() }, {});
+}
+
+async function setBotCash(name, usd) {
+  const n = String(name || '').trim();
+  await db.bots.update({ name: n }, { $set: { usd: Number(usd) || 0 } });
+  return db.bots.findOne({ name: n });
+}
+
+async function updateBotPreset(name, type) {
+  const n = String(name || '').trim();
+  if (!['bull','fox','croc'].includes(type)) throw new Error('\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u044b\u0439 \u043f\u0440\u0435\u0441\u0435\u0442');
+  await db.bots.update({ name: n }, { $set: { type, target: {} } });
+  return db.bots.findOne({ name: n });
+}
+
+module.exports = {
+  botTick,
+  updatePriceHistory,
+  getBotStats,
+  listBotsRaw,
+  createBot,
+  deleteBot,
+  setBotCash,
+  updateBotPreset,
+};

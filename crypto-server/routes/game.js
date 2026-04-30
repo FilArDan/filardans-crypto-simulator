@@ -11,6 +11,17 @@ function adminOnly(req, res, next) {
   next();
 }
 
+// Публичный список игроков (доступен всем авторизованным)
+router.get('/players', auth, async (req, res) => {
+  try {
+    const wallets = await db.wallets.find({ username: { $ne: 'admin' } });
+    // Отдаём только имя + USD (не раскрываем монеты других игроков)
+    res.json({
+      players: wallets.map(w => ({ username: w.username, usd: w.usd }))
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 router.get('/state', auth, async (req, res) => {
   try {
     const priceDocs = await db.prices.find({});
@@ -98,6 +109,7 @@ router.post('/repay', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Только для администратора
 router.get('/admin/players', auth, adminOnly, async (req, res) => {
   try {
     const wallets = await db.wallets.find({});

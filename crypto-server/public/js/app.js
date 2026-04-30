@@ -22,6 +22,44 @@ function showApp(username) {
   document.getElementById('appScreen').classList.remove('hidden');
   initChart();
   loadState();
+  loadPlayers(); // сразу загружаем список игроков
+}
+
+// ── СПИСОК ИГРОКОВ (для перевода и рейтинга) ──────────────────────────────
+async function loadPlayers() {
+  const data = await api('GET', '/api/players');
+  if (data.error) return;
+  renderLeaderboard(data.players);
+  populateTransferSelect(data.players);
+}
+
+function populateTransferSelect(players) {
+  const select = document.getElementById('transferTarget');
+  if (!select) return;
+  const others = players.filter(p => p.username !== myUsername);
+  if (others.length === 0) {
+    select.innerHTML = '<option disabled value="">Нет других игроков</option>';
+    return;
+  }
+  select.innerHTML = others
+    .sort((a, b) => a.username.localeCompare(b.username))
+    .map(p => `<option value="${p.username}">${p.username} ($${fmt(p.usd)})</option>`)
+    .join('');
+}
+
+function renderLeaderboard(players) {
+  const body = document.getElementById('leaderBody');
+  if (!body) return;
+  const sorted = [...players].sort((a, b) => b.usd - a.usd);
+  body.innerHTML = sorted.map((p, i) => {
+    const isMine = p.username === myUsername;
+    return `<tr${isMine ? ' style="font-weight:700"' : ''}>
+      <td>${i + 1}</td>
+      <td>${p.username}${isMine ? ' 👤' : ''}</td>
+      <td>$${fmt(p.usd)}</td>
+      <td>—</td>
+    </tr>`;
+  }).join('');
 }
 
 function renderTicker(p, prev) {
@@ -53,45 +91,12 @@ function renderPortfolio(wallet) {
   if (el) el.textContent = '$' + fmt(wallet.usd);
 }
 
-function renderLeaderboard(wallets) {
-  const body = document.getElementById('leaderBody');
-  const select = document.getElementById('transferTarget');
-  if (!body) return;
-  const sorted = [...wallets].filter(w => w.username !== 'admin')
-    .sort((a, b) => b.usd - a.usd);
-  body.innerHTML = sorted.map((w, i) => {
-    const isMine = w.username === myUsername;
-    return `<tr${isMine ? ' style="font-weight:700"' : ''}>
-      <td>${i + 1}</td>
-      <td>${w.username}${isMine ? ' 👤' : ''}</td>
-      <td>$${fmt(w.usd)}</td>
-      <td>—</td>
-    </tr>`;
-  }).join('');
-  if (select) {
-    const others = sorted.filter(w => w.username !== myUsername);
-    select.innerHTML = others.map(w => `<option value="${w.username}">${w.username}</option>`).join('');
-  }
-}
-
-function renderFeed(events) {
-  const feed = document.getElementById('activityFeed');
-  if (!feed) return;
-  feed.innerHTML = [...events].reverse().map(e => {
-    const t = new Date(e.ts);
-    const time = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
-    return `<div class="feed-item"><span>${e.text}</span><span class="feed-time">${time}</span></div>`;
-  }).join('');
-}
-
 async function loadState() {
   const data = await api('GET', '/api/state');
   if (data.error) return;
   renderTicker(data.prices);
   renderPortfolio(data.wallet);
   renderFeed(data.events || []);
-
-  // Засеиваем начальную точку истории при первой загрузке
   addPricePoint(data.prices);
 
   const coinsVal = ['BTC','ETH','SOL','XRP','DOGE']
@@ -104,12 +109,19 @@ async function loadState() {
   if (elTotal) elTotal.textContent = '$' + fmt(data.wallet.usd + coinsVal - debt);
   if (elPort)  elPort.textContent  = '$' + fmt(coinsVal);
   if (elDebt)  elDebt.textContent  = debt > 0 ? '$' + fmt(debt) : '—';
-
-  const pd = await api('GET', '/api/admin/players');
-  if (!pd.error) renderLeaderboard(pd.wallets || []);
 }
 
-// ── ЛОГИН ──────────────────────────────────────────────────────────────
+function renderFeed(events) {
+  const feed = document.getElementById('activityFeed');
+  if (!feed) return;
+  feed.innerHTML = [...events].reverse().map(e => {
+    const t = new Date(e.ts);
+    const time = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
+    return `<div class="feed-item"><span>${e.text}</span><span class="feed-time">${time}</span></div>`;
+  }).join('');
+}
+
+// ── ЛОГИН ────────────────────────────────────────────────────────────────────
 document.getElementById('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
   const username = document.getElementById('usernameInput').value.trim();
@@ -122,13 +134,13 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
   showApp(res.username);
 });
 
-// ── ВЫХОД ──────────────────────────────────────────────────────────────
+// ── ВЫХОД ────────────────────────────────────────────────────────────────────
 document.getElementById('logoutBtn').addEventListener('click', async () => {
   await api('POST', '/auth/logout');
   location.reload();
 });
 
-// ── ТОРГОВЛЯ ───────────────────────────────────────────────────────────
+// ── ТОРГОВЛЯ ─────────────────────────────────────────────────────────────────
 document.getElementById('tradeForm').addEventListener('submit', async e => {
   e.preventDefault();
   const coin   = document.getElementById('tradeAsset').value;
@@ -142,19 +154,21 @@ document.getElementById('tradeForm').addEventListener('submit', async e => {
   loadState();
 });
 
-// ── ПЕРЕВОД ────────────────────────────────────────────────────────────
+// ── ПЕРЕВОД ──────────────────────────────────────────────────────────────────
 document.getElementById('transferForm').addEventListener('submit', async e => {
   e.preventDefault();
   const to     = document.getElementById('transferTarget').value;
   const amount = parseFloat(document.getElementById('transferAmount').value);
   const err = document.getElementById('transferError');
   err.textContent = '';
+  if (!to) { err.textContent = 'Выберите получателя'; return; }
   const res = await api('POST', '/api/transfer', { to, amount });
   if (res.error) { err.textContent = res.error; return; }
   loadState();
+  loadPlayers(); // обновить балансы в дропдауне
 });
 
-// ── КРЕДИТ ─────────────────────────────────────────────────────────────
+// ── КРЕДИТ ───────────────────────────────────────────────────────────────────
 document.getElementById('loanForm').addEventListener('submit', async e => {
   e.preventDefault();
   const amount = parseFloat(document.getElementById('loanAmount').value);
@@ -165,7 +179,7 @@ document.getElementById('loanForm').addEventListener('submit', async e => {
   loadState();
 });
 
-// ── ПОГАШЕНИЕ ──────────────────────────────────────────────────────────
+// ── ПОГАШЕНИЕ ────────────────────────────────────────────────────────────────
 document.getElementById('repayBtn').addEventListener('click', async () => {
   const err = document.getElementById('loanError');
   err.textContent = '';
@@ -177,11 +191,11 @@ document.getElementById('repayBtn').addEventListener('click', async () => {
   loadState();
 });
 
-// ── SOCKET ─────────────────────────────────────────────────────────────
+// ── SOCKET ───────────────────────────────────────────────────────────────────
 let prevPrices = null;
 socket.on('priceUpdate', p => {
   renderTicker(p, prevPrices);
-  addPricePoint(p);   // ← кормим чарт каждым обновлением
+  addPricePoint(p);
   prevPrices = { ...p };
 });
 
@@ -200,9 +214,11 @@ socket.on('walletUpdate', data => {
     renderPortfolio(data.wallet);
     loadState();
   }
+  // Обновить список игроков при любом walletUpdate (меняется баланс в дропдауне)
+  loadPlayers();
 });
 
-// ── ТЕМА ───────────────────────────────────────────────────────────────
+// ── ТЕМА ─────────────────────────────────────────────────────────────────────
 (function() {
   const btn = document.getElementById('themeBtn');
   const html = document.documentElement;
@@ -213,12 +229,12 @@ socket.on('walletUpdate', data => {
       dark = !dark;
       html.setAttribute('data-theme', dark ? 'dark' : 'light');
       btn.textContent = dark ? '☀️' : '🌙';
-      renderChart(); // перерисовать чарт с новой темой
+      renderChart();
     });
   }
 })();
 
-// ── ПРОВЕРКА СЕССИИ ────────────────────────────────────────────────────
+// ── ПРОВЕРКА СЕССИИ ──────────────────────────────────────────────────────────
 api('GET', '/auth/me').then(res => {
   if (res.username) {
     if (res.role === 'admin') { window.location.href = '/admin.html'; return; }

@@ -57,7 +57,6 @@ document.getElementById('createCoinForm').addEventListener('submit', async e => 
   const body = {
     ticker: document.getElementById('newTicker').value.toUpperCase().trim(),
     name:   document.getElementById('newName').value.trim()   || undefined,
-    emoji:  document.getElementById('newEmoji').value.trim()  || '🪙',
     price:  parseFloat(document.getElementById('newPrice').value),
     vol:    parseFloat(document.getElementById('newVol').value)   / 100,
     drift:  parseFloat(document.getElementById('newDrift').value) / 100,
@@ -79,7 +78,11 @@ document.getElementById('createCoinForm').addEventListener('submit', async e => 
 // ── УДАЛЕНИЕ КАСТОМНОЙ МОНЕТЫ ────────────────────────────────────────────────
 async function deleteCoin(ticker) {
   const m = coinMeta[ticker] || {};
-  if (!confirm(`Удалить монету ${m.emoji || '🪙'} ${ticker}?\n\nИгрокам будут возвращены USD по текущей цене.`)) return;
+  const isBase = ['BTC','ETH','SOL','XRP','DOGE'].includes(ticker);
+  const warn = isBase
+    ? `⚠️ ВНИМАНИЕ: ${ticker} — базовая монета!\nПосле удаления она исчезнет у всех игроков.\n\n`
+    : '';
+  if (!confirm(`${warn}Удалить монету ${m.emoji || '🪙'} ${ticker}?\n\nИгрокам будут возвращены USD по текущей цене.`)) return;
   const r = await fetch(`/api/admin/coin/${encodeURIComponent(ticker)}`, { method: 'DELETE' });
   const data = await r.json();
   if (data.error) { alert(data.error); return; }
@@ -145,9 +148,7 @@ function renderCoinParams() {
         <button class="btn btn-secondary btn-sm" onclick="saveCoinParams('${coin}')">
           Сохранить
         </button>
-        ${isCustom
-          ? `<button class="btn btn-dan btn-sm" onclick="deleteCoin('${coin}')" title="Удалить монету">🗑️</button>`
-          : ''}
+        <button class="btn btn-dan btn-sm" onclick="deleteCoin('${coin}')" title="Удалить монету">🗑️</button>
       </td>
     </tr>`;
   }).join('');

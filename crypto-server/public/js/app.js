@@ -246,7 +246,10 @@ socket.on('walletUpdate', data => {
 
 // Обновление списка монет в реалтайм (админ добавил / удалил монету)
 socket.on('coinsUpdated', data => {
-  if (data.coins) renderTradeAssets(data.coins);
+  if (data.coins) {
+    renderTradeAssets(data.coins);
+    loadState(); // обновляет тикер, портфель, кошелёк (возврат USD)
+  }
 });
 
 // ── ТЕМА ────────────────────────────────────────────────────────────────────────────────────

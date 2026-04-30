@@ -11,26 +11,22 @@ function adminOnly(req, res, next) {
   next();
 }
 
-// Публичный список игроков (доступен всем авторизованным)
-router.get('/players', auth, async (req, res) => {
-  try {
-    const wallets = await db.wallets.find({ username: { $ne: 'admin' } });
-    // Отдаём только имя + USD (не раскрываем монеты других игроков)
-    res.json({
-      players: wallets.map(w => ({ username: w.username, usd: w.usd }))
-    });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
+// Состояние — единый источник данных для клиента (как st в синглплеере)
 router.get('/state', auth, async (req, res) => {
   try {
     const priceDocs = await db.prices.find({});
     const prices = {};
     priceDocs.forEach(d => { prices[d.coin] = d.price; });
+
     const wallet = await db.wallets.findOne({ username: req.session.username });
-    const loans = await db.loans.find({ username: req.session.username, paid: { $ne: true } });
+    const loans  = await db.loans.find({ username: req.session.username, paid: { $ne: true } });
     const events = await db.events.find({}).sort({ ts: -1 }).limit(25);
-    res.json({ prices, wallet, loans, events });
+
+    // Список всех игроков (без admin) — для рейтинга и меню перевода
+    const allWallets = await db.wallets.find({ username: { $ne: 'admin' } });
+    const players = allWallets.map(w => ({ username: w.username, usd: w.usd }));
+
+    res.json({ prices, wallet, loans, events, players });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -40,7 +36,7 @@ router.post('/trade', auth, async (req, res) => {
     if (!COINS.includes(coin)) return res.json({ error: 'Неизвестная монета' });
     if (!amount || amount <= 0) return res.json({ error: 'Неверное количество' });
     const priceDoc = await db.prices.findOne({ coin });
-    const wallet = await db.wallets.findOne({ username: req.session.username });
+    const wallet   = await db.wallets.findOne({ username: req.session.username });
     const cost = priceDoc.price * amount;
     if (action === 'buy') {
       if (wallet.usd < cost) return res.json({ error: 'Недостаточно USD' });
@@ -109,11 +105,11 @@ router.post('/repay', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// Только для администратора
+// Только для админа
 router.get('/admin/players', auth, adminOnly, async (req, res) => {
   try {
     const wallets = await db.wallets.find({});
-    const loans = await db.loans.find({ paid: { $ne: true } });
+    const loans   = await db.loans.find({ paid: { $ne: true } });
     res.json({ wallets, loans });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });

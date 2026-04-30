@@ -22,45 +22,9 @@ function showApp(username) {
   document.getElementById('appScreen').classList.remove('hidden');
   initChart();
   loadState();
-  loadPlayers(); // сразу загружаем список игроков
 }
 
-// ── СПИСОК ИГРОКОВ (для перевода и рейтинга) ──────────────────────────────
-async function loadPlayers() {
-  const data = await api('GET', '/api/players');
-  if (data.error) return;
-  renderLeaderboard(data.players);
-  populateTransferSelect(data.players);
-}
-
-function populateTransferSelect(players) {
-  const select = document.getElementById('transferTarget');
-  if (!select) return;
-  const others = players.filter(p => p.username !== myUsername);
-  if (others.length === 0) {
-    select.innerHTML = '<option disabled value="">Нет других игроков</option>';
-    return;
-  }
-  select.innerHTML = others
-    .sort((a, b) => a.username.localeCompare(b.username))
-    .map(p => `<option value="${p.username}">${p.username} ($${fmt(p.usd)})</option>`)
-    .join('');
-}
-
-function renderLeaderboard(players) {
-  const body = document.getElementById('leaderBody');
-  if (!body) return;
-  const sorted = [...players].sort((a, b) => b.usd - a.usd);
-  body.innerHTML = sorted.map((p, i) => {
-    const isMine = p.username === myUsername;
-    return `<tr${isMine ? ' style="font-weight:700"' : ''}>
-      <td>${i + 1}</td>
-      <td>${p.username}${isMine ? ' 👤' : ''}</td>
-      <td>$${fmt(p.usd)}</td>
-      <td>—</td>
-    </tr>`;
-  }).join('');
-}
+// ── РЕНДЕР (как renderAll в синглплеере) ──────────────────────────────────────
 
 function renderTicker(p, prev) {
   prices = p;
@@ -73,6 +37,50 @@ function renderTicker(p, prev) {
       : '';
     return `<div class="tick ${dir}"><div class="coin">${coin}</div><div class="price">$${fmt(price, dec)}</div></div>`;
   }).join('');
+}
+
+// По образцу renderLeaderboard() из синглплеера — список игроков в таблицу
+function renderLeaderboard(players) {
+  const tbody = document.getElementById('leaderBody');
+  if (!tbody || !players) return;
+  const sorted = [...players].sort((a, b) => b.usd - a.usd);
+  const maxUsd = sorted[0] ? sorted[0].usd : 1;
+  tbody.innerHTML = '';
+  sorted.forEach((p, i) => {
+    const isMine = p.username === myUsername;
+    const rank = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1;
+    const barW = Math.round(p.usd / maxUsd * 100);
+    const tr = document.createElement('tr');
+    if (isMine) tr.className = 'me';
+    tr.innerHTML = `
+      <td><span class="rank">${rank}</span></td>
+      <td><span class="${isMine ? 'inv-name me' : 'inv-name'}">${p.username}</span></td>
+      <td>$${fmt(p.usd)}</td>
+      <td><span class="bar-wrap"><span class="bar-fill" style="width:${barW}%"></span></span></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// По образцу renderControls() из синглплеера — заполняем select перевода из того же массива
+function renderTransferSelect(players) {
+  const sc = document.getElementById('transferTarget');
+  if (!sc || !players) return;
+  const others = players.filter(p => p.username !== myUsername);
+  sc.innerHTML = '';
+  if (!others.length) {
+    const o = document.createElement('option');
+    o.disabled = true; o.textContent = 'Нет других игроков';
+    sc.appendChild(o);
+    return;
+  }
+  others
+    .sort((a, b) => a.username.localeCompare(b.username))
+    .forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.username;
+      o.textContent = `${p.username}  ($${fmt(p.usd)})`;
+      sc.appendChild(o);
+    });
 }
 
 function renderPortfolio(wallet) {
@@ -91,12 +99,26 @@ function renderPortfolio(wallet) {
   if (el) el.textContent = '$' + fmt(wallet.usd);
 }
 
+function renderFeed(events) {
+  const feed = document.getElementById('activityFeed');
+  if (!feed) return;
+  feed.innerHTML = [...events].reverse().map(e => {
+    const t = new Date(e.ts);
+    const time = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
+    return `<div class="feed-item"><span>${e.text}</span><span class="feed-time">${time}</span></div>`;
+  }).join('');
+}
+
+// ── ЕДИНЫЙ ЗАПРОС СОСТОЯНИЯ (как в синглплеере один st) ─────────────────────
 async function loadState() {
   const data = await api('GET', '/api/state');
   if (data.error) return;
+
   renderTicker(data.prices);
   renderPortfolio(data.wallet);
   renderFeed(data.events || []);
+  renderLeaderboard(data.players);    // как renderLeaderboard() в синглплеере
+  renderTransferSelect(data.players); // как renderControls() -> sCoin в синглплеере
   addPricePoint(data.prices);
 
   const coinsVal = ['BTC','ETH','SOL','XRP','DOGE']
@@ -109,16 +131,6 @@ async function loadState() {
   if (elTotal) elTotal.textContent = '$' + fmt(data.wallet.usd + coinsVal - debt);
   if (elPort)  elPort.textContent  = '$' + fmt(coinsVal);
   if (elDebt)  elDebt.textContent  = debt > 0 ? '$' + fmt(debt) : '—';
-}
-
-function renderFeed(events) {
-  const feed = document.getElementById('activityFeed');
-  if (!feed) return;
-  feed.innerHTML = [...events].reverse().map(e => {
-    const t = new Date(e.ts);
-    const time = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
-    return `<div class="feed-item"><span>${e.text}</span><span class="feed-time">${time}</span></div>`;
-  }).join('');
 }
 
 // ── ЛОГИН ────────────────────────────────────────────────────────────────────
@@ -165,7 +177,6 @@ document.getElementById('transferForm').addEventListener('submit', async e => {
   const res = await api('POST', '/api/transfer', { to, amount });
   if (res.error) { err.textContent = res.error; return; }
   loadState();
-  loadPlayers(); // обновить балансы в дропдауне
 });
 
 // ── КРЕДИТ ───────────────────────────────────────────────────────────────────
@@ -210,12 +221,8 @@ socket.on('newEvent', ev => {
 });
 
 socket.on('walletUpdate', data => {
-  if (data.username === myUsername) {
-    renderPortfolio(data.wallet);
-    loadState();
-  }
-  // Обновить список игроков при любом walletUpdate (меняется баланс в дропдауне)
-  loadPlayers();
+  if (data.username === myUsername) renderPortfolio(data.wallet);
+  loadState(); // перерисовать всё включая список игроков
 });
 
 // ── ТЕМА ─────────────────────────────────────────────────────────────────────

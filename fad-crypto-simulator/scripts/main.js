@@ -1,127 +1,108 @@
 // ===== ТОЧКА ВХОДА =====
-import { registerSettings } from './state.js';
-import { setupSocket, MSG } from './socket.js';
-import { tick } from './market.js';
-import { GMApp } from './ui/GMApp.js';
+import { registerSettings, updateCache, getPlayers, setPlayers,
+         getMarket, setMarket, getBank, setBank } from './state.js';
+import { setupSocket, emitToUser, emitToAll, MSG } from './socket.js';
+import { tick, processTradeRequest } from './market.js';
+import { GMApp }     from './ui/GMApp.js';
 import { PlayerApp } from './ui/PlayerApp.js';
 
 const MODULE = 'fad-crypto-simulator';
-let _tickTimer = null;
-let _playerApp = null;
-let _gmApp     = null;
+let _timer = null, _gm = null, _pl = null;
 
 Hooks.once('init', () => {
   registerSettings();
-
   Handlebars.registerHelper('add', (a, b) => a + b);
   Handlebars.registerHelper('eq',  (a, b) => a === b);
 
   game.keybindings.register(MODULE, 'openGM', {
-    name: 'Открыть панель ГМ',
-    hint: 'Крипто-симулятор',
+    name: 'ГМ-панель',
     editable: [{ key: 'KeyC', modifiers: ['Shift'] }],
-    onDown: () => { if(game.user.isGM) _openGM(); },
+    onDown: () => { if (game.user.isGM) _openGM(); },
   });
-
   game.keybindings.register(MODULE, 'openPlayer', {
-    name: 'Открыть торговый терминал',
-    hint: 'Крипто-симулятор',
+    name: 'Торговый терминал',
     editable: [{ key: 'KeyC', modifiers: ['Alt'] }],
-    onDown: () => { if(!game.user.isGM) _openPlayer(); },
+    onDown: () => { if (!game.user.isGM) _openPlayer(); },
   });
-
-  console.log('Крипто-симулятор | init');
 });
 
-Hooks.once('ready', async () => {
+Hooks.once('ready', () => {
   setupSocket({
-    // ГМ обрабатывает запросы на сделку
-    [MSG.TRADE_REQUEST]: (payload, senderId) => {
-      if(!game.user.isGM) return;
-      _handleTradeRequest(payload, senderId);
-    },
-    // Игрок: результат сделки
-    [MSG.TRADE_RESULT]: (payload) => {
-      if(game.user.isGM) return;
-      _playerApp?.onUpdate({ type: MSG.TRADE_RESULT, payload });
-    },
-    // Все клиенты получают свежий market из тика
-    [MSG.TICK_UPDATE]: (payload) => {
-      if(game.user.isGM) {
-        // ГМ перерисовывает свою панель
-        _gmApp?.render();
-      } else {
-        // Игрок получает payload с рынком и сразу рисует
-        _playerApp?.onUpdate({ type: MSG.TICK_UPDATE, payload });
+
+    [MSG.TRADE_REQUEST]: async (payload, senderId) => {
+      if (!game.user.isGM) return;
+      const market = getMarket();
+      const bank   = getBank();
+      const result = processTradeRequest(payload, market, bank);
+
+      if (result.ok) {
+        const players = getPlayers();
+        players[payload.userId] = result.ps;
+        await setPlayers(players);
+        await setMarket(market);
+        await setBank(bank);
+        result.players = getPlayers();
+        result.bank    = getBank();
       }
+
+      // emitToUser — targetId на верхнем уровне, только нужный игрок увидит
+      emitToUser(senderId, MSG.TRADE_RESULT, result);
+
+      updateCache({ market: getMarket(), players: getPlayers(), bank: getBank() });
+      _gm?.onTick();
     },
-    // Принудительный рефреш (санкции, заморозка, баланс)
-    [MSG.FORCE_REFRESH]: () => {
-      _playerApp?.render();
-      _gmApp?.render();
+
+    [MSG.TRADE_RESULT]: (payload) => {
+      if (game.user.isGM) return;
+      updateCache({ players: payload.players, bank: payload.bank });
+      _pl?.onUpdate({ type: MSG.TRADE_RESULT, msg: payload.msg, ok: payload.ok });
+    },
+
+    [MSG.TICK_UPDATE]: (payload) => {
+      updateCache(payload);          // ← кеш ПЕРВЫМ, до любого рендера
+      if (game.user.isGM) _gm?.onTick();
+      else                _pl?.onTick();
+    },
+
+    [MSG.FORCE_REFRESH]: (payload) => {
+      if (payload) updateCache(payload);
+      if (game.user.isGM) _gm?.onTick();
+      else                _pl?.onTick();
     },
   });
 
-  if(game.user.isGM) {
+  if (game.user.isGM) {
     _startTick();
   } else {
     _openPlayer();
   }
 
-  // Плавающая кнопка (работает в v13/v14)
+  // Плавающая кнопка в интерфейсе
   Hooks.on('renderSidebar', () => {
-    if(document.querySelector('#cs-sidebar-btn')) return;
+    if (document.getElementById('cs-sidebar-btn')) return;
     const btn = document.createElement('button');
-    btn.id    = 'cs-sidebar-btn';
-    btn.title = game.user.isGM ? 'Крипто-симулятор (ГМ)' : 'Мой торговый терминал';
+    btn.id = 'cs-sidebar-btn';
+    btn.title = game.user.isGM ? 'Крипто-симулятор (ГМ)' : 'Торговый терминал';
     btn.innerHTML = '<i class="fas fa-chart-line"></i>';
     Object.assign(btn.style, {
       position: 'fixed', bottom: '60px', left: '4px',
       width: '36px', height: '36px', borderRadius: '8px',
-      border: '1px solid #3a3836', background: '#222120',
-      color: '#cdccca', cursor: 'pointer', zIndex: '9999',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: '15px',
+      border: '1px solid #3a3836', background: '#1c1b19',
+      color: '#4f98a3', cursor: 'pointer', zIndex: '9999',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px',
     });
     btn.addEventListener('click', () => game.user.isGM ? _openGM() : _openPlayer());
     document.body.appendChild(btn);
   });
-
-  console.log('Крипто-симулятор | ready');
 });
 
-function _openGM() {
-  if(!_gmApp) _gmApp = new GMApp();
-  _gmApp.render(true);
-}
-
-function _openPlayer() {
-  if(!_playerApp) _playerApp = new PlayerApp();
-  _playerApp.render(true);
-}
+function _openGM()     { if (!_gm) _gm = new GMApp();    _gm.render(true); }
+function _openPlayer() { if (!_pl) _pl = new PlayerApp(); _pl.render(true); }
 
 function _startTick() {
-  if(_tickTimer) clearInterval(_tickTimer);
-  const speed = game.settings.get(MODULE, 'tickSpeed') ?? 1500;
-  _tickTimer = setInterval(async () => {
-    if(!game.settings.get(MODULE, 'paused')) await tick();
-  }, speed);
-}
-
-async function _handleTradeRequest(payload, senderId) {
-  const { getMarket, setMarket, getBank, setBank, savePlayerState } = await import('./state.js');
-  const { processTradeRequest } = await import('./market.js');
-  const { emitToUser } = await import('./socket.js');
-
-  const market = getMarket();
-  const bank   = getBank();
-  const result = processTradeRequest(payload, market, bank);
-
-  if(result.ok) {
-    await savePlayerState(payload.userId, result.player);
-    await setMarket(market);
-    await setBank(bank);
-  }
-
-  emitToUser(senderId, MSG.TRADE_RESULT, result);
+  if (_timer) clearInterval(_timer);
+  const ms = game.settings.get(MODULE, 'tickSpeed') ?? 1500;
+  _timer = setInterval(async () => {
+    if (!game.settings.get(MODULE, 'paused')) await tick();
+  }, ms);
 }

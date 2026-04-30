@@ -1,7 +1,8 @@
 /* ===== ГРАФИК (Chart.js) ===== */
 let chrt;
+let chartRange = 40; // текущий диапазон отображения
 
-// Плагин: вертикальная линия-прицел при наведении
+// Плагин: вертикальная линия при наведении
 const crosshairPlugin = {
   id: 'crosshair',
   afterDraw(chart) {
@@ -12,36 +13,42 @@ const crosshairPlugin = {
     ctx.moveTo(chart._crosshairX, top);
     ctx.lineTo(chart._crosshairX, bottom);
     ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(150,150,150,0.4)';
+    ctx.strokeStyle = 'rgba(150,150,150,0.35)';
     ctx.setLineDash([4, 3]);
     ctx.stroke();
     ctx.restore();
   }
 };
 
+function getChartData(sym){
+  // Берём только числа, затем нарезаем по диапазону
+  const raw = st.pd[sym].filter(v => typeof v === 'number' && isFinite(v));
+  return chartRange === 0 ? raw : raw.slice(-chartRange);
+}
+
 function renderChart(){
-  const s=st.sel, c=COINS[s];
-  const dark = document.documentElement.getAttribute('data-theme')==='dark';
-  const gc = dark?'rgba(255,255,255,.07)':'rgba(0,0,0,.07)';
-  const tc = dark?'#797876':'#9a9790';
+  const s = st.sel, c = COINS[s];
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const gc = dark ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.07)';
+  const tc = dark ? '#797876' : '#9a9790';
+
+  const data = getChartData(s);
+
   if(chrt) chrt.destroy();
-
-  const canvas = document.getElementById('chart');
-
-  chrt = new Chart(canvas, {
+  chrt = new Chart(document.getElementById('chart'), {
     type: 'line',
     plugins: [crosshairPlugin],
     data: {
-      labels: st.pd[s].map((_,i) => i+1),
+      labels: data.map((_,i) => i + 1),
       datasets: [{
-        data: st.pd[s],
+        data,
         borderColor: c.col,
-        backgroundColor: c.col+'28',
+        backgroundColor: c.col + '28',
         borderWidth: 2.5,
         tension: .35,
         fill: true,
         pointRadius: 0,
-        pointHoverRadius: 5,          // ← точка появляется при наведении
+        pointHoverRadius: 5,
         pointHoverBackgroundColor: c.col,
         pointHoverBorderColor: '#fff',
         pointHoverBorderWidth: 2,
@@ -50,19 +57,11 @@ function renderChart(){
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      animation: { duration: 250 },
-      interaction: {
-        mode: 'index',                // ← tooltip следует за курсором по оси X
-        intersect: false,             // ← не нужно попадать точно в точку
-      },
+      animation: false,                // ← отключаем анимацию совсем, чтобы не дёргался масштаб
+      interaction: { mode: 'index', intersect: false },
       onHover(_, __, chart) {
-        // Запоминаем X курсора для crosshair-плагина
         const active = chart.tooltip?._active;
-        if (active && active.length) {
-          chart._crosshairX = active[0].element.x;
-        } else {
-          chart._crosshairX = null;
-        }
+        chart._crosshairX = active?.length ? active[0].element.x : null;
         chart.draw();
       },
       plugins: {
@@ -70,7 +69,7 @@ function renderChart(){
         tooltip: {
           mode: 'index',
           intersect: false,
-          displayColors: false,       // ← убирает цветной квадратик
+          displayColors: false,
           callbacks: {
             title: items => `Тик ${items[0].label}`,
             label: x => `Цена: ${fmt(x.parsed.y)}`,
@@ -82,7 +81,6 @@ function renderChart(){
           borderColor: gc,
           borderWidth: 1,
           padding: 10,
-          caretSize: 5,
         }
       },
       scales: {
@@ -97,9 +95,20 @@ function renderChart(){
 function updateChartLive(){
   if(!chrt) return;
   const s = st.sel;
-  if(!st.pd[s] || st.pd[s].length === 0) return;
-  const clean = st.pd[s].filter(v => isFinite(v));
-  chrt.data.labels = clean.map((_,i) => i+1);
-  chrt.data.datasets[0].data = clean;
-  chrt.update('none');
+  const data = getChartData(s);
+  chrt.data.labels = data.map((_,i) => i + 1);
+  chrt.data.datasets[0].data = data;
+  chrt.data.datasets[0].borderColor = COINS[s].col;
+  chrt.data.datasets[0].backgroundColor = COINS[s].col + '28';
+  chrt.update('none'); // ← 'none' = без анимации, без сброса масштаба
+}
+
+/** Переключить диапазон и перерисовать */
+function setChartRange(n){
+  chartRange = n;
+  // Обновить активную кнопку
+  document.querySelectorAll('.chart-range-btn').forEach(b => {
+    b.classList.toggle('on', +b.dataset.range === n);
+  });
+  updateChartLive();
 }

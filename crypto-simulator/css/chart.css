@@ -5,3 +5,22 @@
 .ctab:hover:not(.on){background:var(--sf3);}
 #cinfo{color:var(--mu);font-size:13px;margin-bottom:10px;}
 .cw{position:relative;height:280px;}
+
+.chart-ranges {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.chart-range-btn {
+  padding: 4px 12px;
+  min-height: 28px;
+  border: 1px solid var(--bd);
+  background: var(--sf2);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mu);
+  transition: background .15s, color .15s;
+}
+.chart-range-btn:hover { background: var(--sf3); color: var(--txt); }
+.chart-range-btn.on    { background: var(--pri); color: #fff; border-color: transparent; }

@@ -1,155 +1,59 @@
-<div class="cs-panel">
+{{! Скелет рендерится один раз, далее DOM обновляется напрямую из JS }}
+<div class="csp-wrap">
 
-  <!-- Шапка: баланс -->
-  <div class="cs-player-header {{#if frozen}}cs-frozen-header{{/if}}">
-    {{#if frozen}}
-      <div class="cs-freeze-banner">🔒 Счёт заморожен. Торговля недоступна.</div>
-    {{/if}}
-    <div class="cs-stat-row">
-      <div class="cs-stat">
-        <span class="cs-stat-label">Кэш</span>
-        <span class="cs-stat-val">{{cashFmt}}</span>
-      </div>
-      <div class="cs-stat">
-        <span class="cs-stat-label">Портфель</span>
-        <span class="cs-stat-val">{{portFmt}}</span>
-      </div>
-      <div class="cs-stat">
-        <span class="cs-stat-label">Итого</span>
-        <span class="cs-stat-val">{{totalFmt}}</span>
-      </div>
-      <div class="cs-stat">
-        <span class="cs-stat-label">P/L</span>
-        <span class="cs-stat-val {{#if pnlUp}}cs-up{{else}}cs-dn{{/if}}">{{pnlFmt}}</span>
-      </div>
-    </div>
-    {{#if loan}}
-    <div class="cs-loan-bar">
-      ⚠️ Долг: <b>{{loanFmt}}</b> &nbsp;·&nbsp; ставка {{loanRate}}/тик
-    </div>
-    {{/if}}
+  <!-- СТАТЫ -->
+  <div class="csp-stats">
+    <div class="csp-stat"><div class="csp-lbl">Баланс USD</div><div class="csp-val" id="csp-cash">–</div></div>
+    <div class="csp-stat"><div class="csp-lbl">Монеты</div><div class="csp-val" id="csp-port">–</div></div>
+    <div class="csp-stat"><div class="csp-lbl">Весь капитал</div><div class="csp-val" id="csp-total">–</div></div>
+    <div class="csp-stat"><div class="csp-lbl">Прибыль / убыток</div><div class="csp-val" id="csp-pnl">–</div></div>
   </div>
 
-  <!-- Вкладки -->
-  <nav class="cs-tabs">
-    <a class="item" data-tab="trade">💱 Торговля</a>
-    <a class="item" data-tab="holdings">💼 Портфель</a>
-    <a class="item" data-tab="history">📋 История</a>
-  </nav>
+  <!-- ЗАМОРОЗКА -->
+  <div class="csp-frozen-bar" id="csp-frozen-bar" style="display:none">
+    🔒 Счёт заморожен. Торговля недоступна.
+  </div>
 
-  <div class="cs-body">
+  <!-- ДОЛГ -->
+  <div class="csp-loan-bar" id="csp-loan-bar" style="display:none">
+    ⚠️ Долг: <b id="csp-loan-val">$0</b> · ставка <b id="csp-loan-rate">—</b>/тик
+  </div>
 
-    <!-- ====== ТОРГОВЛЯ ====== -->
-    <div class="tab" data-tab="trade">
-
-      {{#if msg}}
-      <div class="cs-msg {{#if msgOk}}cs-msg-ok{{else}}cs-msg-err{{/if}}">{{msg}}</div>
-      {{/if}}
-
-      <!-- Выбор монеты -->
-      <div class="cs-trade-select">
-        <label>Выбери актив</label>
-        <select data-action="sel-coin">
+  <!-- СДЕЛКА -->
+  <div class="csp-card">
+    <h2>💱 Сделка</h2>
+    <div class="csp-tr">
+      <div class="csp-fld">
+        <label>Монета</label>
+        <select id="csp-coin">
           {{#each coinList}}
-          <option value="{{sym}}" {{#if (eq sym ../selSym)}}selected{{/if}}
-            {{#if sanctioned}}disabled{{/if}}>
-            {{name}} ({{sym}}) — {{price}}
-            {{#if sanctioned}} 🚫{{/if}}
-          </option>
+          <option value="{{sym}}">{{name}} ({{sym}})</option>
           {{/each}}
         </select>
       </div>
-
-      <!-- Инфо по выбранной монете -->
-      {{#each coinList}}
-      {{#if (eq sym ../selSym)}}
-      <div class="cs-coin-info">
-        <span class="cs-dot" style="color:{{col}}">●</span>
-        <strong>{{name}}</strong>
-        <span class="cs-price-big">{{price}}</span>
-        {{#if sanctioned}}<span class="cs-badge-sanction">🚫 Санкции</span>{{/if}}
-      </div>
-      <div class="cs-holding-info">
-        У тебя: <b>{{own}} {{sym}}</b>
-        &nbsp;|&nbsp; Ср. цена: {{avg}}
-        &nbsp;|&nbsp; Стоимость: <b>{{val}}</b>
-        &nbsp;|&nbsp; P/L: <span class="{{#if pnlUp}}cs-up{{else}}cs-dn{{/if}}">{{pnlH}}</span>
-      </div>
-      {{/if}}
-      {{/each}}
-
-      <!-- Ввод количества -->
-      <div class="cs-trade-inputs">
-        <div class="cs-input-group">
-          <label>Количество монет</label>
-          <input type="number" data-trade-amt placeholder="0.0000" min="0" step="0.0001"/>
-        </div>
-      </div>
-
-      <!-- Кнопки -->
-      <div class="cs-trade-btns">
-        <button data-action="buy"      class="cs-trade-btn cs-buy"  {{#if frozen}}disabled{{/if}}>📈 Купить</button>
-        <button data-action="sell"     class="cs-trade-btn cs-sell" {{#if frozen}}disabled{{/if}}>📉 Продать</button>
-        <button data-action="sell-all" class="cs-trade-btn cs-sell-all" {{#if frozen}}disabled{{/if}}>💨 Продать всё</button>
-      </div>
-
-      <div class="cs-fee-note">Комиссия: 1% от суммы сделки</div>
-    </div>
-
-    <!-- ====== ПОРТФЕЛЬ ====== -->
-    <div class="tab" data-tab="holdings">
-      <div class="cs-holdings-list">
-        {{#each coinList}}
-        <div class="cs-holding-card {{#if sanctioned}}cs-sanctioned{{/if}}">
-          <div class="cs-holding-top">
-            <span class="cs-dot" style="color:{{col}}">●</span>
-            <strong>{{name}} ({{sym}})</strong>
-            <span class="cs-price">{{price}}</span>
-            {{#if sanctioned}}<span class="cs-badge-sanction">🚫</span>{{/if}}
-          </div>
-          <div class="cs-holding-body">
-            <div class="cs-holding-row-data">
-              <span class="cs-mu">Кол-во</span>
-              <span>{{own}} {{sym}}</span>
-            </div>
-            <div class="cs-holding-row-data">
-              <span class="cs-mu">Ср. цена</span>
-              <span>{{avg}}</span>
-            </div>
-            <div class="cs-holding-row-data">
-              <span class="cs-mu">Стоимость</span>
-              <span><b>{{val}}</b></span>
-            </div>
-            <div class="cs-holding-row-data">
-              <span class="cs-mu">P/L</span>
-              <span class="{{#if pnlUp}}cs-up{{else}}cs-dn{{/if}}">{{pnlH}}</span>
-            </div>
-          </div>
-        </div>
-        {{/each}}
+      <div class="csp-fld">
+        <label>Количество</label>
+        <input id="csp-amt" type="number" min="0.0001" step="0.0001" placeholder="0.0000"/>
       </div>
     </div>
-
-    <!-- ====== ИСТОРИЯ ====== -->
-    <div class="tab" data-tab="history">
-      {{#if hist.length}}
-      <div class="cs-hist-list">
-        {{#each hist}}
-        <div class="cs-hist-row">
-          <span class="cs-hist-type {{#if buy}}cs-buy-label{{else}}cs-sell-label{{/if}}">
-            {{#if buy}}📈 Покупка{{else}}📉 Продажа{{/if}} {{sym}}
-          </span>
-          <span class="cs-hist-time">{{time}}</span>
-          <div class="cs-hist-detail">
-            {{amt}} × {{price}} = <b>{{tot}}</b>
-          </div>
-        </div>
-        {{/each}}
-      </div>
-      {{else}}
-      <div class="cs-empty">Пока нет сделок.</div>
-      {{/if}}
+    <div class="csp-bts">
+      <button id="csp-buy"  class="csp-btn csp-buy">📈 Купить</button>
+      <button id="csp-sell" class="csp-btn csp-sell">📉 Продать</button>
+      <button id="csp-sell-all" class="csp-btn csp-ghost">💨 Всё</button>
     </div>
+    <div class="csp-msg" id="csp-msg">Выбери монету и нажми «Купить».</div>
+  </div>
 
-  </div><!-- .cs-body -->
+  <!-- МОНЕТЫ + ИСТОРИЯ -->
+  <div class="csp-g2">
+    <div class="csp-card">
+      <h2>💼 Мои монеты</h2>
+      <div class="csp-ilist" id="csp-holdings"></div>
+    </div>
+    <div class="csp-card">
+      <h2>📋 История</h2>
+      <div class="csp-ilist" id="csp-history"></div>
+    </div>
+  </div>
+
 </div>

@@ -48,7 +48,7 @@ function botPortfolioValue(bot, prices) {
   return total;
 }
 
-// ── \uD83D\uDC02 Агрессор ──────────────────────────────────────────────────────────────────────────────
+// ── 🐂 Агрессор ──────────────────────────────────────────────────────────────────────────────
 async function bullTick(bot, coins, prices) {
   const coin = coins[Math.floor(Math.random() * coins.length)];
   const price = prices[coin];
@@ -77,7 +77,7 @@ async function bullTick(bot, coins, prices) {
   }
 }
 
-// ── \uD83E\uDD8A Осторожный ────────────────────────────────────────────────────────────────────────────
+// ── 🦊 Осторожный ────────────────────────────────────────────────────────────────────────────
 async function foxTick(bot, coins, prices) {
   if (Math.random() > 0.40) return;
   const coin = coins[Math.floor(Math.random() * coins.length)];
@@ -107,7 +107,7 @@ async function foxTick(bot, coins, prices) {
   }
 }
 
-// ── \uD83D\uDC0A Накопитель ────────────────────────────────────────────────────────────────────────────────────────────────
+// ── 🐊 Накопитель ────────────────────────────────────────────────────────────────────────────────────────────────
 async function crocTick(bot, coins, prices) {
   const coin = coins[Math.floor(Math.random() * coins.length)];
   const price = prices[coin];
@@ -172,7 +172,7 @@ async function botTick(io, currentPrices) {
   }
 }
 
-// ── Статистика ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── Статистика ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 async function getBotStats(prices) {
   const bots = await listBotsRaw();
   return bots.map(bot => {
@@ -227,4 +227,5 @@ module.exports = {
   deleteBot,
   setBotCash,
   updateBotPreset,
+  priceHistory, // экспортируем для bank.js (динамическая ставка)
 };

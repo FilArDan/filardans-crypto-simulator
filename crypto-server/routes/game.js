@@ -106,35 +106,82 @@ router.post('/transfer', auth, async (req, res) => {
 });
 
 // ── КРЕДИТЫ ──────────────────────────────────────────────────────────────────
-router.post('/loan', auth, async (req, res) => {
+
+// GET /api/loan/info — текущая ставка, лимит, состояние долга
+router.get('/loan/info', auth, async (req, res) => {
   try {
-    const { amount } = req.body;
-    if (!amount || amount < 100) return res.json({ error: 'Минимум $100' });
-    const due = Math.round(amount * 1.08 * 100) / 100;
-    await db.loans.insert({ username: req.session.username, amount, due, ts: Date.now(), paid: false });
-    await db.wallets.update({ username: req.session.username }, { $inc: { usd: amount } });
-    const wallet = await db.wallets.findOne({ username: req.session.username });
-    const ev = { ts: Date.now(), text: `${req.session.username} взял кредит $${amount} (долг $${due})` };
-    await db.events.insert(ev);
-    req.app.get('io').emit('newEvent', ev);
-    res.json({ wallet });
+    const { computeLoanRate, portfolioValue, MARGIN_THRESHOLD, MAX_LOAN_RATIO } = require('../game/bank');
+    const { priceHistory } = require('../game/bots');
+    const rate    = computeLoanRate(priceHistory);
+    const wallet  = await db.wallets.findOne({ username: req.session.username });
+    const prices  = await getAllPrices();
+    const coins   = await getAllCoins();
+    const portVal = portfolioValue(wallet, prices, coins);
+    const maxLoan = Math.floor(portVal * MAX_LOAN_RATIO);
+    const loan    = await db.loans.findOne({ username: req.session.username, paid: { $ne: true } });
+    const marginRatio = (loan && portVal > 0) ? loan.due / portVal : 0;
+    res.json({ loan: loan || null, rate, maxLoan, portVal, marginThreshold: MARGIN_THRESHOLD, marginRatio });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/repay', auth, async (req, res) => {
+// POST /api/loan — взять кредит
+router.post('/loan', auth, async (req, res) => {
   try {
-    const { loanId, amount } = req.body;
-    const loan = await db.loans.findOne({ _id: loanId, username: req.session.username, paid: { $ne: true } });
-    if (!loan) return res.json({ error: 'Кредит не найден' });
-    const wallet = await db.wallets.findOne({ username: req.session.username });
-    if (wallet.usd < amount) return res.json({ error: 'Недостаточно USD для погашения' });
-    await db.wallets.update({ username: req.session.username }, { $inc: { usd: -amount } });
-    await db.loans.update({ _id: loanId }, { $set: { paid: true } });
+    const num = parseFloat(req.body.amount);
+    if (!num || num < 100) return res.json({ error: 'Минимум $100' });
+
+    // Только один активный кредит
+    const existing = await db.loans.findOne({ username: req.session.username, paid: { $ne: true } });
+    if (existing) return res.json({ error: `Сначала погаси текущий долг ($${existing.due.toFixed(2)})` });
+
+    // Проверка лимита: не более MAX_LOAN_RATIO × портфель
+    const { computeLoanRate, portfolioValue, MAX_LOAN_RATIO } = require('../game/bank');
+    const { priceHistory } = require('../game/bots');
+    const wallet  = await db.wallets.findOne({ username: req.session.username });
+    const prices  = await getAllPrices();
+    const coins   = await getAllCoins();
+    const portVal = portfolioValue(wallet, prices, coins);
+    const maxLoan = Math.floor(portVal * MAX_LOAN_RATIO);
+    if (num > maxLoan) return res.json({ error: `Максимум $${maxLoan.toLocaleString('ru')} (${MAX_LOAN_RATIO}× портфель $${portVal.toFixed(0)})` });
+
+    const rate = computeLoanRate(priceHistory);
+    await db.loans.insert({ username: req.session.username, principal: num, due: num, rate, ts: Date.now(), paid: false });
+    await db.wallets.update({ username: req.session.username }, { $inc: { usd: num } });
     const updated = await db.wallets.findOne({ username: req.session.username });
-    const ev = { ts: Date.now(), text: `${req.session.username} погасил кредит $${amount}` };
+
+    const ev = { ts: Date.now(), text: `${req.session.username} взял кредит $${num.toFixed(2)} (ставка ${(rate * 100).toFixed(3)}%/тик)` };
     await db.events.insert(ev);
     req.app.get('io').emit('newEvent', ev);
-    res.json({ wallet: updated });
+    res.json({ wallet: updated, rate, due: num });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/repay — погасить кредит (полностью или частично)
+router.post('/repay', auth, async (req, res) => {
+  try {
+    const loan = await db.loans.findOne({ username: req.session.username, paid: { $ne: true } });
+    if (!loan) return res.json({ error: 'Нет активного кредита' });
+
+    const wallet   = await db.wallets.findOne({ username: req.session.username });
+    const wantPay  = req.body.amount
+      ? Math.min(parseFloat(req.body.amount), loan.due)
+      : loan.due; // пусто → полное погашение
+    if (!wantPay || wantPay <= 0) return res.json({ error: 'Неверная сумма' });
+    if (wallet.usd < wantPay) return res.json({ error: `Недостаточно USD. Нужно $${wantPay.toFixed(2)}, есть $${wallet.usd.toFixed(2)}` });
+
+    await db.wallets.update({ username: req.session.username }, { $inc: { usd: -wantPay } });
+    const remaining = loan.due - wantPay;
+    if (remaining < 0.01) {
+      await db.loans.update({ _id: loan._id }, { $set: { due: 0, paid: true } });
+    } else {
+      await db.loans.update({ _id: loan._id }, { $set: { due: remaining } });
+    }
+    const updated = await db.wallets.findOne({ username: req.session.username });
+
+    const ev = { ts: Date.now(), text: `${req.session.username} погасил $${wantPay.toFixed(2)} (остаток: $${Math.max(0, remaining).toFixed(2)})` };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ wallet: updated, remaining: Math.max(0, remaining) });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -335,7 +382,6 @@ router.get('/admin/tick-speed', auth, adminOnly, (req, res) => {
 router.post('/admin/set-tick-speed', auth, adminOnly, (req, res) => {
   try {
     const ms = Math.max(500, Math.min(120000, parseInt(req.body.ms) || 25000));
-    // setTickSpeed уже делает io.emit('tickSpeedChanged') — не дублируем
     req.app.get('setTickSpeed')(ms);
     const label = ms < 1000 ? ms + 'мс' : (ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 1) + 'с';
     const ev = { ts: Date.now(), text: `Админ изменил скорость тика: ${label}` };

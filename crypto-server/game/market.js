@@ -1,5 +1,6 @@
 const { db, getAllCoins } = require('../db');
 const { updatePriceHistory, botTick } = require('./bots');
+const { accrueInterest } = require('./bank');
 
 function roundPrice(p) {
   if (p >= 1000) return Math.round(p * 100)   / 100;
@@ -35,10 +36,14 @@ async function tick(io) {
   updatePriceHistory(prices);
   await botTick(io, prices);
 
-  // Повторно отправить цены после сделок ботов (они двигают рынок)
+  // Актуальные цены после сделок ботов
   const updatedDocs = await db.prices.find({});
   const updatedPrices = {};
   updatedDocs.forEach(d => { updatedPrices[d.coin] = d.price; });
+
+  // Начислить проценты по кредитам и проверить маржин-коллы
+  await accrueInterest(io, updatedPrices);
+
   if (io) io.emit('priceUpdate', updatedPrices);
 }
 

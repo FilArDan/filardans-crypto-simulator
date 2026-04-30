@@ -50,8 +50,21 @@
       <div class="val" id="loanCount">0</div>
     </div>
     <div class="stat">
-      <div class="lbl">Котировки</div>
-      <div class="val" id="pricesBadge" style="font-size:13px;font-weight:600;color:var(--ok)">● LIVE</div>
+      <div class="lbl">Скорость тика</div>
+      <div class="val" id="tickSpeedStat" style="font-size:clamp(14px,2vw,20px)">25 сек</div>
+    </div>
+  </div>
+
+  <!-- ПОЛЗУНОК СКОРОСТИ ТИКА -->
+  <div class="card section-gap">
+    <h2>⏱️ Скорость симуляции: <span id="speedLabel" style="color:var(--pri)">25 сек/тик</span></h2>
+    <div style="padding:4px 0 8px">
+      <input type="range" id="speedSlider" min="5000" max="120000" step="5000" value="25000"
+             style="width:100%;">
+    </div>
+    <div style="display:flex;justify-content:space-between;">
+      <span class="lbl" style="margin:0">5 сек (быстро)</span>
+      <span class="lbl" style="margin:0">2 мин (медленно)</span>
     </div>
   </div>
 
@@ -102,7 +115,7 @@
     </table>
   </div>
 
-  <!-- LOANS TABLE -->
+  <!-- LOANS + FEED -->
   <div class="g2 section-gap">
     <div class="card">
       <h2>💳 Активные кредиты</h2>
@@ -114,7 +127,6 @@
       </table>
     </div>
 
-    <!-- EVENT FEED -->
     <div class="card">
       <h2>📋 Лента событий</h2>
       <div class="feed" id="adminFeed" style="max-height:320px;"></div>
@@ -126,7 +138,6 @@
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/admin.js"></script>
 <script>
-  // Theme toggle
   (function(){
     const btn = document.getElementById('themeBtn');
     const root = document.documentElement;

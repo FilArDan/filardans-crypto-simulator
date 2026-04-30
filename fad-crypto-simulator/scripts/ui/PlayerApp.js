@@ -10,7 +10,7 @@ export class PlayerApp extends Application {
     return foundry.utils.mergeObject(super.defaultOptions, {
       id:        'crypto-player-panel',
       title:     '📈 Крипто-симулятор',
-      template:  'modules/crypto-simulator/templates/player.hbs',
+      template:  'modules/fad-crypto-simulator/templates/player.hbs',
       width:     480,
       height:    620,
       resizable: true,

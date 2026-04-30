@@ -1,14 +1,22 @@
 {
   "id": "fad-crypto-simulator",
-  "title": "FilArDan's Crypto Simulator",
+  "title": "Крипто-симулятор",
   "description": "Торговый симулятор для ВПИ. Игроки торгуют активами, ГМ управляет рынком.",
   "version": "1.0.0",
   "compatibility": {
     "minimum": "13",
     "verified": "14"
   },
-  "authors": [{ "name": "FilArDan" }],
-  "esmodules": ["scripts/main.js"],
-  "styles": ["styles/module.css"],
+  "authors": [
+    {
+      "name": "FilArDan"
+    }
+  ],
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/module.css"
+  ],
   "socket": true
 }

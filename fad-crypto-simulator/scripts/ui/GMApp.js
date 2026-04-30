@@ -11,7 +11,7 @@ export class GMApp extends Application {
     return foundry.utils.mergeObject(super.defaultOptions, {
       id:        'crypto-gm-panel',
       title:     '🏦 Крипто-симулятор — Панель ГМ',
-      template:  'modules/crypto-simulator/templates/gm.hbs',
+      template:  'modules/fad-crypto-simulator/templates/gm.hbs',
       width:     900,
       height:    700,
       resizable: true,

@@ -86,7 +86,10 @@
   <div class="g2 section-gap">
     <form class="card stack" id="tradeForm">
       <h2>💱 Покупка / Продажа</h2>
-      <div class="fld"><label>Монета<select id="tradeAsset"><option>BTC</option><option>ETH</option><option>SOL</option><option>XRP</option><option>DOGE</option></select></label></div>
+      <div class="fld"><label>Монета
+        <!-- список заполняется динамически через renderTradeAssets() -->
+        <select id="tradeAsset"><option>BTC</option></select>
+      </label></div>
       <div class="fld"><label>Действие<select id="tradeType"><option value="buy">📈 Купить</option><option value="sell">📉 Продать</option></select></label></div>
       <div class="fld"><label>Количество<input id="tradeAmount" type="number" min="0.00001" step="any" value="1"/></label></div>
       <div class="err-msg" id="tradeError"></div>

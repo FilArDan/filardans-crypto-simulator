@@ -15,6 +15,7 @@ const db = {
 };
 
 const DEFAULT_BOTS = [
+<<<<<<< HEAD
   { name: 'Агрессор-1', type: 'bull', usd: 15000, held: {}, avgP: {}, target: {} },
   { name: 'Агрессор-2', type: 'bull', usd: 18000, held: {}, avgP: {}, target: {} },
   { name: 'Лис-1',      type: 'fox',  usd: 10000, held: {}, avgP: {}, target: {} },
@@ -25,21 +26,33 @@ const DEFAULT_BOTS = [
   { name: 'Лис-4',      type: 'fox',  usd:  9000, held: {}, avgP: {}, target: {} },
   { name: 'Лис-5',      type: 'fox',  usd: 11000, held: {}, avgP: {}, target: {} },
   { name: 'Лис-6',      type: 'fox',  usd: 10000, held: {}, avgP: {}, target: {} },
+=======
+  { name: '\u0410\u0433\u0440\u0435\u0441\u0441\u043e\u0440-1', type: 'bull', usd: 15000, held: {}, avgP: {}, target: {} },
+  { name: '\u0410\u0433\u0440\u0435\u0441\u0441\u043e\u0440-2', type: 'bull', usd: 18000, held: {}, avgP: {}, target: {} },
+  { name: '\u041b\u0438\u0441-1',      type: 'fox',  usd: 10000, held: {}, avgP: {}, target: {} },
+  { name: '\u041b\u0438\u0441-2',      type: 'fox',  usd: 10000, held: {}, avgP: {}, target: {} },
+  { name: '\u041b\u0438\u0441-3',      type: 'fox',  usd: 12000, held: {}, avgP: {}, target: {} },
+  { name: '\u041a\u0440\u043e\u043a-1',     type: 'croc', usd: 20000, held: {}, avgP: {}, target: {} },
+  { name: '\u041a\u0440\u043e\u043a-2',     type: 'croc', usd: 20000, held: {}, avgP: {}, target: {} },
+  { name: '\u041b\u0438\u0441-4',      type: 'fox',  usd:  9000, held: {}, avgP: {}, target: {} },
+  { name: '\u041b\u0438\u0441-5',      type: 'fox',  usd: 11000, held: {}, avgP: {}, target: {} },
+  { name: '\u041b\u0438\u0441-6',      type: 'fox',  usd: 10000, held: {}, avgP: {}, target: {} },
+>>>>>>> 2719f7a8c47e1eb1467f8d34f789b80a349c3005
 ];
 
 const INITIAL_USERS = [
   { username: 'WARDEN',      password: 'sherpaIsGay', role: 'admin',  startUsd: 0     },
-  { username: 'Артур',       password: 'alpha101',    role: 'player', startUsd: 10000 },
-  { username: 'Даня',        password: 'beta202',     role: 'player', startUsd: 12000 },
-  { username: 'Злодей',      password: 'gamma303',    role: 'player', startUsd: 8000  },
-  { username: 'Игорь',       password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Лукашенко',   password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Миха',        password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Серега',      password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Юра',         password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: '\u0410\u0440\u0442\u0443\u0440',       password: 'alpha101',    role: 'player', startUsd: 10000 },
+  { username: '\u0414\u0430\u043d\u044f',        password: 'beta202',     role: 'player', startUsd: 12000 },
+  { username: '\u0417\u043b\u043e\u0434\u0435\u0439',      password: 'gamma303',    role: 'player', startUsd: 8000  },
+  { username: '\u0418\u0433\u043e\u0440\u044c',       password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: '\u041b\u0443\u043a\u0430\u0448\u0435\u043d\u043a\u043e',   password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: '\u041c\u0438\u0445\u0430',        password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: '\u0421\u0435\u0440\u0435\u0433\u0430',      password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: '\u042e\u0440\u0430',         password: 'delta404',    role: 'player', startUsd: 15000 },
 ];
 
-// Базовые (несъёмные) монеты
+// \u0411\u0430\u0437\u043e\u0432\u044b\u0435 (\u043d\u0435\u0441\u044a\u0451\u043c\u043d\u044b\u0435) \u043c\u043e\u043d\u0435\u0442\u044b
 const COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 
 const COIN_META = {
@@ -76,6 +89,7 @@ async function initDb() {
     }
   }
 
+<<<<<<< HEAD
   const botCount = await db.bots.count({});
   if (botCount === 0) {
     for (const bot of DEFAULT_BOTS) {
@@ -87,6 +101,13 @@ async function initDb() {
         avgP: bot.avgP || {},
         target: bot.target || {},
       });
+=======
+  // Seed \u0431\u043e\u0442\u043e\u0432 (\u0442\u043e\u043b\u044c\u043a\u043e \u0435\u0441\u043b\u0438 \u0431\u0430\u0437\u0430 \u043f\u0443\u0441\u0442\u0430\u044f)
+  const botCount = await db.bots.count({});
+  if (botCount === 0) {
+    for (const bot of DEFAULT_BOTS) {
+      await db.bots.insert({ ...bot });
+>>>>>>> 2719f7a8c47e1eb1467f8d34f789b80a349c3005
     }
   }
 

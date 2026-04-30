@@ -1,8 +1,9 @@
-/* ===== СЕРВЕРНЫЕ БОТЫ (порт из singleplayer/js/bots.js) ===== */
+/* ===== \u0421\u0415\u0420\u0412\u0415\u0420\u041d\u042b\u0415 \u0411\u041e\u0422\u042b (\u043f\u043e\u0440\u0442 \u0438\u0437 singleplayer/js/bots.js) ===== */
 
 const { db } = require('../db');
 
 const FEE = 0.001;
+<<<<<<< HEAD
 const BOT_EMOJI = { bull: '🐂', fox: '🦊', croc: '🐊' };
 const HIST_LEN = 30;
 const priceHistory = {};
@@ -19,6 +20,22 @@ function sanitizeBot(bot) {
     held: bot.held && typeof bot.held === 'object' ? bot.held : {},
     avgP: bot.avgP && typeof bot.avgP === 'object' ? bot.avgP : {},
     target: bot.target && typeof bot.target === 'object' ? bot.target : {},
+=======
+const BOT_EMOJI = { bull: '\uD83D\uDC02', fox: '\uD83E\uDD8A', croc: '\uD83D\uDC0A' };
+const HIST_LEN = 30;
+const priceHistory = {};
+
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+
+function sanitizeBot(bot) {
+  return {
+    name:   String(bot.name || '').trim(),
+    type:   ['bull','fox','croc'].includes(bot.type) ? bot.type : 'fox',
+    usd:    Number(bot.usd)  || 0,
+    held:   (bot.held   && typeof bot.held   === 'object') ? bot.held   : {},
+    avgP:   (bot.avgP   && typeof bot.avgP   === 'object') ? bot.avgP   : {},
+    target: (bot.target && typeof bot.target === 'object') ? bot.target : {},
+>>>>>>> 2719f7a8c47e1eb1467f8d34f789b80a349c3005
   };
 }
 
@@ -50,6 +67,10 @@ function botPortfolioValue(bot, prices) {
   return total;
 }
 
+<<<<<<< HEAD
+=======
+// \u2500\u2500 \uD83D\uDC02 \u0410\u0433\u0440\u0435\u0441\u0441\u043e\u0440 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+>>>>>>> 2719f7a8c47e1eb1467f8d34f789b80a349c3005
 async function bullTick(bot, coins, prices) {
   const coin = coins[Math.floor(Math.random() * coins.length)];
   const price = prices[coin];
@@ -72,12 +93,20 @@ async function bullTick(bot, coins, prices) {
     const frac = 0.50 + Math.random() * 0.40;
     const amt = (bot.held[coin] || 0) * frac;
     bot.usd += amt * price * (1 - FEE);
+<<<<<<< HEAD
     bot.held[coin] = (bot.held[coin] || 0) - amt;
+=======
+    bot.held[coin] -= amt;
+>>>>>>> 2719f7a8c47e1eb1467f8d34f789b80a349c3005
     if (bot.held[coin] < 0.0001) bot.held[coin] = 0;
     prices[coin] = await applyTP(coin, amt, 'sell');
   }
 }
 
+<<<<<<< HEAD
+=======
+// \u2500\u2500 \uD83E\uDD8A \u041e\u0441\u0442\u043e\u0440\u043e\u0436\u043d\u044b\u0439 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+>>>>>>> 2719f7a8c47e1eb1467f8d34f789b80a349c3005
 async function foxTick(bot, coins, prices) {
   if (Math.random() > 0.40) return;
   const coin = coins[Math.floor(Math.random() * coins.length)];
@@ -101,18 +130,31 @@ async function foxTick(bot, coins, prices) {
     const frac = 0.10 + Math.random() * 0.20;
     const amt = (bot.held[coin] || 0) * frac;
     bot.usd += amt * price * (1 - FEE);
+<<<<<<< HEAD
     bot.held[coin] = (bot.held[coin] || 0) - amt;
+=======
+    bot.held[coin] -= amt;
+>>>>>>> 2719f7a8c47e1eb1467f8d34f789b80a349c3005
     if (bot.held[coin] < 0.0001) bot.held[coin] = 0;
     prices[coin] = await applyTP(coin, amt, 'sell');
   }
 }
 
+<<<<<<< HEAD
+=======
+// \u2500\u2500 \uD83D\uDC0A \u041d\u0430\u043a\u043e\u043f\u0438\u0442\u0435\u043b\u044c \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+>>>>>>> 2719f7a8c47e1eb1467f8d34f789b80a349c3005
 async function crocTick(bot, coins, prices) {
   const coin = coins[Math.floor(Math.random() * coins.length)];
   const price = prices[coin];
   if (!price) return;
+<<<<<<< HEAD
   if (!bot.target) bot.target = {};
   if (!bot.target[coin]) bot.target[coin] = 1.25 + Math.random() * 0.20;
+=======
+  if (!bot.target)        bot.target        = {};
+  if (!bot.target[coin])  bot.target[coin]  = 1.25 + Math.random() * 0.20;
+>>>>>>> 2719f7a8c47e1eb1467f8d34f789b80a349c3005
 
   if (Math.random() < 0.65) {
     const spend = bot.usd * (0.01 + Math.random() * 0.03);
@@ -135,17 +177,23 @@ async function crocTick(bot, coins, prices) {
     if (prices[coin] >= avg * targetMult) {
       const amt = (bot.held[coin] || 0) * 0.20;
       bot.usd += amt * prices[coin] * (1 - FEE);
+<<<<<<< HEAD
       bot.held[coin] = (bot.held[coin] || 0) - amt;
       if (bot.held[coin] < 0.0001) {
         bot.held[coin] = 0;
         bot.avgP[coin] = 0;
       }
+=======
+      bot.held[coin] -= amt;
+      if (bot.held[coin] < 0.0001) { bot.held[coin] = 0; bot.avgP[coin] = 0; }
+>>>>>>> 2719f7a8c47e1eb1467f8d34f789b80a349c3005
       bot.target[coin] = 1.25 + Math.random() * 0.20;
       prices[coin] = await applyTP(coin, amt, 'sell');
     }
   }
 }
 
+<<<<<<< HEAD
 async function listBotsRaw() {
   const bots = await db.bots.find({}).sort({ name: 1 });
   return bots.map(sanitizeBot);
@@ -155,6 +203,18 @@ async function replaceBotState(name, state) {
   await db.bots.update({ name }, { $set: sanitizeBot(state) });
 }
 
+=======
+// \u2500\u2500 DB helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction listBotsRaw() {
+  return db.bots.find({});
+}
+
+async function replaceBotState(name, state) {
+  const clean = sanitizeBot(state);
+  await db.bots.update({ name }, { $set: { usd: clean.usd, held: clean.held, avgP: clean.avgP, target: clean.target } });
+}
+
+// \u2500\u2500 \u0413\u043b\u0430\u0432\u043d\u044b\u0439 \u0442\u0438\u043a \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+>>>>>>> 2719f7a8c47e1eb1467f8d34f789b80a349c3005
 async function botTick(io, currentPrices) {
   if (!currentPrices || Object.keys(currentPrices).length === 0) return;
   const coins = Object.keys(currentPrices);
@@ -162,15 +222,25 @@ async function botTick(io, currentPrices) {
   const bots = await listBotsRaw();
 
   for (const bot of bots) {
+<<<<<<< HEAD
     try {
       if (bot.type === 'bull') await bullTick(bot, coins, prices);
       else if (bot.type === 'fox') await foxTick(bot, coins, prices);
       else if (bot.type === 'croc') await crocTick(bot, coins, prices);
       await replaceBotState(bot.name, bot);
+=======
+    const b = sanitizeBot(bot);
+    try {
+      if      (b.type === 'bull') await bullTick(b, coins, prices);
+      else if (b.type === 'fox')  await foxTick (b, coins, prices);
+      else if (b.type === 'croc') await crocTick(b, coins, prices);
+      await replaceBotState(b.name, b);
+>>>>>>> 2719f7a8c47e1eb1467f8d34f789b80a349c3005
     } catch (_) {}
   }
 }
 
+<<<<<<< HEAD
 async function getBotStats(prices) {
   const bots = await listBotsRaw();
   return bots.map(bot => ({
@@ -190,6 +260,32 @@ async function createBot({ name, type, usd }) {
   if (!['bull', 'fox', 'croc'].includes(type)) throw new Error('Неизвестный пресет');
   const exists = await db.bots.findOne({ name: cleanName });
   if (exists) throw new Error('Бот с таким именем уже существует');
+=======
+// \u2500\u2500 \u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043a\u0430 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+async function getBotStats(prices) {
+  const bots = await listBotsRaw();
+  return bots.map(bot => {
+    const b = sanitizeBot(bot);
+    return {
+      username: b.name,
+      isBot:    true,
+      botType:  b.type,
+      botEmoji: BOT_EMOJI[b.type] || '\uD83E\uDD16',
+      usd:      round2(b.usd),
+      total:    round2(botPortfolioValue(b, prices || {})),
+      held:     { ...(b.held || {}) },
+    };
+  });
+}
+
+// \u2500\u2500 CRUD (\u0434\u043b\u044f \u0430\u0434\u043c\u0438\u043d\u043a\u0438) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+async function createBot({ name, type, usd }) {
+  const cleanName = String(name || '').trim();
+  if (!cleanName) throw new Error('\u0423\u043a\u0430\u0436\u0438\u0442\u0435 \u0438\u043c\u044f \u0431\u043e\u0442\u0430');
+  if (!['bull','fox','croc'].includes(type)) throw new Error('\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u044b\u0439 \u043f\u0440\u0435\u0441\u0435\u0442');
+  const exists = await db.bots.findOne({ name: cleanName });
+  if (exists) throw new Error('\u0411\u043e\u0442 \u0441 \u0442\u0430\u043a\u0438\u043c \u0438\u043c\u0435\u043d\u0435\u043c \u0443\u0436\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u0435\u0442');
+>>>>>>> 2719f7a8c47e1eb1467f8d34f789b80a349c3005
   const bot = sanitizeBot({ name: cleanName, type, usd: Number(usd) || 0, held: {}, avgP: {}, target: {} });
   await db.bots.insert(bot);
   return bot;
@@ -200,6 +296,7 @@ async function deleteBot(name) {
 }
 
 async function setBotCash(name, usd) {
+<<<<<<< HEAD
   const cleanName = String(name || '').trim();
   await db.bots.update({ name: cleanName }, { $set: { usd: Number(usd) || 0 } });
   return db.bots.findOne({ name: cleanName });
@@ -210,6 +307,18 @@ async function updateBotPreset(name, type) {
   if (!['bull', 'fox', 'croc'].includes(type)) throw new Error('Неизвестный пресет');
   await db.bots.update({ name: cleanName }, { $set: { type, target: {} } });
   return db.bots.findOne({ name: cleanName });
+=======
+  const n = String(name || '').trim();
+  await db.bots.update({ name: n }, { $set: { usd: Number(usd) || 0 } });
+  return db.bots.findOne({ name: n });
+}
+
+async function updateBotPreset(name, type) {
+  const n = String(name || '').trim();
+  if (!['bull','fox','croc'].includes(type)) throw new Error('\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u044b\u0439 \u043f\u0440\u0435\u0441\u0435\u0442');
+  await db.bots.update({ name: n }, { $set: { type, target: {} } });
+  return db.bots.findOne({ name: n });
+>>>>>>> 2719f7a8c47e1eb1467f8d34f789b80a349c3005
 }
 
 module.exports = {
@@ -221,4 +330,8 @@ module.exports = {
   deleteBot,
   setBotCash,
   updateBotPreset,
+<<<<<<< HEAD
 };
+=======
+};
+>>>>>>> 2719f7a8c47e1eb1467f8d34f789b80a349c3005

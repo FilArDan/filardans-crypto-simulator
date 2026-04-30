@@ -1,12 +1,17 @@
 <div class="cs-panel">
 
-  <!-- Шапка: статус и кнопки -->
+  <!-- ШАПКА -->
   <div class="cs-header">
     <div class="cs-header-left">
       <span class="cs-status {{#if paused}}paused{{else}}running{{/if}}">
         {{#if paused}}⏸ Пауза{{else}}▶ Идёт{{/if}}
       </span>
-      <span class="cs-bank-info">🏦 Банк: {{bankCash}} &nbsp;|&nbsp; Ставка: {{bankRate}}/тик</span>
+      {{! LIVE — bank info обновляется через onTick() по ID }}
+      <span class="cs-bank-info">
+        🏦 Банк: <span id="gm-bank-cash">{{bankCash}}</span>
+        &nbsp;|&nbsp;
+        Ставка: <span id="gm-bank-rate">{{bankRate}}</span>/тик
+      </span>
     </div>
     <div class="cs-header-right">
       <button data-action="toggle-pause" class="cs-btn {{#if paused}}cs-btn-green{{else}}cs-btn-warn{{/if}}">
@@ -16,17 +21,18 @@
     </div>
   </div>
 
-  <!-- Вкладки -->
+  <!-- ВКЛАДКИ — добавлена вкладка Графики -->
   <nav class="cs-tabs">
-    <a class="item" data-tab="market">📈 Рынок</a>
-    <a class="item" data-tab="players">👥 Игроки</a>
-    <a class="item" data-tab="bots">🤖 Боты</a>
+    <a class="item" data-tab="market"     >📈 Рынок</a>
+    <a class="item" data-tab="chart"      >📊 Графики</a>  {{! NEW }}
+    <a class="item" data-tab="players"    >👥 Игроки</a>
+    <a class="item" data-tab="bots"       >🤖 Боты</a>
     <a class="item" data-tab="leaderboard">🏆 Таблица</a>
   </nav>
 
   <div class="cs-body">
 
-    <!-- ====== ВКЛАДКА: РЫНОК ====== -->
+    <!-- ====== РЫНОК ====== -->
     <div class="tab" data-tab="market">
       <div class="cs-coin-grid">
         {{#each coinList}}
@@ -34,18 +40,17 @@
           <div class="cs-coin-head">
             <span class="cs-dot" style="color:{{col}}">●</span>
             <strong>{{name}} ({{sym}})</strong>
-            <span class="cs-price">{{price}}</span>
+            {{! LIVE — цена обновляется через DOM без перерендера }}
+            <span class="cs-price" data-live-price="{{sym}}">{{price}}</span>
           </div>
 
-          <!-- Шоки -->
           <div class="cs-shock-row">
-            <button class="cs-shock up"   data-action="shock" data-sym="{{sym}}" data-pct="0.30">▲+30%</button>
-            <button class="cs-shock up"   data-action="shock" data-sym="{{sym}}" data-pct="0.10">▲+10%</button>
+            <button class="cs-shock up"   data-action="shock" data-sym="{{sym}}" data-pct="0.30" >▲+30%</button>
+            <button class="cs-shock up"   data-action="shock" data-sym="{{sym}}" data-pct="0.10" >▲+10%</button>
             <button class="cs-shock down" data-action="shock" data-sym="{{sym}}" data-pct="-0.10">▼−10%</button>
             <button class="cs-shock down" data-action="shock" data-sym="{{sym}}" data-pct="-0.30">▼−30%</button>
           </div>
 
-          <!-- Тренд -->
           <div class="cs-slider-row">
             <div class="cs-slider-label">
               <span>Тренд</span>
@@ -56,7 +61,6 @@
             <div class="cs-slider-hints"><span>← Падение</span><span>Рост →</span></div>
           </div>
 
-          <!-- Волатильность -->
           <div class="cs-slider-row">
             <div class="cs-slider-label">
               <span>Волатильность</span>
@@ -67,7 +71,6 @@
             <div class="cs-slider-hints"><span>← Стабильно</span><span>Хаос →</span></div>
           </div>
 
-          <!-- Прямая цена -->
           <div class="cs-input-row">
             <input type="number" data-price-input="{{sym}}" placeholder="Задать цену" min="0.01" step="0.01"/>
             <button data-action="set-price" data-sym="{{sym}}" class="cs-btn cs-btn-sm">Задать</button>
@@ -79,10 +82,26 @@
       </div>
     </div>
 
-    <!-- ====== ВКЛАДКА: ИГРОКИ ====== -->
+    <!-- ====== ГРАФИКИ (NEW) ====== -->
+    <div class="tab" data-tab="chart">
+      <div class="cs-chart-panel">
+        <div class="cs-chart-coins" id="gm-ctabs"></div>
+        <div class="cs-chart-ranges">
+          <button class="cs-rbtn active" data-range="40" >40</button>
+          <button class="cs-rbtn"        data-range="100">100</button>
+          <button class="cs-rbtn"        data-range="200">200</button>
+          <button class="cs-rbtn"        data-range="0"  >Всё</button>
+        </div>
+        <div class="cs-chart-wrap-lg">
+          <canvas id="gm-chart"></canvas>
+        </div>
+        <div class="cs-chart-info" id="gm-chart-info"></div>
+      </div>
+    </div>
+
+    <!-- ====== ИГРОКИ ====== -->
     <div class="tab" data-tab="players">
 
-      <!-- Перевод средств -->
       <div class="cs-transfer-box">
         <strong>💸 Перевод между игроками</strong>
         <div class="cs-transfer-row">
@@ -98,7 +117,6 @@
         </div>
       </div>
 
-      <!-- Карточки игроков -->
       {{#each userList}}
       <div class="cs-player-card {{#if frozen}}cs-frozen{{/if}}">
         <div class="cs-player-head">
@@ -107,13 +125,14 @@
           {{#if online}}<span class="cs-online">●</span>{{else}}<span class="cs-offline">○</span>{{/if}}
           {{#if frozen}}<span class="cs-badge danger">🔒 Заморожен</span>{{/if}}
           <div class="cs-player-totals">
-            Баланс: <b>{{cashFmt}}</b> &nbsp;|&nbsp;
-            Портфель: <b>{{portFmt}}</b>
+            {{! LIVE — обновляются через onTick() по ID }}
+            Баланс: <b id="gm-cash-{{id}}">{{cashFmt}}</b>
+            &nbsp;|&nbsp;
+            Портфель: <b id="gm-port-{{id}}">{{portFmt}}</b>
             {{#if loan}}&nbsp;|&nbsp; Долг: <span class="cs-danger">{{loanFmt}}</span>{{/if}}
           </div>
         </div>
 
-        <!-- Задать баланс -->
         <div class="cs-input-row" style="margin-top:8px;">
           <input type="number" data-cash-input="{{id}}" placeholder="Новый баланс" min="0" step="100"/>
           <button data-action="set-cash" data-uid="{{id}}" class="cs-btn cs-btn-sm">Задать</button>
@@ -123,7 +142,6 @@
           </button>
         </div>
 
-        <!-- Активы и санкции -->
         <div class="cs-holdings-grid">
           {{#each held}}
           <div class="cs-holding-row {{#if sanctioned}}cs-sanctioned{{/if}}">
@@ -145,7 +163,7 @@
       {{/each}}
     </div>
 
-    <!-- ====== ВКЛАДКА: БОТЫ ====== -->
+    <!-- ====== БОТЫ ====== -->
     <div class="tab" data-tab="bots">
       <div class="cs-bot-grid">
         {{#each bots}}
@@ -155,9 +173,7 @@
             <strong>{{name}}</strong>
             <span class="cs-muted">{{type}}</span>
           </div>
-          <div class="cs-muted" style="font-size:12px;margin-bottom:8px;">
-            Баланс: {{cash}}
-          </div>
+          <div class="cs-muted" style="font-size:12px;margin-bottom:8px;">Баланс: {{cash}}</div>
           <div class="cs-input-row">
             <input type="number" data-bot-cash-input="{{@index}}" placeholder="Новый бюджет" min="0"/>
             <button data-action="set-bot-cash" data-idx="{{@index}}" class="cs-btn cs-btn-sm">Задать</button>
@@ -167,7 +183,6 @@
         </div>
         {{/each}}
 
-        <!-- Новый бот -->
         <div class="cs-bot-card cs-bot-add">
           <div class="cs-bot-head">➕ <strong>Новый бот</strong></div>
           <label>Имя</label>
@@ -187,16 +202,19 @@
       </div>
     </div>
 
-    <!-- ====== ВКЛАДКА: ТАБЛИЦА ====== -->
+    <!-- ====== ТАБЛИЦА ЛИДЕРОВ ====== -->
     <div class="tab" data-tab="leaderboard">
       <table class="cs-table">
-        <thead><tr><th>#</th><th>Участник</th><th>Капитал</th></tr></thead>
-        <tbody>
+        <thead>
+          <tr><th>#</th><th>Участник</th><th>Капитал</th></tr>
+        </thead>
+        <tbody id="gm-leaderboard">
           {{#each leaderboard}}
           <tr class="{{#if isPlayer}}cs-tr-player{{/if}}">
             <td>{{add @index 1}}</td>
             <td>{{name}}</td>
-            <td class="cs-mono">{{total}}</td>
+            {{! LIVE — обновляется через onTick() }}
+            <td class="cs-mono" id="gm-lb-{{@index}}">{{total}}</td>
           </tr>
           {{/each}}
         </tbody>

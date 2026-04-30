@@ -286,4 +286,30 @@ export class GMApp extends Application {
       });
     });
   }
+
+  /** Живое обновление цен и лидерборда без полного перерендера */
+onTick() {
+  const market = getMarket();
+  const coins  = market.coins;
+
+  // Обновляем цены на вкладке Рынок
+  document.querySelectorAll('[data-live-price]').forEach(el => {
+    const s = el.dataset.livePrice;
+    if (coins[s]) el.textContent = fmt(coins[s].price);
+  });
+
+  // Обновляем балансы игроков
+  const players = getPlayers();
+  game.users.filter(u => !u.isGM).forEach(u => {
+    const ps = players[u.id]; if (!ps) return;
+    const pv = portV(ps.held, coins);
+    const el = document.getElementById(`gm-cash-${u.id}`);
+    const ep = document.getElementById(`gm-port-${u.id}`);
+    if (el) el.textContent = fmt(ps.cash);
+    if (ep) ep.textContent = fmt(pv);
+  });
+
+  // Чарт ГМа
+  this._updateChartLive?.();
+}
 }

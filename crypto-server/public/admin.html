@@ -1,85 +1,143 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="dark">
 <head>
+  <link rel="icon" href="data:,">
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Crypto Server — Администратор</title>
-  <link rel="preconnect" href="https://api.fontshare.com" />
-  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-<div class="layout">
-  <aside class="sidebar">
-    <div class="brand">
-      <div class="logo" style="background:linear-gradient(135deg,#d163a7,#7a39bb)">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-        </svg>
+<div class="app">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="logo-row">
+      <svg class="logo-icon" viewBox="0 0 64 64" fill="none" aria-label="Логотип" style="color:var(--pri)">
+        <circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="4"/>
+        <path d="M22 36c2.8 3.8 7 6 11.5 6 7.2 0 12.5-4.8 12.5-11 0-6.6-5.6-11-13.8-11H28" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+        <path d="M42 28c-2.4-3.6-6.4-6-10.7-6-7 0-12.3 4.6-12.3 10.6 0 2.2.8 4.2 2.2 5.9" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+        <line x1="32" y1="16" x2="32" y2="48" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <h1>Mothership Crypto — Админ</h1>
+        <div class="sub">Авторизован как: <span id="adminName" style="color:var(--pri);font-weight:700">—</span>
+          &nbsp;<span class="badge badge-warn">РЕЖИМ БОГА</span>
+        </div>
       </div>
-      <div><h1>Admin Panel</h1><p class="muted" id="adminName">—</p></div>
+    </div>
+    <div class="topbar-right">
+      <button class="tbtn" id="themeBtn" aria-label="Сменить тему">☀️</button>
+      <button class="btn btn-secondary btn-sm" id="adminLogoutBtn">Выйти</button>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat">
+      <div class="lbl">Игроки онлайн</div>
+      <div class="val" id="onlineCount">0</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Всего сделок</div>
+      <div class="val" id="dealCount">0</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Активных кредитов</div>
+      <div class="val" id="loanCount">0</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Котировки</div>
+      <div class="val" id="pricesBadge" style="font-size:13px;font-weight:600;color:var(--ok)">● LIVE</div>
+    </div>
+  </div>
+
+  <!-- ROW: CONTROLS + PRICES -->
+  <div class="g2b section-gap">
+
+    <!-- CONTROLS CARD -->
+    <div class="card">
+      <h2>🎛️ Управление рынком</h2>
+
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
+        <button class="btn btn-secondary" id="tickBtn">🔄 Принудительно обновить цены</button>
+        <button class="btn btn-dan" id="resetBtn">⚠️ Сбросить рынок</button>
+      </div>
+
+      <form id="setCashForm" style="display:flex;flex-direction:column;gap:10px;">
+        <div class="lbl" style="margin-bottom:0">Установить баланс игрока</div>
+        <label class="fld">Игрок
+          <select id="cashUsername"></select>
+        </label>
+        <label class="fld">Сумма (USD)
+          <input id="cashAmount" type="number" value="10000" min="0" />
+        </label>
+        <button class="btn btn-secondary btn-sm" type="submit">Применить</button>
+      </form>
     </div>
 
-    <div class="stats" style="grid-template-columns:1fr 1fr">
-      <div class="stat"><div class="label">Онлайн</div><div class="value" id="onlineCount">0</div></div>
-      <div class="stat"><div class="label">Сделок</div><div class="value" id="dealCount">0</div></div>
-      <div class="stat"><div class="label">Кредитов</div><div class="value" id="loanCount">0</div></div>
-    </div>
-
-    <div class="panel panel-pad stack">
-      <strong>Управление</strong>
-      <button class="btn btn-secondary btn-sm" id="tickBtn">🔄 Обновить цены</button>
-      <button class="btn btn-danger btn-sm" id="resetBtn">⚠️ Сбросить рынок</button>
-    </div>
-
-    <form class="panel panel-pad stack" id="setCashForm">
-      <strong>Установить баланс</strong>
-      <label>Игрок<select id="cashUsername"></select></label>
-      <label>Сумма (USD)<input id="cashAmount" type="number" value="10000" /></label>
-      <button class="btn btn-secondary btn-sm" type="submit">Применить</button>
-    </form>
-
-    <div class="panel panel-pad">
-      <strong>Котировки сейчас</strong>
-      <table style="margin-top:var(--sp3)">
+    <!-- PRICES CARD -->
+    <div class="card">
+      <h2>📊 Котировки сейчас</h2>
+      <table>
+        <thead>
+          <tr><th>Монета</th><th>Цена</th><th>Изм.</th></tr>
+        </thead>
         <tbody id="priceRows"></tbody>
       </table>
     </div>
+  </div>
 
-    <div><button class="btn btn-secondary btn-sm" id="adminLogoutBtn" style="width:100%">Выйти</button></div>
-  </aside>
+  <!-- PLAYERS TABLE -->
+  <div class="card section-gap">
+    <h2>👥 Балансы и портфели игроков</h2>
+    <table>
+      <thead>
+        <tr><th>Игрок</th><th>Наличные</th><th>Долг</th><th>BTC</th><th>ETH</th><th>SOL</th><th>XRP</th><th>DOGE</th><th>Статус</th></tr>
+      </thead>
+      <tbody id="adminPlayersBody"></tbody>
+    </table>
+  </div>
 
-  <main class="main">
-    <header class="topbar">
-      <div>
-        <span class="badge warn">Панель администратора</span>
-        <h2 style="font-size:var(--text-xl);margin-top:var(--sp2)">Управление сервером</h2>
-      </div>
-    </header>
-
-    <section class="panel panel-pad">
-      <div class="section-head"><strong>Балансы и портфели игроков</strong></div>
+  <!-- LOANS TABLE -->
+  <div class="g2 section-gap">
+    <div class="card">
+      <h2>💳 Активные кредиты</h2>
       <table>
-        <thead><tr><th>Игрок</th><th>Наличные</th><th>Долг</th><th>Активы</th><th>Статус</th></tr></thead>
-        <tbody id="adminPlayersBody"></tbody>
-      </table>
-    </section>
-
-    <section class="panel panel-pad">
-      <div class="section-head"><strong>Активные кредиты</strong></div>
-      <table>
-        <thead><tr><th>Игрок</th><th>Остаток</th><th>%</th><th>Дата выдачи</th></tr></thead>
+        <thead>
+          <tr><th>Игрок</th><th>Взял</th><th>Долг (×1.08)</th><th>Дата</th></tr>
+        </thead>
         <tbody id="adminLoansBody"></tbody>
       </table>
-    </section>
+    </div>
 
-    <section class="panel panel-pad">
-      <div class="section-head"><strong>Полная лента событий</strong></div>
-      <div class="feed" id="adminFeed"></div>
-    </section>
-  </main>
-</div>
+    <!-- EVENT FEED -->
+    <div class="card">
+      <h2>📋 Лента событий</h2>
+      <div class="feed" id="adminFeed" style="max-height:320px;"></div>
+    </div>
+  </div>
+
+</div><!-- /.app -->
+
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/admin.js"></script>
+<script>
+  // Theme toggle
+  (function(){
+    const btn = document.getElementById('themeBtn');
+    const root = document.documentElement;
+    let theme = root.getAttribute('data-theme') || 'dark';
+    btn.innerHTML = theme === 'dark' ? '☀️' : '🌙';
+    btn.addEventListener('click', () => {
+      theme = theme === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', theme);
+      btn.innerHTML = theme === 'dark' ? '☀️' : '🌙';
+    });
+  })();
+</script>
 </body>
 </html>

@@ -26,10 +26,23 @@ app.use('/api',  require('./routes/game'));
 
 const marketTick = () => tick(io);
 app.set('marketTick', marketTick);
-setInterval(marketTick, 25000);
+
+// Динамическая скорость тика (по умолчанию 25 сек)
+let tickSpeedMs = 25000;
+let marketTimer = setInterval(marketTick, tickSpeedMs);
+
+app.set('setTickSpeed', (ms) => {
+  clearInterval(marketTimer);
+  tickSpeedMs = ms;
+  marketTimer = setInterval(marketTick, tickSpeedMs);
+  io.emit('tickSpeedChanged', { ms: tickSpeedMs });
+});
+app.set('getTickSpeed', () => tickSpeedMs);
 
 io.on('connection', socket => {
   console.log('[socket] подключился:', socket.id);
+  // Сообщаем новому клиенту текущую скорость
+  socket.emit('tickSpeedChanged', { ms: tickSpeedMs });
 });
 
 const PORT = process.env.PORT || 3000;

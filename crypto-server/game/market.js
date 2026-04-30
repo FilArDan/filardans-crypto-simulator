@@ -1,4 +1,5 @@
 const { db, getAllCoins } = require('../db');
+const { updatePriceHistory, botTick } = require('./bots');
 
 function roundPrice(p) {
   if (p >= 1000) return Math.round(p * 100)   / 100;
@@ -29,6 +30,16 @@ async function tick(io) {
 
   await db.events.insert({ ts: Date.now(), text: 'Рынок обновился 📈' });
   if (io) io.emit('priceUpdate', prices);
+
+  // Обновить историю цен и запустить тик ботов
+  updatePriceHistory(prices);
+  await botTick(io, prices);
+
+  // Повторно отправить цены после сделок ботов (они двигают рынок)
+  const updatedDocs = await db.prices.find({});
+  const updatedPrices = {};
+  updatedDocs.forEach(d => { updatedPrices[d.coin] = d.price; });
+  if (io) io.emit('priceUpdate', updatedPrices);
 }
 
 async function applyTradePressure(coin, amount, action) {

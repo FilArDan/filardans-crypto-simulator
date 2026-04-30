@@ -11,7 +11,7 @@ function adminOnly(req, res, next) {
   next();
 }
 
-// Состояние — единый источник данных для клиента (как st в синглплеере)
+// Состояние — единый источник данных для клиента
 router.get('/state', auth, async (req, res) => {
   try {
     const priceDocs = await db.prices.find({});
@@ -22,7 +22,6 @@ router.get('/state', auth, async (req, res) => {
     const loans  = await db.loans.find({ username: req.session.username, paid: { $ne: true } });
     const events = await db.events.find({}).sort({ ts: -1 }).limit(25);
 
-    // Список всех игроков (без admin) — для рейтинга и меню перевода
     const allWallets = await db.wallets.find({ username: { $ne: 'admin' } });
     const players = allWallets.map(w => ({ username: w.username, usd: w.usd }));
 
@@ -129,6 +128,22 @@ router.post('/admin/tick', auth, adminOnly, async (req, res) => {
   try {
     await require('../game/market').tick(req.app.get('io'));
     res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Управление скоростью тика
+router.get('/admin/tick-speed', auth, adminOnly, (req, res) => {
+  res.json({ ms: req.app.get('getTickSpeed')() });
+});
+
+router.post('/admin/set-tick-speed', auth, adminOnly, (req, res) => {
+  try {
+    const ms = Math.max(5000, Math.min(120000, parseInt(req.body.ms) || 25000));
+    req.app.get('setTickSpeed')(ms);
+    const ev = { ts: Date.now(), text: `Админ изменил скорость тика: ${(ms/1000).toFixed(0)}с` };
+    db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ ok: true, ms });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

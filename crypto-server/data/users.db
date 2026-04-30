@@ -1,5 +1,10 @@
-{"username":"trader01","passwordHash":"$2a$10$FfFLffR2HS45kP3DUE.fVONVKCauR8eNXL1rw0RFkVfTFUzHV7AQO","role":"player","_id":"dDjEubj81hKh4M2h"}
-{"username":"trader02","passwordHash":"$2a$10$jRFL3L9MLydNlrrkCcDdJuBf0.kRFpsJyHsljXIArWQtvFxByLBku","role":"player","_id":"JRO6f3psk3WxZOcN"}
-{"username":"trader03","passwordHash":"$2a$10$VklS/3dKJdPVfGU1TSRM4OIok1g3dyVV98mwW6r.bBfyhmjWFnVzS","role":"player","_id":"w7orCFsD0vZwoq1g"}
 {"username":"trader04","passwordHash":"$2a$10$CTl/8WOIrQ78lPTYMnfGzOiKB4nNkKEWFV8XUc3oZBpFh3/VC.A/S","role":"player","_id":"9JK3MP3Cq2BNacjl"}
+{"username":"Vishot","passwordHash":"$2a$10$wUgf1.YTRYKQPEQ8L/Pqyu9bUxeXID3jHgJjyD.g5wGHslYPoEDOq","role":"player","_id":"Ap4dkJTRd8BhodI9"}
 {"username":"admin","passwordHash":"$2a$10$xvFfV3yOQLTlAM1ZLpcDv.tuJqwEpx5RAp3NO4n9LtGXIzmiQP4y2","role":"admin","_id":"FgryIbrhadnERMSQ"}
+{"username":"trader02","passwordHash":"$2a$10$jRFL3L9MLydNlrrkCcDdJuBf0.kRFpsJyHsljXIArWQtvFxByLBku","role":"player","_id":"JRO6f3psk3WxZOcN"}
+{"username":"WARDEN","passwordHash":"$2a$10$8qS1uEPmadIDXp6CQ/riUeyQrcd36ZOANtgCMfjeTsW4XQTU/mcj6","role":"admin","_id":"ZzW3s4NKPJnVxxwU"}
+{"username":"trader01","passwordHash":"$2a$10$FfFLffR2HS45kP3DUE.fVONVKCauR8eNXL1rw0RFkVfTFUzHV7AQO","role":"player","_id":"dDjEubj81hKh4M2h"}
+{"username":"Kocherga","passwordHash":"$2a$10$WCrQsguyHSIJEBMsfb9/jO4ileLyMb.cMR2.qDOHlYnPhuL7KqeyK","role":"player","_id":"dG5c6RskgOcoDb3i"}
+{"username":"Zlodei","passwordHash":"$2a$10$BhUMWkzL1VLw9TxlfIbQu.etGYxzEGA48f0AnkzTgOmNgh3Y1w2TO","role":"player","_id":"iSXTLL5iwQ9FqzEr"}
+{"username":"FilArDan","passwordHash":"$2a$10$NN.WR1e1DK8SO9m.R.Z3ou..IdANJG3DBB2Trtt0u2GyB9EndABV.","role":"player","_id":"tIQwHqE8FrYtJ1aG"}
+{"username":"trader03","passwordHash":"$2a$10$VklS/3dKJdPVfGU1TSRM4OIok1g3dyVV98mwW6r.bBfyhmjWFnVzS","role":"player","_id":"w7orCFsD0vZwoq1g"}

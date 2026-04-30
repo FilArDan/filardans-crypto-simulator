@@ -13,11 +13,11 @@ const db = {
 };
 
 const INITIAL_USERS = [
-  { username: 'trader01', password: 'alpha101', role: 'player', startUsd: 10000 },
-  { username: 'trader02', password: 'beta202',  role: 'player', startUsd: 12000 },
-  { username: 'trader03', password: 'gamma303', role: 'player', startUsd: 8000  },
-  { username: 'trader04', password: 'delta404', role: 'player', startUsd: 15000 },
-  { username: 'admin',    password: 'admin2025', role: 'admin', startUsd: 0     },
+  { username: 'FilArDan', password: 'alpha101', role: 'player', startUsd: 10000 },
+  { username: 'Vishot', password: 'beta202',  role: 'player', startUsd: 12000 },
+  { username: 'Kocherga', password: 'gamma303', role: 'player', startUsd: 8000  },
+  { username: 'Zlodei', password: 'delta404', role: 'player', startUsd: 15000 },
+  { username: 'WARDEN',    password: 'sherpaIsGay', role: 'admin', startUsd: 0     },
 ];
 
 const COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];

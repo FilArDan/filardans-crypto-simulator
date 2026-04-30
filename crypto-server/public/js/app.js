@@ -1,7 +1,6 @@
 const socket = io();
 let myUsername = '';
 let prices = {};
-let dealCount = 0;
 
 async function api(method, path, body) {
   const r = await fetch(path, {
@@ -18,58 +17,67 @@ function fmt(n, dec = 2) {
 
 function showApp(username) {
   myUsername = username;
-  document.getElementById('userName').textContent = username;
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('appScreen').style.display = '';
+  document.getElementById('playerName').textContent = username;
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('appScreen').classList.remove('hidden');
   loadState();
 }
 
 function renderTicker(p) {
   prices = p;
   const el = document.getElementById('ticker');
-  el.innerHTML = Object.entries(p).map(([coin, price]) =>
-    `<div class="tick-item"><span class="tick-coin">${coin}</span><span class="tick-price">$${fmt(price, coin === 'DOGE' || coin === 'XRP' ? 4 : 2)}</span></div>`
-  ).join('');
+  if (!el) return;
+  el.innerHTML = Object.entries(p).map(([coin, price]) => {
+    const dec = (coin === 'DOGE' || coin === 'XRP') ? 4 : 2;
+    return `<div class="tick"><div class="coin">${coin}</div><div class="price">$${fmt(price, dec)}</div></div>`;
+  }).join('');
 }
 
 function renderPortfolio(wallet) {
-  const coins = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
+  const coins = ['BTC','ETH','SOL','XRP','DOGE'];
   const body = document.getElementById('portfolioBody');
-  let totalDebt = 0;
-  body.innerHTML = coins.filter(c => wallet[c] > 0).map(c => {
+  if (!body) return;
+  const rows = coins.filter(c => (wallet[c] || 0) > 0).map(c => {
     const val = (wallet[c] || 0) * (prices[c] || 0);
-    return `<tr><td>${c}</td><td>${fmt(wallet[c], 5)}</td><td>$${fmt(prices[c] || 0)}</td><td>$${fmt(val)}</td></tr>`;
-  }).join('') || '<tr><td colspan="4" style="color:var(--muted);text-align:center">Нет активов</td></tr>';
+    const dec = (c === 'DOGE' || c === 'XRP') ? 4 : 2;
+    return `<tr><td>${c}</td><td>${fmt(wallet[c], 5)}</td><td>$${fmt(prices[c] || 0, dec)}</td><td>$${fmt(val)}</td></tr>`;
+  });
+  body.innerHTML = rows.length
+    ? rows.join('')
+    : '<tr><td colspan="4" style="color:var(--mu);text-align:center;padding:16px">Нет активов</td></tr>';
 
-  document.getElementById('myCash').textContent = '$' + fmt(wallet.usd);
+  const el = document.getElementById('sCash');
+  if (el) el.textContent = '$' + fmt(wallet.usd);
 }
 
-function renderLoans(loans) {
-  const total = loans.reduce((s, l) => s + l.due, 0);
-  document.getElementById('myDebt').textContent = '$' + fmt(total);
-  const body = document.getElementById('loansBody');
-  body.innerHTML = loans.length
-    ? loans.map(l => `<tr><td>${l.username}</td><td>$${fmt(l.due)}</td><td>8%</td><td>${new Date(l.ts).toLocaleDateString('ru')}</td></tr>`).join('')
-    : '<tr><td colspan="4" style="color:var(--muted);text-align:center">Нет кредитов</td></tr>';
-  document.getElementById('loanCount').textContent = loans.length;
-}
-
-function renderPlayers(wallets) {
-  const body = document.getElementById('playersBody');
+function renderLeaderboard(wallets) {
+  const body = document.getElementById('leaderBody');
   const select = document.getElementById('transferTarget');
-  const others = wallets.filter(w => w.username !== myUsername && w.username !== 'admin');
-  body.innerHTML = wallets.filter(w => w.username !== 'admin').map(w =>
-    `<tr><td>${w.username === myUsername ? '<b>' + w.username + '</b>' : w.username}</td><td>$${fmt(w.usd)}</td><td>—</td><td><span class="badge ok">онлайн</span></td></tr>`
-  ).join('');
-  select.innerHTML = others.map(w => `<option value="${w.username}">${w.username}</option>`).join('');
+  if (!body) return;
+  const sorted = [...wallets].filter(w => w.username !== 'admin')
+    .sort((a, b) => b.usd - a.usd);
+  body.innerHTML = sorted.map((w, i) => {
+    const isMine = w.username === myUsername;
+    return `<tr${isMine ? ' style="font-weight:700"' : ''}>
+      <td>${i + 1}</td>
+      <td>${w.username}${isMine ? ' 👤' : ''}</td>
+      <td>$${fmt(w.usd)}</td>
+      <td>—</td>
+    </tr>`;
+  }).join('');
+  if (select) {
+    const others = sorted.filter(w => w.username !== myUsername);
+    select.innerHTML = others.map(w => `<option value="${w.username}">${w.username}</option>`).join('');
+  }
 }
 
-function renderEvents(events) {
+function renderFeed(events) {
   const feed = document.getElementById('activityFeed');
-  feed.innerHTML = events.map(e => {
+  if (!feed) return;
+  feed.innerHTML = [...events].reverse().map(e => {
     const t = new Date(e.ts);
     const time = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
-    return `<div class="feed-item"><span>${e.text}</span><span class="muted" style="font-size:var(--text-xs)">${time}</span></div>`;
+    return `<div class="feed-item"><span>${e.text}</span><span class="feed-time">${time}</span></div>`;
   }).join('');
 }
 
@@ -78,20 +86,24 @@ async function loadState() {
   if (data.error) return;
   renderTicker(data.prices);
   renderPortfolio(data.wallet);
-  renderLoans(data.loans || []);
-  renderEvents(data.events || []);
+  renderFeed(data.events || []);
 
-  // Обновляем net worth
-  const coinsVal = ['BTC','ETH','SOL','XRP','DOGE'].reduce((s,c) => s + (data.wallet[c]||0)*(data.prices[c]||0), 0);
-  const debt = (data.loans||[]).reduce((s,l) => s + l.due, 0);
-  document.getElementById('netWorth').textContent = '$' + fmt(data.wallet.usd + coinsVal - debt);
+  const coinsVal = ['BTC','ETH','SOL','XRP','DOGE']
+    .reduce((s, c) => s + (data.wallet[c] || 0) * (data.prices[c] || 0), 0);
+  const debt = (data.loans || []).reduce((s, l) => s + l.due, 0);
 
-  // Загружаем список игроков
+  const elTotal = document.getElementById('sTotal');
+  const elPort  = document.getElementById('sPort');
+  const elDebt  = document.getElementById('sDebt');
+  if (elTotal) elTotal.textContent = '$' + fmt(data.wallet.usd + coinsVal - debt);
+  if (elPort)  elPort.textContent  = '$' + fmt(coinsVal);
+  if (elDebt)  elDebt.textContent  = debt > 0 ? '$' + fmt(debt) : '—';
+
   const pd = await api('GET', '/api/admin/players');
-  if (!pd.error) renderPlayers(pd.wallets || []);
+  if (!pd.error) renderLeaderboard(pd.wallets || []);
 }
 
-// --- ЛОГИН ---
+// ── ЛОГИН ──────────────────────────────────────────────────────────────
 document.getElementById('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
   const username = document.getElementById('usernameInput').value.trim();
@@ -104,13 +116,13 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
   showApp(res.username);
 });
 
-// --- ВЫХОД ---
+// ── ВЫХОД ──────────────────────────────────────────────────────────────
 document.getElementById('logoutBtn').addEventListener('click', async () => {
   await api('POST', '/auth/logout');
   location.reload();
 });
 
-// --- ТОРГОВЛЯ ---
+// ── ТОРГОВЛЯ ───────────────────────────────────────────────────────────
 document.getElementById('tradeForm').addEventListener('submit', async e => {
   e.preventDefault();
   const coin   = document.getElementById('tradeAsset').value;
@@ -120,13 +132,11 @@ document.getElementById('tradeForm').addEventListener('submit', async e => {
   err.textContent = '';
   const res = await api('POST', '/api/trade', { coin, amount, action });
   if (res.error) { err.textContent = res.error; return; }
-  dealCount++;
-  document.getElementById('dealCount').textContent = dealCount;
   renderPortfolio(res.wallet);
-  document.getElementById('myCash').textContent = '$' + fmt(res.wallet.usd);
+  loadState();
 });
 
-// --- ПЕРЕВОД ---
+// ── ПЕРЕВОД ────────────────────────────────────────────────────────────
 document.getElementById('transferForm').addEventListener('submit', async e => {
   e.preventDefault();
   const to     = document.getElementById('transferTarget').value;
@@ -138,7 +148,7 @@ document.getElementById('transferForm').addEventListener('submit', async e => {
   loadState();
 });
 
-// --- КРЕДИТ ---
+// ── КРЕДИТ ─────────────────────────────────────────────────────────────
 document.getElementById('loanForm').addEventListener('submit', async e => {
   e.preventDefault();
   const amount = parseFloat(document.getElementById('loanAmount').value);
@@ -146,17 +156,13 @@ document.getElementById('loanForm').addEventListener('submit', async e => {
   err.textContent = '';
   const res = await api('POST', '/api/loan', { amount });
   if (res.error) { err.textContent = res.error; return; }
-  renderPortfolio(res.wallet);
   loadState();
 });
 
-// --- ПОГАШЕНИЕ ---
-document.getElementById('repayForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const amount = parseFloat(document.getElementById('repayAmount').value);
-  const err = document.getElementById('repayError');
+// ── ПОГАШЕНИЕ ──────────────────────────────────────────────────────────
+document.getElementById('repayBtn').addEventListener('click', async () => {
+  const err = document.getElementById('loanError');
   err.textContent = '';
-  // Берём первый активный кредит
   const state = await api('GET', '/api/state');
   const loan = (state.loans || []).find(l => !l.paid);
   if (!loan) { err.textContent = 'Нет активных кредитов'; return; }
@@ -165,25 +171,42 @@ document.getElementById('repayForm').addEventListener('submit', async e => {
   loadState();
 });
 
-// --- SOCKET EVENTS ---
+// ── SOCKET ─────────────────────────────────────────────────────────────
 socket.on('priceUpdate', p => renderTicker(p));
+
 socket.on('newEvent', ev => {
   const feed = document.getElementById('activityFeed');
   if (!feed) return;
   const t = new Date(ev.ts);
   const time = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
   feed.insertAdjacentHTML('afterbegin',
-    `<div class="feed-item"><span>${ev.text}</span><span class="muted" style="font-size:var(--text-xs)">${time}</span></div>`);
-  if (feed.children.length > 30) feed.lastChild.remove();
+    `<div class="feed-item"><span>${ev.text}</span><span class="feed-time">${time}</span></div>`);
+  if (feed.children.length > 40) feed.lastChild.remove();
 });
+
 socket.on('walletUpdate', data => {
   if (data.username === myUsername) {
     renderPortfolio(data.wallet);
-    document.getElementById('myCash').textContent = '$' + fmt(data.wallet.usd);
+    loadState();
   }
 });
 
-// Проверка сессии при загрузке страницы
+// ── ТЕМА ───────────────────────────────────────────────────────────────
+(function() {
+  const btn = document.getElementById('themeBtn');
+  const html = document.documentElement;
+  let dark = html.getAttribute('data-theme') === 'dark';
+  if (btn) {
+    btn.textContent = dark ? '☀️' : '🌙';
+    btn.addEventListener('click', () => {
+      dark = !dark;
+      html.setAttribute('data-theme', dark ? 'dark' : 'light');
+      btn.textContent = dark ? '☀️' : '🌙';
+    });
+  }
+})();
+
+// ── ПРОВЕРКА СЕССИИ ────────────────────────────────────────────────────
 api('GET', '/auth/me').then(res => {
   if (res.username) {
     if (res.role === 'admin') { window.location.href = '/admin.html'; return; }

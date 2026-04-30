@@ -1,147 +1,132 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="dark">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Crypto Server — Игрок</title>
-  <link rel="preconnect" href="https://api.fontshare.com" />
-  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.css" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mothership Crypto Simulator</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css"/>
 </head>
 <body>
 
-<!-- ── Экран входа ─────────────────────────────────────────────────────────── -->
-<div class="login-screen" id="loginScreen" style="display:flex">
+<!-- ── ЛОГИН ──────────────────────────────────────────────────────────── -->
+<div class="login-wrap" id="loginScreen">
   <div class="login-box">
-    <div class="brand">
-      <div class="logo">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M6 8.5 12 5l6 3.5v7L12 19l-6-3.5z"/><path d="M9.5 10.5h5"/><path d="M9.5 13.5h5"/>
-        </svg>
-      </div>
-      <div><h1>Crypto Server</h1><p class="muted">Мультиплеер — вход игрока</p></div>
+    <div class="login-brand">
+      <svg class="logo-icon" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="4"/>
+        <path d="M22 36c2.8 3.8 7 6 11.5 6 7.2 0 12.5-4.8 12.5-11 0-6.6-5.6-11-13.8-11H28" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+        <path d="M42 28c-2.4-3.6-6.4-6-10.7-6-7 0-12.3 4.6-12.3 10.6 0 2.2.8 4.2 2.2 5.9" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+        <line x1="32" y1="16" x2="32" y2="48" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+      </svg>
+      <div><h1>Mothership Crypto</h1><div class="sub">Мультиплеер — вход игрока</div></div>
     </div>
     <form class="stack" id="loginForm">
-      <label>Логин
-        <input id="usernameInput" type="text" placeholder="trader01" autocomplete="username" />
-      </label>
-      <label>Пароль
-        <input id="passwordInput" type="password" placeholder="••••••••" autocomplete="current-password" />
-      </label>
+      <label>Логин<input id="usernameInput" type="text" placeholder="trader01" autocomplete="username"/></label>
+      <label>Пароль<input id="passwordInput" type="password" placeholder="••••••••" autocomplete="current-password"/></label>
       <div class="err-msg" id="loginError"></div>
       <button class="btn btn-primary" type="submit">Войти</button>
     </form>
-    <p class="muted" style="font-size:var(--text-xs);text-align:center">Регистрация отключена — используйте выданные администратором данные.</p>
+    <p class="muted" style="font-size:12px;text-align:center">Регистрация отключена — используйте выданные данные.</p>
   </div>
 </div>
 
-<!-- ── Основное приложение ─────────────────────────────────────────────────── -->
-<div class="layout" id="appScreen" style="display:none">
+<!-- ── ПРИЛОЖЕНИЕ ─────────────────────────────────────────────────────── -->
+<div class="app hidden" id="appScreen">
 
-  <aside class="sidebar">
-    <div class="brand">
-      <div class="logo">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M6 8.5 12 5l6 3.5v7L12 19l-6-3.5z"/><path d="M9.5 10.5h5"/><path d="M9.5 13.5h5"/>
-        </svg>
-      </div>
-      <div><h1>Crypto Server</h1><p class="muted" id="userName">—</p></div>
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="logo-row">
+      <svg class="logo-icon" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="4"/>
+        <path d="M22 36c2.8 3.8 7 6 11.5 6 7.2 0 12.5-4.8 12.5-11 0-6.6-5.6-11-13.8-11H28" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+        <path d="M42 28c-2.4-3.6-6.4-6-10.7-6-7 0-12.3 4.6-12.3 10.6 0 2.2.8 4.2 2.2 5.9" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+        <line x1="32" y1="16" x2="32" y2="48" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+      </svg>
+      <div><h1>Mothership Crypto</h1><div class="sub">Мультиплеер · <span id="playerName">—</span></div></div>
     </div>
-
-    <div class="panel panel-pad stack">
-      <div class="stat"><div class="label">Наличные</div><div class="value" id="myCash">0 USD</div></div>
-      <div class="stat"><div class="label">Долг</div><div class="value" id="myDebt">0 USD</div></div>
-      <div class="stat"><div class="label">Капитал (нетто)</div><div class="value" id="netWorth">0 USD</div></div>
+    <div class="topbar-right">
+      <span class="badge badge-ok">Онлайн</span>
+      <button class="tbtn" id="themeBtn" aria-label="Сменить тему">☀️</button>
+      <button class="btn btn-secondary btn-sm" id="logoutBtn">Выйти</button>
     </div>
+  </div>
 
-    <div class="stats" style="grid-template-columns:1fr 1fr">
-      <div class="stat"><div class="label">Онлайн</div><div class="value" id="onlineCount">0</div></div>
-      <div class="stat"><div class="label">Сделок</div><div class="value" id="dealCount">0</div></div>
-      <div class="stat"><div class="label">Кредитов</div><div class="value" id="loanCount">0</div></div>
-    </div>
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat"><div class="lbl">Баланс USD</div><div class="val" id="sCash">—</div></div>
+    <div class="stat"><div class="lbl">Монеты (стоимость)</div><div class="val" id="sPort">—</div></div>
+    <div class="stat"><div class="lbl">Весь капитал</div><div class="val" id="sTotal">—</div></div>
+    <div class="stat"><div class="lbl">Долг</div><div class="val" id="sDebt">—</div></div>
+  </div>
 
-    <div>
-      <button class="btn btn-secondary btn-sm" id="logoutBtn" style="width:100%">Выйти</button>
-    </div>
-  </aside>
+  <!-- TICKER -->
+  <div class="ticker-wrap">
+    <h2>📈 Рыночные котировки <span class="muted" style="font-size:12px;font-weight:400">обновляются каждые 25 сек.</span></h2>
+    <div class="ticker" id="ticker"></div>
+  </div>
 
-  <main class="main">
-    <header class="topbar">
-      <div>
-        <span class="badge ok">Сервер работает</span>
-        <h2 style="font-size:var(--text-xl);margin-top:var(--sp2)">Торговая платформа</h2>
-      </div>
-    </header>
+  <!-- TRADE + TRANSFER -->
+  <div class="g2">
+    <form class="card stack" id="tradeForm">
+      <h2>💱 Покупка / Продажа</h2>
+      <div class="fld"><label>Монета<select id="tradeAsset"><option>BTC</option><option>ETH</option><option>SOL</option><option>XRP</option><option>DOGE</option></select></label></div>
+      <div class="fld"><label>Действие<select id="tradeType"><option value="buy">📈 Купить</option><option value="sell">📉 Продать</option></select></label></div>
+      <div class="fld"><label>Количество<input id="tradeAmount" type="number" min="0.00001" step="any" value="1"/></label></div>
+      <div class="err-msg" id="tradeError"></div>
+      <button class="btn btn-primary" type="submit">Провести сделку</button>
+    </form>
 
-    <!-- Котировки -->
-    <section class="panel panel-pad">
-      <div class="section-head"><strong>Рыночные котировки</strong><span class="muted" style="font-size:var(--text-xs)">обновляются каждые 25 сек.</span></div>
-      <div class="ticker" id="ticker"></div>
-    </section>
-
-    <!-- Торговые формы -->
-    <div class="forms2">
-      <form class="panel panel-pad stack" id="tradeForm">
-        <strong>Покупка / Продажа</strong>
-        <label>Актив<select id="tradeAsset"><option>BTC</option><option>ETH</option><option>SOL</option><option>ADA</option></select></label>
-        <label>Действие<select id="tradeType"><option value="buy">Купить</option><option value="sell">Продать</option></select></label>
-        <label>Количество<input id="tradeAmount" type="number" min="0.001" step="0.001" value="1" /></label>
-        <div class="err-msg" id="tradeError"></div>
-        <button class="btn btn-primary" type="submit">Провести сделку</button>
-      </form>
-
-      <form class="panel panel-pad stack" id="transferForm">
-        <strong>Перевод игроку</strong>
-        <label>Получатель<select id="transferTarget"></select></label>
-        <label>Сумма (USD)<input id="transferAmount" type="number" min="1" step="1" value="100" /></label>
+    <div class="g2" style="grid-template-columns:1fr;gap:16px;">
+      <form class="card stack" id="transferForm">
+        <h2>💸 Перевод игроку</h2>
+        <div class="fld"><label>Получатель<select id="transferTarget"></select></label></div>
+        <div class="fld"><label>Сумма (USD)<input id="transferAmount" type="number" min="1" step="1" value="100"/></label></div>
         <div class="err-msg" id="transferError"></div>
         <button class="btn btn-secondary" type="submit">Отправить</button>
       </form>
 
-      <form class="panel panel-pad stack" id="loanForm">
-        <strong>Взять кредит</strong>
-        <label>Сумма кредита<input id="loanAmount" type="number" min="100" step="50" value="500" /></label>
-        <p class="muted" style="font-size:var(--text-xs)">Ставка 8% единовременно. К возврату: сумма × 1.08.</p>
+      <form class="card stack" id="loanForm">
+        <h2>🏦 Кредит</h2>
+        <div class="fld"><label>Сумма<input id="loanAmount" type="number" min="100" step="50" value="500"/></label></div>
+        <p class="muted" style="font-size:12px">Ставка 8% единовременно. К возврату: сумма × 1.08.</p>
         <div class="err-msg" id="loanError"></div>
-        <button class="btn btn-secondary" type="submit">Получить кредит</button>
-      </form>
-
-      <form class="panel panel-pad stack" id="repayForm">
-        <strong>Погасить кредит</strong>
-        <label>Сумма погашения<input id="repayAmount" type="number" min="50" step="50" value="100" /></label>
-        <div class="err-msg" id="repayError"></div>
-        <button class="btn btn-secondary" type="submit">Погасить</button>
+        <div class="btn-row">
+          <button class="btn btn-secondary" type="submit">Взять кредит</button>
+          <button class="btn btn-dan btn-sm" type="button" id="repayBtn">Погасить</button>
+        </div>
       </form>
     </div>
+  </div>
 
-    <!-- Портфель -->
-    <section class="panel panel-pad">
-      <div class="section-head"><strong>Мой портфель</strong></div>
-      <table><thead><tr><th>Актив</th><th>Количество</th><th>Цена</th><th>Стоимость</th></tr></thead>
-        <tbody id="portfolioBody"></tbody></table>
-    </section>
-
-    <!-- Игроки и займы -->
-    <div class="forms2">
-      <section class="panel panel-pad">
-        <div class="section-head"><strong>Все игроки</strong></div>
-        <table><thead><tr><th>Игрок</th><th>Наличные</th><th>Долг</th><th>Статус</th></tr></thead>
-          <tbody id="playersBody"></tbody></table>
-      </section>
-      <section class="panel panel-pad">
-        <div class="section-head"><strong>Активные кредиты</strong></div>
-        <table><thead><tr><th>Игрок</th><th>Остаток</th><th>%</th><th>Дата</th></tr></thead>
-          <tbody id="loansBody"></tbody></table>
-      </section>
+  <!-- PORTFOLIO + PLAYERS -->
+  <div class="g2 section-gap">
+    <div class="card">
+      <h2>🪙 Мой портфель</h2>
+      <table>
+        <thead><tr><th>Актив</th><th>Количество</th><th>Цена</th><th>Стоимость</th></tr></thead>
+        <tbody id="portfolioBody"></tbody>
+      </table>
     </div>
+    <div class="card">
+      <h2>🏆 Рейтинг игроков</h2>
+      <table>
+        <thead><tr><th>#</th><th>Игрок</th><th>USD</th><th>Капитал</th></tr></thead>
+        <tbody id="leaderBody"></tbody>
+      </table>
+    </div>
+  </div>
 
-    <!-- Лента -->
-    <section class="panel panel-pad">
-      <div class="section-head"><strong>Лента событий</strong></div>
-      <div class="feed" id="activityFeed"></div>
-    </section>
-  </main>
-</div>
+  <!-- FEED -->
+  <div class="card section-gap">
+    <h2>📋 Лента событий</h2>
+    <div class="feed" id="activityFeed"></div>
+  </div>
+
+</div><!-- /.app -->
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/app.js"></script>

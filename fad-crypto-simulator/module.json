@@ -1,6 +1,6 @@
 {
   "id": "fad-crypto-simulator",
-  "title": "FilArDan's Crypyo Simulator",
+  "title": "FilArDan's Crypto Simulator",
   "description": "Торговый симулятор для ВПИ. Игроки торгуют активами, ГМ управляет рынком.",
   "version": "1.0.0",
   "compatibility": {

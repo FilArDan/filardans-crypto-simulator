@@ -32,14 +32,25 @@ function coinDec(c) {
   return (c === 'DOGE' || c === 'XRP') ? 4 : 5;
 }
 
+// ── УДАЛЕНИЕ ИГРОКА ────────────────────────────────────────────────────────────
+async function deletePlayer(username) {
+  if (!confirm(`Удалить аккаунт "${username}"?\nКошелёк и все кредиты будут удалены безвозвратно.`)) return;
+  const r = await fetch(`/api/admin/player/${encodeURIComponent(username)}`, { method: 'DELETE' });
+  const data = await r.json();
+  if (data.error) { alert(data.error); return; }
+  await loadAdminData();
+}
+
 // ── СЛАЙДЕР СКОРОСТИ ТИКА ───────────────────────────────────────────────────
 let sliderDebounce = null;
 
 function updateSpeedLabel(ms) {
   const sec = Math.round(ms / 1000);
-  const label = sec >= 60
-    ? (sec / 60).toFixed(1).replace('.0', '') + ' мин'
-    : sec + ' сек';
+  const label = ms < 1000
+    ? ms + ' мс'
+    : sec >= 60
+      ? (sec / 60).toFixed(1).replace('.0', '') + ' мин'
+      : sec + ' сек';
   const el = document.getElementById('speedLabel');
   const stat = document.getElementById('tickSpeedStat');
   if (el)   el.textContent = label + '/тик';
@@ -62,10 +73,9 @@ document.getElementById('speedSlider').addEventListener('input', function () {
   clearTimeout(sliderDebounce);
   sliderDebounce = setTimeout(async () => {
     await api('POST', '/api/admin/set-tick-speed', { ms: parseInt(this.value) });
-  }, 400); // дебаунс: отправляем запрос только после остановки движения
+  }, 400);
 });
 
-// Синхронизация слайдера со всеми подключёнными клиентами
 socket.on('tickSpeedChanged', ({ ms }) => {
   setSliderValue(ms);
 });
@@ -78,7 +88,7 @@ function renderPlayers() {
   const players = allWallets.filter(w => w.username !== 'WARDEN');
 
   if (!players.length) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--mu);padding:20px">
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--mu);padding:20px">
       Данных пока нет. Игроки ещё не регистрировались.
     </td></tr>`;
     return;
@@ -95,6 +105,9 @@ function renderPlayers() {
       .filter(l => l.username === w.username)
       .reduce((s, l) => s + l.due, 0);
 
+    // Не даём кнопку удаления для системных аккаунтов
+    const isSystem = w.username === 'admin';
+
     return `<tr>
       <td><strong>${w.username}</strong></td>
       <td class="up">$${fmt(w.usd)}</td>
@@ -105,6 +118,7 @@ function renderPlayers() {
       <td><span class="badge ${debt > 0 ? 'badge-warn' : 'badge-ok'}">
         ${debt > 0 ? 'Долг $' + fmt(debt) : 'ОК ✓'}
       </span></td>
+      <td>${isSystem ? '' : `<button class="btn btn-dan btn-sm" onclick="deletePlayer('${w.username}')" title="Удалить аккаунт">🗑️</button>`}</td>
     </tr>`;
   }).join('');
 }
@@ -296,5 +310,5 @@ api('GET', '/auth/me').then(res => {
   const el = document.getElementById('adminName');
   if (el) el.textContent = res.username;
   loadAdminData();
-  loadTickSpeed(); // Загрузить текущую скорость с сервера
+  loadTickSpeed();
 });

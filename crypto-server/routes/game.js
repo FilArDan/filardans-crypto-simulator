@@ -138,9 +138,10 @@ router.get('/admin/tick-speed', auth, adminOnly, (req, res) => {
 
 router.post('/admin/set-tick-speed', auth, adminOnly, (req, res) => {
   try {
-    const ms = Math.max(5000, Math.min(120000, parseInt(req.body.ms) || 25000));
+    const ms = Math.max(500, Math.min(120000, parseInt(req.body.ms) || 25000));
     req.app.get('setTickSpeed')(ms);
-    const ev = { ts: Date.now(), text: `Админ изменил скорость тика: ${(ms/1000).toFixed(0)}с` };
+    const label = ms < 1000 ? ms + 'мс' : (ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 1) + 'с';
+    const ev = { ts: Date.now(), text: `Админ изменил скорость тика: ${label}` };
     db.events.insert(ev);
     req.app.get('io').emit('newEvent', ev);
     res.json({ ok: true, ms });

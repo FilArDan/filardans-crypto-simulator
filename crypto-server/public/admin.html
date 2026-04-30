@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crypto Server — Администратор</title>
+  <link rel="preconnect" href="https://api.fontshare.com" />
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo" style="background:linear-gradient(135deg,#d163a7,#7a39bb)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+        </svg>
+      </div>
+      <div><h1>Admin Panel</h1><p class="muted" id="adminName">—</p></div>
+    </div>
+
+    <div class="stats" style="grid-template-columns:1fr 1fr">
+      <div class="stat"><div class="label">Онлайн</div><div class="value" id="onlineCount">0</div></div>
+      <div class="stat"><div class="label">Сделок</div><div class="value" id="dealCount">0</div></div>
+      <div class="stat"><div class="label">Кредитов</div><div class="value" id="loanCount">0</div></div>
+    </div>
+
+    <div class="panel panel-pad stack">
+      <strong>Управление</strong>
+      <button class="btn btn-secondary btn-sm" id="tickBtn">🔄 Обновить цены</button>
+      <button class="btn btn-danger btn-sm" id="resetBtn">⚠️ Сбросить рынок</button>
+    </div>
+
+    <form class="panel panel-pad stack" id="setCashForm">
+      <strong>Установить баланс</strong>
+      <label>Игрок<select id="cashUsername"></select></label>
+      <label>Сумма (USD)<input id="cashAmount" type="number" value="10000" /></label>
+      <button class="btn btn-secondary btn-sm" type="submit">Применить</button>
+    </form>
+
+    <div class="panel panel-pad">
+      <strong>Котировки сейчас</strong>
+      <table style="margin-top:var(--sp3)">
+        <tbody id="priceRows"></tbody>
+      </table>
+    </div>
+
+    <div><button class="btn btn-secondary btn-sm" id="adminLogoutBtn" style="width:100%">Выйти</button></div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <span class="badge warn">Панель администратора</span>
+        <h2 style="font-size:var(--text-xl);margin-top:var(--sp2)">Управление сервером</h2>
+      </div>
+    </header>
+
+    <section class="panel panel-pad">
+      <div class="section-head"><strong>Балансы и портфели игроков</strong></div>
+      <table>
+        <thead><tr><th>Игрок</th><th>Наличные</th><th>Долг</th><th>Активы</th><th>Статус</th></tr></thead>
+        <tbody id="adminPlayersBody"></tbody>
+      </table>
+    </section>
+
+    <section class="panel panel-pad">
+      <div class="section-head"><strong>Активные кредиты</strong></div>
+      <table>
+        <thead><tr><th>Игрок</th><th>Остаток</th><th>%</th><th>Дата выдачи</th></tr></thead>
+        <tbody id="adminLoansBody"></tbody>
+      </table>
+    </section>
+
+    <section class="panel panel-pad">
+      <div class="section-head"><strong>Полная лента событий</strong></div>
+      <div class="feed" id="adminFeed"></div>
+    </section>
+  </main>
+</div>
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/admin.js"></script>
+</body>
+</html>

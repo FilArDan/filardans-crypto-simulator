@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crypto Server — Игрок</title>
+  <link rel="preconnect" href="https://api.fontshare.com" />
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+<!-- ── Экран входа ─────────────────────────────────────────────────────────── -->
+<div class="login-screen" id="loginScreen" style="display:flex">
+  <div class="login-box">
+    <div class="brand">
+      <div class="logo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 8.5 12 5l6 3.5v7L12 19l-6-3.5z"/><path d="M9.5 10.5h5"/><path d="M9.5 13.5h5"/>
+        </svg>
+      </div>
+      <div><h1>Crypto Server</h1><p class="muted">Мультиплеер — вход игрока</p></div>
+    </div>
+    <form class="stack" id="loginForm">
+      <label>Логин
+        <input id="usernameInput" type="text" placeholder="trader01" autocomplete="username" />
+      </label>
+      <label>Пароль
+        <input id="passwordInput" type="password" placeholder="••••••••" autocomplete="current-password" />
+      </label>
+      <div class="err-msg" id="loginError"></div>
+      <button class="btn btn-primary" type="submit">Войти</button>
+    </form>
+    <p class="muted" style="font-size:var(--text-xs);text-align:center">Регистрация отключена — используйте выданные администратором данные.</p>
+  </div>
+</div>
+
+<!-- ── Основное приложение ─────────────────────────────────────────────────── -->
+<div class="layout" id="appScreen" style="display:none">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 8.5 12 5l6 3.5v7L12 19l-6-3.5z"/><path d="M9.5 10.5h5"/><path d="M9.5 13.5h5"/>
+        </svg>
+      </div>
+      <div><h1>Crypto Server</h1><p class="muted" id="userName">—</p></div>
+    </div>
+
+    <div class="panel panel-pad stack">
+      <div class="stat"><div class="label">Наличные</div><div class="value" id="myCash">0 USD</div></div>
+      <div class="stat"><div class="label">Долг</div><div class="value" id="myDebt">0 USD</div></div>
+      <div class="stat"><div class="label">Капитал (нетто)</div><div class="value" id="netWorth">0 USD</div></div>
+    </div>
+
+    <div class="stats" style="grid-template-columns:1fr 1fr">
+      <div class="stat"><div class="label">Онлайн</div><div class="value" id="onlineCount">0</div></div>
+      <div class="stat"><div class="label">Сделок</div><div class="value" id="dealCount">0</div></div>
+      <div class="stat"><div class="label">Кредитов</div><div class="value" id="loanCount">0</div></div>
+    </div>
+
+    <div>
+      <button class="btn btn-secondary btn-sm" id="logoutBtn" style="width:100%">Выйти</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <span class="badge ok">Сервер работает</span>
+        <h2 style="font-size:var(--text-xl);margin-top:var(--sp2)">Торговая платформа</h2>
+      </div>
+    </header>
+
+    <!-- Котировки -->
+    <section class="panel panel-pad">
+      <div class="section-head"><strong>Рыночные котировки</strong><span class="muted" style="font-size:var(--text-xs)">обновляются каждые 25 сек.</span></div>
+      <div class="ticker" id="ticker"></div>
+    </section>
+
+    <!-- Торговые формы -->
+    <div class="forms2">
+      <form class="panel panel-pad stack" id="tradeForm">
+        <strong>Покупка / Продажа</strong>
+        <label>Актив<select id="tradeAsset"><option>BTC</option><option>ETH</option><option>SOL</option><option>ADA</option></select></label>
+        <label>Действие<select id="tradeType"><option value="buy">Купить</option><option value="sell">Продать</option></select></label>
+        <label>Количество<input id="tradeAmount" type="number" min="0.001" step="0.001" value="1" /></label>
+        <div class="err-msg" id="tradeError"></div>
+        <button class="btn btn-primary" type="submit">Провести сделку</button>
+      </form>
+
+      <form class="panel panel-pad stack" id="transferForm">
+        <strong>Перевод игроку</strong>
+        <label>Получатель<select id="transferTarget"></select></label>
+        <label>Сумма (USD)<input id="transferAmount" type="number" min="1" step="1" value="100" /></label>
+        <div class="err-msg" id="transferError"></div>
+        <button class="btn btn-secondary" type="submit">Отправить</button>
+      </form>
+
+      <form class="panel panel-pad stack" id="loanForm">
+        <strong>Взять кредит</strong>
+        <label>Сумма кредита<input id="loanAmount" type="number" min="100" step="50" value="500" /></label>
+        <p class="muted" style="font-size:var(--text-xs)">Ставка 8% единовременно. К возврату: сумма × 1.08.</p>
+        <div class="err-msg" id="loanError"></div>
+        <button class="btn btn-secondary" type="submit">Получить кредит</button>
+      </form>
+
+      <form class="panel panel-pad stack" id="repayForm">
+        <strong>Погасить кредит</strong>
+        <label>Сумма погашения<input id="repayAmount" type="number" min="50" step="50" value="100" /></label>
+        <div class="err-msg" id="repayError"></div>
+        <button class="btn btn-secondary" type="submit">Погасить</button>
+      </form>
+    </div>
+
+    <!-- Портфель -->
+    <section class="panel panel-pad">
+      <div class="section-head"><strong>Мой портфель</strong></div>
+      <table><thead><tr><th>Актив</th><th>Количество</th><th>Цена</th><th>Стоимость</th></tr></thead>
+        <tbody id="portfolioBody"></tbody></table>
+    </section>
+
+    <!-- Игроки и займы -->
+    <div class="forms2">
+      <section class="panel panel-pad">
+        <div class="section-head"><strong>Все игроки</strong></div>
+        <table><thead><tr><th>Игрок</th><th>Наличные</th><th>Долг</th><th>Статус</th></tr></thead>
+          <tbody id="playersBody"></tbody></table>
+      </section>
+      <section class="panel panel-pad">
+        <div class="section-head"><strong>Активные кредиты</strong></div>
+        <table><thead><tr><th>Игрок</th><th>Остаток</th><th>%</th><th>Дата</th></tr></thead>
+          <tbody id="loansBody"></tbody></table>
+      </section>
+    </div>
+
+    <!-- Лента -->
+    <section class="panel panel-pad">
+      <div class="section-head"><strong>Лента событий</strong></div>
+      <div class="feed" id="activityFeed"></div>
+    </section>
+  </main>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

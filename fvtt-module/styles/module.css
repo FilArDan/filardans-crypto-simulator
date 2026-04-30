@@ -1,0 +1,175 @@
+/* ===== КРИПТО-СИМУЛЯТОР ===== */
+:root {
+  --cs-bg:      #1a1918;
+  --cs-sf:      #222120;
+  --cs-sf2:     #2a2927;
+  --cs-bd:      #3a3836;
+  --cs-txt:     #cdccca;
+  --cs-mu:      #797876;
+  --cs-pri:     #01696f;
+  --cs-prih:    #0c4e54;
+  --cs-grn:     #437a22;
+  --cs-warn:    #d19900;
+  --cs-dan:     #a12c7b;
+  --cs-red:     #a13544;
+}
+
+.cs-panel { display:flex; flex-direction:column; height:100%; background:var(--cs-bg); color:var(--cs-txt); font-family:inherit; }
+
+/* Шапка */
+.cs-header { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:var(--cs-sf); border-bottom:1px solid var(--cs-bd); flex-shrink:0; }
+.cs-header-left { display:flex; align-items:center; gap:14px; }
+.cs-header-right { display:flex; gap:8px; }
+.cs-status { padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; }
+.cs-status.running { background:#437a2230; color:#6daa45; border:1px solid #437a22; }
+.cs-status.paused  { background:#d1990030; color:#e8af34; border:1px solid #d19900; }
+.cs-bank-info { font-size:12px; color:var(--cs-mu); }
+
+/* Кнопки */
+.cs-btn { padding:5px 12px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid var(--cs-bd); background:var(--cs-sf2); color:var(--cs-txt); cursor:pointer; transition:background .15s,color .15s; line-height:1.4; }
+.cs-btn:hover { background:var(--cs-bd); }
+.cs-btn-sm  { padding:4px 10px; font-size:11px; }
+.cs-btn-xs  { padding:2px 7px;  font-size:11px; border-radius:6px; }
+.cs-btn-green  { background:#437a2230; color:#6daa45; border-color:#437a22; }
+.cs-btn-green:hover { background:#437a22; color:#fff; }
+.cs-btn-warn   { background:#d1990020; color:#e8af34; border-color:#d19900; }
+.cs-btn-warn:hover  { background:#d19900; color:#000; }
+.cs-btn-danger { background:#a1354420; color:#dd6974; border-color:#a13544; }
+.cs-btn-danger:hover { background:#a13544; color:#fff; }
+.cs-btn-ghost  { background:transparent; border-color:var(--cs-bd); }
+
+/* Вкладки (переопределяем Foundry) */
+.cs-tabs { display:flex; gap:4px; padding:8px 12px 0; background:var(--cs-sf); border-bottom:1px solid var(--cs-bd); flex-shrink:0; }
+.cs-tabs .item { padding:6px 14px; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; color:var(--cs-mu); border:1px solid transparent; cursor:pointer; transition:all .15s; }
+.cs-tabs .item:hover { color:var(--cs-txt); background:var(--cs-sf2); }
+.cs-tabs .item.active { color:var(--cs-txt); background:var(--cs-bg); border-color:var(--cs-bd); border-bottom-color:var(--cs-bg); }
+
+/* Тело */
+.cs-body { flex:1; overflow-y:auto; padding:12px; }
+.cs-body .tab { display:none; }
+.cs-body .tab.active { display:block; }
+
+/* Рынок: сетка монет */
+.cs-coin-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; }
+.cs-coin-card { background:var(--cs-sf); border:1px solid var(--cs-bd); border-radius:12px; padding:14px; }
+.cs-coin-head { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
+.cs-coin-head strong { flex:1; font-size:13px; }
+.cs-dot { font-size:16px; }
+.cs-price { font-size:13px; font-weight:700; font-variant-numeric:tabular-nums; }
+.cs-supply { font-size:11px; color:var(--cs-mu); margin-top:8px; }
+
+.cs-shock-row { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:4px; margin-bottom:10px; }
+.cs-shock { padding:4px; font-size:11px; font-weight:700; border-radius:6px; border:none; cursor:pointer; transition:opacity .15s; }
+.cs-shock:hover { opacity:.8; }
+.cs-shock.up   { background:#437a2230; color:#6daa45; }
+.cs-shock.down { background:#a1354420; color:#dd6974; }
+
+.cs-slider-row { margin-bottom:8px; }
+.cs-slider-label { display:flex; justify-content:space-between; font-size:11px; color:var(--cs-mu); margin-bottom:3px; }
+.cs-slider-val { color:var(--cs-txt); font-weight:600; }
+.cs-slider-row input[type=range] { width:100%; accent-color:var(--cs-pri); }
+.cs-slider-hints { display:flex; justify-content:space-between; font-size:10px; color:var(--cs-mu); margin-top:2px; }
+
+.cs-input-row { display:flex; gap:6px; align-items:center; }
+.cs-input-row input { flex:1; padding:5px 8px; border-radius:8px; border:1px solid var(--cs-bd); background:var(--cs-bg); color:var(--cs-txt); font-size:12px; }
+.cs-input-row input:focus { outline:none; border-color:var(--cs-pri); }
+
+/* Игроки */
+.cs-transfer-box { background:var(--cs-sf); border:1px solid var(--cs-bd); border-radius:10px; padding:12px; margin-bottom:12px; font-size:12px; }
+.cs-transfer-row { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+.cs-transfer-row select, .cs-transfer-row input { padding:5px 8px; border-radius:8px; border:1px solid var(--cs-bd); background:var(--cs-bg); color:var(--cs-txt); font-size:12px; }
+
+.cs-player-card { background:var(--cs-sf); border:1px solid var(--cs-bd); border-radius:12px; padding:14px; margin-bottom:10px; }
+.cs-player-card.cs-frozen { border-color:#d19900; opacity:.7; }
+.cs-player-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.cs-player-dot  { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.cs-player-totals { margin-left:auto; font-size:12px; color:var(--cs-mu); }
+.cs-online  { color:#6daa45; font-size:12px; }
+.cs-offline { color:var(--cs-mu); font-size:12px; }
+.cs-badge   { padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; }
+.cs-badge.danger { background:#d1990020; color:#e8af34; border:1px solid #d19900; }
+
+.cs-holdings-grid { margin-top:10px; display:flex; flex-direction:column; gap:4px; }
+.cs-holding-row { display:flex; align-items:center; gap:8px; padding:4px 8px; border-radius:6px; background:var(--cs-bg); font-size:12px; }
+.cs-holding-row.cs-sanctioned { opacity:.5; text-decoration:line-through; }
+.cs-danger { color:#dd6974; }
+.cs-muted  { color:var(--cs-mu); }
+.cs-mono   { font-variant-numeric:tabular-nums; }
+
+/* Боты */
+.cs-bot-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
+.cs-bot-card { background:var(--cs-sf); border:1px solid var(--cs-bd); border-radius:12px; padding:14px; }
+.cs-bot-card.cs-bot-add { border-style:dashed; background:transparent; }
+.cs-bot-head { display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:13px; }
+.cs-bot-card label { display:block; font-size:11px; color:var(--cs-mu); margin:8px 0 3px; }
+.cs-bot-card input, .cs-bot-card select { width:100%; padding:5px 8px; border-radius:8px; border:1px solid var(--cs-bd); background:var(--cs-bg); color:var(--cs-txt); font-size:12px; }
+
+/* Таблица */
+.cs-table { width:100%; border-collapse:collapse; font-size:13px; }
+.cs-table th { text-align:left; padding:8px 10px; color:var(--cs-mu); font-weight:600; border-bottom:1px solid var(--cs-bd); }
+.cs-table td { padding:8px 10px; border-bottom:1px solid var(--cs-bd); }
+.cs-table .cs-tr-player { background:rgba(1,105,111,.08); }
+.cs-table tr:hover td { background:var(--cs-sf); }
+
+/* ===== ОКНО ИГРОКА ===== */
+.cs-player-header { padding:12px 14px; background:var(--cs-sf); border-bottom:1px solid var(--cs-bd); flex-shrink:0; }
+.cs-player-header.cs-frozen-header { border-bottom-color:#d19900; }
+.cs-freeze-banner { background:#d1990020; border:1px solid #d19900; color:#e8af34; border-radius:8px; padding:6px 12px; font-size:12px; font-weight:700; margin-bottom:10px; text-align:center; }
+.cs-loan-bar { margin-top:8px; padding:5px 10px; background:#a1354420; border:1px solid #a13544; border-radius:8px; font-size:12px; color:#dd6974; }
+
+.cs-stat-row { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+.cs-stat { display:flex; flex-direction:column; gap:2px; }
+.cs-stat-label { font-size:10px; color:var(--cs-mu); text-transform:uppercase; letter-spacing:.05em; }
+.cs-stat-val { font-size:13px; font-weight:700; font-variant-numeric:tabular-nums; }
+.cs-up { color:#6daa45; }
+.cs-dn { color:#dd6974; }
+
+/* Торговля */
+.cs-msg { padding:8px 12px; border-radius:8px; font-size:12px; font-weight:600; margin-bottom:10px; }
+.cs-msg-ok  { background:#437a2220; border:1px solid #437a22; color:#6daa45; }
+.cs-msg-err { background:#a1354420; border:1px solid #a13544; color:#dd6974; }
+
+.cs-trade-select { margin-bottom:12px; }
+.cs-trade-select label { display:block; font-size:11px; color:var(--cs-mu); margin-bottom:4px; }
+.cs-trade-select select { width:100%; padding:7px 10px; border-radius:8px; border:1px solid var(--cs-bd); background:var(--cs-bg); color:var(--cs-txt); font-size:13px; }
+
+.cs-coin-info { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.cs-price-big { font-size:18px; font-weight:700; font-variant-numeric:tabular-nums; margin-left:auto; }
+.cs-holding-info { font-size:12px; color:var(--cs-mu); margin-bottom:14px; line-height:1.8; }
+.cs-badge-sanction { padding:2px 8px; background:#a1354420; border:1px solid #a13544; color:#dd6974; border-radius:999px; font-size:11px; }
+
+.cs-trade-inputs { margin-bottom:14px; }
+.cs-input-group { display:flex; flex-direction:column; gap:4px; }
+.cs-input-group label { font-size:11px; color:var(--cs-mu); }
+.cs-input-group input { width:100%; padding:9px 12px; border-radius:10px; border:1px solid var(--cs-bd); background:var(--cs-bg); color:var(--cs-txt); font-size:16px; font-variant-numeric:tabular-nums; }
+.cs-input-group input:focus { outline:none; border-color:var(--cs-pri); }
+
+.cs-trade-btns { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:8px; }
+.cs-trade-btn { padding:10px 6px; border-radius:10px; border:none; font-size:13px; font-weight:700; cursor:pointer; transition:all .15s; }
+.cs-trade-btn:disabled { opacity:.4; cursor:not-allowed; }
+.cs-buy      { background:#437a22; color:#fff; }
+.cs-buy:hover:not(:disabled) { background:#2e5c10; }
+.cs-sell     { background:#a13544; color:#fff; }
+.cs-sell:hover:not(:disabled) { background:#782b33; }
+.cs-sell-all { background:var(--cs-sf2); color:var(--cs-mu); border:1px solid var(--cs-bd); }
+.cs-sell-all:hover:not(:disabled) { background:var(--cs-bd); color:var(--cs-txt); }
+.cs-fee-note { font-size:11px; color:var(--cs-mu); text-align:center; }
+
+/* Портфель */
+.cs-holdings-list { display:flex; flex-direction:column; gap:8px; }
+.cs-holding-card { background:var(--cs-sf); border:1px solid var(--cs-bd); border-radius:10px; padding:12px; }
+.cs-holding-card.cs-sanctioned { opacity:.5; border-color:#a13544; }
+.cs-holding-top { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
+.cs-holding-body { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+.cs-holding-row-data { display:flex; justify-content:space-between; font-size:12px; padding:2px 0; }
+.cs-mu { color:var(--cs-mu); }
+
+/* История */
+.cs-hist-list { display:flex; flex-direction:column; gap:6px; }
+.cs-hist-row { background:var(--cs-sf); border:1px solid var(--cs-bd); border-radius:8px; padding:10px 12px; }
+.cs-hist-type { font-size:12px; font-weight:700; }
+.cs-buy-label  { color:#6daa45; }
+.cs-sell-label { color:#dd6974; }
+.cs-hist-time  { float:right; font-size:11px; color:var(--cs-mu); }
+.cs-hist-detail { font-size:12px; color:var(--cs-mu); margin-top:4px; font-variant-numeric:tabular-nums; }
+.cs-empty { text-align:center; color:var(--cs-mu); padding:40px; font-size:13px; }

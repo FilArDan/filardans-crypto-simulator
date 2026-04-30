@@ -24,7 +24,7 @@ function showApp(username) {
   loadState();
 }
 
-// ── РЕНДЕР ──────────────────────────────────────────────────────────────────────────
+// ── РЕНДЕР ──────────────────────────────────────────────────────────────────────
 function renderTicker(p, prev) {
   prices = p;
   const el = document.getElementById('ticker');
@@ -36,15 +36,6 @@ function renderTicker(p, prev) {
       : '';
     return `<div class="tick ${dir}"><div class="coin">${coin}</div><div class="price">$${fmt(price, dec)}</div></div>`;
   }).join('');
-}
-
-// Список монет в форме торговли — заполняется динамически с сервера
-function renderTradeAssets(coins) {
-  const sel = document.getElementById('tradeAsset');
-  if (!sel || !coins || !coins.length) return;
-  const prev = sel.value;
-  sel.innerHTML = coins.map(c => `<option value="${c}">${c}</option>`).join('');
-  if (coins.includes(prev)) sel.value = prev;
 }
 
 // Таблица лидерборда — сортировка по usd, баланс виден
@@ -86,13 +77,13 @@ function renderTransferSelect(players) {
     .forEach(p => {
       const o = document.createElement('option');
       o.value = p.username;
-      o.textContent = p.username;
+      o.textContent = p.username; // баланс не показываем
       sc.appendChild(o);
     });
 }
 
 function renderPortfolio(wallet) {
-  const coins = Object.keys(prices).length ? Object.keys(prices) : ['BTC','ETH','SOL','XRP','DOGE'];
+  const coins = ['BTC','ETH','SOL','XRP','DOGE'];
   const body = document.getElementById('portfolioBody');
   if (!body) return;
   const rows = coins.filter(c => (wallet[c] || 0) > 0).map(c => {
@@ -107,14 +98,6 @@ function renderPortfolio(wallet) {
   if (el) el.textContent = '$' + fmt(wallet.usd);
 }
 
-function renderTradeAssets(coins) {
-  const sel = document.getElementById('tradeAsset');
-  if (!sel || !coins) return;
-  const prev = sel.value;
-  sel.innerHTML = coins.map(c => `<option value="${c}">${c}</option>`).join('');
-  if (coins.includes(prev)) sel.value = prev;
-}
-
 function renderFeed(events) {
   const feed = document.getElementById('activityFeed');
   if (!feed) return;
@@ -125,7 +108,7 @@ function renderFeed(events) {
   }).join('');
 }
 
-// ── ЗАГРУЗКА СОСТОЯНИЯ ───────────────────────────────────────────────────────────────
+// ── ЗАГРУЗКА СОСТОЯНИЯ ─────────────────────────────────────────────────────────
 async function loadState() {
   const data = await api('GET', '/api/state');
   if (data.error) return;
@@ -133,15 +116,11 @@ async function loadState() {
   renderTicker(data.prices);
   renderPortfolio(data.wallet);
   renderFeed(data.events || []);
-  if (data.coins) renderTradeAssets(data.coins);
   renderLeaderboard(data.players);
   renderTransferSelect(data.players);
   addPricePoint(data.prices);
 
-  // Обновить список монет в форме торговли
-  if (data.coins) renderTradeAssets(data.coins);
-
-  const coinsVal = Object.keys(data.prices)
+  const coinsVal = ['BTC','ETH','SOL','XRP','DOGE']
     .reduce((s, c) => s + (data.wallet[c] || 0) * (data.prices[c] || 0), 0);
   const debt = (data.loans || []).reduce((s, l) => s + l.due, 0);
 
@@ -153,7 +132,7 @@ async function loadState() {
   if (elDebt)  elDebt.textContent  = debt > 0 ? '$' + fmt(debt) : '—';
 }
 
-// ── ЛОГИН ──────────────────────────────────────────────────────────────────────────────────
+// ── ЛОГИН ──────────────────────────────────────────────────────────────────────────────
 document.getElementById('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
   const username = document.getElementById('usernameInput').value.trim();
@@ -162,7 +141,6 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
   err.textContent = '';
   const res = await api('POST', '/auth/login', { username, password });
   if (res.error) { err.textContent = res.error; return; }
-  // Админ переходит в админку только по прямому нажатию Кнопки входа
   if (res.role === 'admin') { window.location.href = '/admin.html'; return; }
   showApp(res.username);
 });
@@ -172,7 +150,7 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
   location.reload();
 });
 
-// ── ТОРГОВЛЯ ────────────────────────────────────────────────────────────────────────────
+// ── ТОРГОВЛЯ ───────────────────────────────────────────────────────────────────────
 document.getElementById('tradeForm').addEventListener('submit', async e => {
   e.preventDefault();
   const coin   = document.getElementById('tradeAsset').value;
@@ -186,7 +164,7 @@ document.getElementById('tradeForm').addEventListener('submit', async e => {
   loadState();
 });
 
-// ── ПЕРЕВОД ─────────────────────────────────────────────────────────────────────────────
+// ── ПЕРЕВОД ───────────────────────────────────────────────────────────────────────
 document.getElementById('transferForm').addEventListener('submit', async e => {
   e.preventDefault();
   const to     = document.getElementById('transferTarget').value;
@@ -199,7 +177,7 @@ document.getElementById('transferForm').addEventListener('submit', async e => {
   loadState();
 });
 
-// ── КРЕДИТ ─────────────────────────────────────────────────────────────────────────────────
+// ── КРЕДИТ ──────────────────────────────────────────────────────────────────────────
 document.getElementById('loanForm').addEventListener('submit', async e => {
   e.preventDefault();
   const amount = parseFloat(document.getElementById('loanAmount').value);
@@ -221,7 +199,7 @@ document.getElementById('repayBtn').addEventListener('click', async () => {
   loadState();
 });
 
-// ── SOCKET ────────────────────────────────────────────────────────────────────────────────────
+// ── SOCKET ──────────────────────────────────────────────────────────────────────────────
 let prevPrices = null;
 socket.on('priceUpdate', p => {
   renderTicker(p, prevPrices);
@@ -244,15 +222,7 @@ socket.on('walletUpdate', data => {
   loadState();
 });
 
-// Обновление списка монет в реалтайм (админ добавил / удалил монету)
-socket.on('coinsUpdated', data => {
-  if (data.coins) {
-    renderTradeAssets(data.coins);
-    loadState(); // обновляет тикер, портфель, кошелёк (возврат USD)
-  }
-});
-
-// ── ТЕМА ────────────────────────────────────────────────────────────────────────────────────
+// ── ТЕМА ──────────────────────────────────────────────────────────────────────────────
 (function() {
   const btn = document.getElementById('themeBtn');
   const html = document.documentElement;
@@ -268,10 +238,10 @@ socket.on('coinsUpdated', data => {
   }
 })();
 
-// ── ПРОВЕРКА СЕССИИ ─────────────────────────────────────────────────────────────────────
-// Восстанавливаем сессию только для игроков — админ должен войти через форму входа вручную
+// ── ПРОВЕРКА СЕССИИ ───────────────────────────────────────────────────────────────────
 api('GET', '/auth/me').then(res => {
-  if (res.username && res.role !== 'admin') {
+  if (res.username) {
+    if (res.role === 'admin') { window.location.href = '/admin.html'; return; }
     showApp(res.username);
   }
 });

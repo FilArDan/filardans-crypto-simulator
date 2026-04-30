@@ -1,19 +1,19 @@
+/* ===== СЕРВЕРНЫЕ БОТЫ (порт из singleplayer/js/bots.js) ===== */
+
 const { db } = require('../db');
 
 const FEE = 0.001;
-const BOT_EMOJI = { bull: '🐂', fox: '🦊', croc: '🐊' };
+const BOT_EMOJI = { bull: '\uD83D\uDC02', fox: '\uD83E\uDD8A', croc: '\uD83D\uDC0A' };
 const HIST_LEN = 30;
 const priceHistory = {};
 
-function round2(n) {
-  return Math.round((Number(n) || 0) * 100) / 100;
-}
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 
 function sanitizeBot(bot) {
   return {
     name:   String(bot.name || '').trim(),
-    type:   ['bull', 'fox', 'croc'].includes(bot.type) ? bot.type : 'fox',
-    usd:    Number(bot.usd) || 0,
+    type:   ['bull','fox','croc'].includes(bot.type) ? bot.type : 'fox',
+    usd:    Number(bot.usd)  || 0,
     held:   (bot.held   && typeof bot.held   === 'object') ? bot.held   : {},
     avgP:   (bot.avgP   && typeof bot.avgP   === 'object') ? bot.avgP   : {},
     target: (bot.target && typeof bot.target === 'object') ? bot.target : {},
@@ -48,7 +48,7 @@ function botPortfolioValue(bot, prices) {
   return total;
 }
 
-// -- 🐂 Агрессор --
+// ── \uD83D\uDC02 Агрессор ──────────────────────────────────────────────────────────────────────────────
 async function bullTick(bot, coins, prices) {
   const coin = coins[Math.floor(Math.random() * coins.length)];
   const price = prices[coin];
@@ -77,7 +77,7 @@ async function bullTick(bot, coins, prices) {
   }
 }
 
-// -- 🦊 Осторожный --
+// ── \uD83E\uDD8A Осторожный ────────────────────────────────────────────────────────────────────────────
 async function foxTick(bot, coins, prices) {
   if (Math.random() > 0.40) return;
   const coin = coins[Math.floor(Math.random() * coins.length)];
@@ -107,13 +107,13 @@ async function foxTick(bot, coins, prices) {
   }
 }
 
-// -- 🐊 Накопитель --
+// ── \uD83D\uDC0A Накопитель ────────────────────────────────────────────────────────────────────────────────────────────────
 async function crocTick(bot, coins, prices) {
   const coin = coins[Math.floor(Math.random() * coins.length)];
   const price = prices[coin];
   if (!price) return;
-  if (!bot.target)       bot.target       = {};
-  if (!bot.target[coin]) bot.target[coin] = 1.25 + Math.random() * 0.20;
+  if (!bot.target)        bot.target        = {};
+  if (!bot.target[coin])  bot.target[coin]  = 1.25 + Math.random() * 0.20;
 
   if (Math.random() < 0.65) {
     const spend = bot.usd * (0.01 + Math.random() * 0.03);
@@ -144,10 +144,9 @@ async function crocTick(bot, coins, prices) {
   }
 }
 
-// -- DB helpers --
-async function listBotsRaw() {
-  const bots = await db.bots.find({}).sort({ name: 1 });
-  return bots.map(sanitizeBot);
+// ── DB helpers ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+function listBotsRaw() {
+  return db.bots.find({});
 }
 
 async function replaceBotState(name, state) {
@@ -155,7 +154,7 @@ async function replaceBotState(name, state) {
   await db.bots.update({ name }, { $set: { usd: clean.usd, held: clean.held, avgP: clean.avgP, target: clean.target } });
 }
 
-// -- Главный тик --
+// ── Главный тик ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 async function botTick(io, currentPrices) {
   if (!currentPrices || Object.keys(currentPrices).length === 0) return;
   const coins = Object.keys(currentPrices);
@@ -166,32 +165,35 @@ async function botTick(io, currentPrices) {
     const b = sanitizeBot(bot);
     try {
       if      (b.type === 'bull') await bullTick(b, coins, prices);
-      else if (b.type === 'fox')  await foxTick(b, coins, prices);
+      else if (b.type === 'fox')  await foxTick (b, coins, prices);
       else if (b.type === 'croc') await crocTick(b, coins, prices);
       await replaceBotState(b.name, b);
     } catch (_) {}
   }
 }
 
-// -- Статистика --
+// ── Статистика ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 async function getBotStats(prices) {
   const bots = await listBotsRaw();
-  return bots.map(bot => ({
-    username: bot.name,
-    isBot:    true,
-    botType:  bot.type,
-    botEmoji: BOT_EMOJI[bot.type] || '🤖',
-    usd:      round2(bot.usd),
-    total:    round2(botPortfolioValue(bot, prices || {})),
-    held:     { ...(bot.held || {}) },
-  }));
+  return bots.map(bot => {
+    const b = sanitizeBot(bot);
+    return {
+      username: b.name,
+      isBot:    true,
+      botType:  b.type,
+      botEmoji: BOT_EMOJI[b.type] || '\uD83E\uDD16',
+      usd:      round2(b.usd),
+      total:    round2(botPortfolioValue(b, prices || {})),
+      held:     { ...(b.held || {}) },
+    };
+  });
 }
 
-// -- CRUD (для админки) --
+// ── CRUD (для админки) ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 async function createBot({ name, type, usd }) {
   const cleanName = String(name || '').trim();
   if (!cleanName) throw new Error('Укажите имя бота');
-  if (!['bull', 'fox', 'croc'].includes(type)) throw new Error('Неизвестный пресет');
+  if (!['bull','fox','croc'].includes(type)) throw new Error('Неизвестный пресет');
   const exists = await db.bots.findOne({ name: cleanName });
   if (exists) throw new Error('Бот с таким именем уже существует');
   const bot = sanitizeBot({ name: cleanName, type, usd: Number(usd) || 0, held: {}, avgP: {}, target: {} });
@@ -211,7 +213,7 @@ async function setBotCash(name, usd) {
 
 async function updateBotPreset(name, type) {
   const n = String(name || '').trim();
-  if (!['bull', 'fox', 'croc'].includes(type)) throw new Error('Неизвестный пресет');
+  if (!['bull','fox','croc'].includes(type)) throw new Error('Неизвестный пресет');
   await db.bots.update({ name: n }, { $set: { type, target: {} } });
   return db.bots.findOne({ name: n });
 }

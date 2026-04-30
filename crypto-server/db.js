@@ -39,6 +39,7 @@ const INITIAL_USERS = [
   { username: 'Юра',         password: 'delta404',    role: 'player', startUsd: 15000 },
 ];
 
+// Базовые (несъёмные) монеты
 const COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 
 const COIN_META = {
@@ -66,11 +67,14 @@ async function initDb() {
       const hash = bcrypt.hashSync(u.password, 10);
       await db.users.insert({ username: u.username, passwordHash: hash, role: u.role });
       if (u.role === 'player') {
-        await db.wallets.insert({ username: u.username, usd: u.startUsd, holdings: {} });
+        const walletDoc = { username: u.username, usd: u.startUsd };
+        for (const coin of COINS) walletDoc[coin] = 0;
+        await db.wallets.insert(walletDoc);
       }
     }
   }
 
+  // Seed ботов (только если база пустая)
   const botCount = await db.bots.count({});
   if (botCount === 0) {
     for (const bot of DEFAULT_BOTS) {

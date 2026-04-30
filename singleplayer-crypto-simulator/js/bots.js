@@ -53,7 +53,7 @@ function getAvgPrice(sym, n){
   const hist = st.pd[sym];
   if(!hist || hist.length < 2) return COINS[sym].price;
   const slice = hist.slice(-n);
-  return slice.reduce((s, p) => s + (p.price !== undefined ? p.price : p), 0) / slice.length;
+  return slice.reduce((s, p) => s + (typeof p === 'number' ? p : (p.price ?? 0)), 0) / slice.length;
 }
 
 /* --- 🐂 Агрессор --- */
@@ -67,7 +67,7 @@ function bullTick(bot){
   const belowBase = c.price < c.basePrice;
   const buyChance = belowBase ? 0.95 : 0.85; // было просто 0.85
 
-  if(c.price < avgLong * 0.98 && roll < 0.85){
+  if(c.price < avgLong * 0.98 && roll < buyChance){
     // Дёшево — покупаем агрессивно
     const spend = bot.cash * (0.30 + Math.random() * 0.30);
     if(spend < 1) return;

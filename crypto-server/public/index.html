@@ -69,8 +69,21 @@
     <div class="ticker" id="ticker"></div>
   </div>
 
+  <!-- CHART -->
+  <div class="card section-gap">
+    <h2>📊 График цены</h2>
+    <div class="tabs" id="chartTabs"></div>
+    <div class="chart-ranges">
+      <button class="chart-range-btn on" data-range="40" onclick="setChartRange(40)">40 тиков</button>
+      <button class="chart-range-btn" data-range="100" onclick="setChartRange(100)">100</button>
+      <button class="chart-range-btn" data-range="0" onclick="setChartRange(0)">Всё</button>
+    </div>
+    <div id="cinfo" class="muted" style="font-size:13px;margin-bottom:10px">Ожидание данных…</div>
+    <div class="cw"><canvas id="chart"></canvas></div>
+  </div>
+
   <!-- TRADE + TRANSFER -->
-  <div class="g2">
+  <div class="g2 section-gap">
     <form class="card stack" id="tradeForm">
       <h2>💱 Покупка / Продажа</h2>
       <div class="fld"><label>Монета<select id="tradeAsset"><option>BTC</option><option>ETH</option><option>SOL</option><option>XRP</option><option>DOGE</option></select></label></div>
@@ -128,7 +141,9 @@
 
 </div><!-- /.app -->
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="/socket.io/socket.io.js"></script>
+<script src="/js/chart.js"></script>
 <script src="/js/app.js"></script>
 </body>
 </html>

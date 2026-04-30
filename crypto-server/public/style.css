@@ -81,7 +81,7 @@ h1{font-size:clamp(20px,3vw,28px);font-weight:800;letter-spacing:-.5px;}
 .val{font-size:clamp(17px,2vw,24px);font-weight:800;font-variant-numeric:tabular-nums;}
 
 /* ===== TICKER ===== */
-.ticker-wrap{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);padding:16px 18px;margin-bottom:20px;}
+.ticker-wrap{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);padding:16px 18px;margin-bottom:0;}
 .ticker-wrap h2{font-size:15px;font-weight:700;margin-bottom:12px;}
 .ticker{display:flex;flex-wrap:wrap;gap:10px;}
 .tick{background:var(--sf2);border:1px solid var(--bd);border-radius:12px;padding:10px 16px;min-width:110px;}
@@ -89,6 +89,17 @@ h1{font-size:clamp(20px,3vw,28px);font-weight:800;letter-spacing:-.5px;}
 .tick .price{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:2px;}
 .tick.up .price{color:var(--ok);}
 .tick.dn .price{color:var(--dan);}
+
+/* ===== CHART ===== */
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+.ctab{border:1px solid var(--bd);background:var(--sf2);border-radius:999px;padding:8px 14px;min-height:36px;font-size:13px;font-weight:600;transition:background .15s,color .15s;}
+.ctab.on{background:var(--pri);color:#fff;border-color:transparent;}
+.ctab:hover:not(.on){background:var(--sf3);}
+.chart-ranges{display:flex;gap:6px;margin-bottom:8px;}
+.chart-range-btn{padding:4px 12px;min-height:26px;border:1px solid var(--bd);background:var(--sf2);border-radius:999px;font-size:12px;font-weight:600;color:var(--mu);transition:background .15s,color .15s;}
+.chart-range-btn:hover{background:var(--sf3);color:var(--txt);}
+.chart-range-btn.on{background:var(--pri);color:#fff;border-color:transparent;}
+.cw{position:relative;height:280px;}
 
 /* ===== GRID ===== */
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
@@ -99,12 +110,6 @@ h1{font-size:clamp(20px,3vw,28px);font-weight:800;letter-spacing:-.5px;}
 
 /* ===== TRADE FORM ===== */
 .fld{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:500;}
-
-/* ===== ILIST ===== */
-.ilist{display:grid;gap:8px;max-height:320px;overflow:auto;}
-.iitem{background:var(--sf2);border:1px solid var(--bd);border-radius:12px;padding:11px 14px;}
-.ir{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;}
-.sm{font-size:12px;color:var(--mu);margin-top:4px;}
 
 /* ===== TABLE ===== */
 table{width:100%;border-collapse:collapse;font-size:13px;}

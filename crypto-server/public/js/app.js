@@ -20,16 +20,20 @@ function showApp(username) {
   document.getElementById('playerName').textContent = username;
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('appScreen').classList.remove('hidden');
+  initChart();
   loadState();
 }
 
-function renderTicker(p) {
+function renderTicker(p, prev) {
   prices = p;
   const el = document.getElementById('ticker');
   if (!el) return;
   el.innerHTML = Object.entries(p).map(([coin, price]) => {
     const dec = (coin === 'DOGE' || coin === 'XRP') ? 4 : 2;
-    return `<div class="tick"><div class="coin">${coin}</div><div class="price">$${fmt(price, dec)}</div></div>`;
+    const dir = prev && prev[coin] != null
+      ? (price > prev[coin] ? 'up' : price < prev[coin] ? 'dn' : '')
+      : '';
+    return `<div class="tick ${dir}"><div class="coin">${coin}</div><div class="price">$${fmt(price, dec)}</div></div>`;
   }).join('');
 }
 
@@ -45,7 +49,6 @@ function renderPortfolio(wallet) {
   body.innerHTML = rows.length
     ? rows.join('')
     : '<tr><td colspan="4" style="color:var(--mu);text-align:center;padding:16px">Нет активов</td></tr>';
-
   const el = document.getElementById('sCash');
   if (el) el.textContent = '$' + fmt(wallet.usd);
 }
@@ -87,6 +90,9 @@ async function loadState() {
   renderTicker(data.prices);
   renderPortfolio(data.wallet);
   renderFeed(data.events || []);
+
+  // Засеиваем начальную точку истории при первой загрузке
+  addPricePoint(data.prices);
 
   const coinsVal = ['BTC','ETH','SOL','XRP','DOGE']
     .reduce((s, c) => s + (data.wallet[c] || 0) * (data.prices[c] || 0), 0);
@@ -172,7 +178,12 @@ document.getElementById('repayBtn').addEventListener('click', async () => {
 });
 
 // ── SOCKET ─────────────────────────────────────────────────────────────
-socket.on('priceUpdate', p => renderTicker(p));
+let prevPrices = null;
+socket.on('priceUpdate', p => {
+  renderTicker(p, prevPrices);
+  addPricePoint(p);   // ← кормим чарт каждым обновлением
+  prevPrices = { ...p };
+});
 
 socket.on('newEvent', ev => {
   const feed = document.getElementById('activityFeed');
@@ -202,6 +213,7 @@ socket.on('walletUpdate', data => {
       dark = !dark;
       html.setAttribute('data-theme', dark ? 'dark' : 'light');
       btn.textContent = dark ? '☀️' : '🌙';
+      renderChart(); // перерисовать чарт с новой темой
     });
   }
 })();

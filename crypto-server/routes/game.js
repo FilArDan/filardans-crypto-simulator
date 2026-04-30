@@ -23,8 +23,8 @@ router.get('/state', auth, async (req, res) => {
     const events = await db.events.find({}).sort({ ts: -1 }).limit(25);
 
     const allWallets = await db.wallets.find({ username: { $ne: 'admin' } });
-    // Не передаём usd других игроков клиенту — только имя
-    const players = allWallets.map(w => ({ username: w.username }));
+    // Передаём usd для рейтинга, но не показываем в дропдауне перевода (контроль на стороне клиента)
+    const players = allWallets.map(w => ({ username: w.username, usd: w.usd }));
 
     res.json({ prices, wallet, loans, events, players });
   } catch(e) { res.status(500).json({ error: e.message }); }

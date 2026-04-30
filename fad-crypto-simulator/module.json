@@ -10,10 +10,5 @@
   "authors": [{ "name": "FilArDan" }],
   "esmodules": ["scripts/main.js"],
   "styles": ["styles/module.css"],
-  "languages": [{
-    "lang": "ru",
-    "name": "Русский",
-    "path": "lang/ru.json"
-  }],
   "socket": true
 }

@@ -98,6 +98,14 @@ function renderPortfolio(wallet) {
   if (el) el.textContent = '$' + fmt(wallet.usd);
 }
 
+function renderTradeAssets(coins) {
+  const sel = document.getElementById('tradeAsset');
+  if (!sel || !coins) return;
+  const prev = sel.value;
+  sel.innerHTML = coins.map(c => `<option value="${c}">${c}</option>`).join('');
+  if (coins.includes(prev)) sel.value = prev;
+}
+
 function renderFeed(events) {
   const feed = document.getElementById('activityFeed');
   if (!feed) return;
@@ -116,6 +124,7 @@ async function loadState() {
   renderTicker(data.prices);
   renderPortfolio(data.wallet);
   renderFeed(data.events || []);
+  if (data.coins) renderTradeAssets(data.coins);
   renderLeaderboard(data.players);
   renderTransferSelect(data.players);
   addPricePoint(data.prices);
@@ -240,8 +249,7 @@ socket.on('walletUpdate', data => {
 
 // ── ПРОВЕРКА СЕССИИ ───────────────────────────────────────────────────────────────────
 api('GET', '/auth/me').then(res => {
-  if (res.username) {
-    if (res.role === 'admin') { window.location.href = '/admin.html'; return; }
+  if (res.username && res.role !== 'admin') {
     showApp(res.username);
   }
 });

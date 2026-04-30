@@ -2,7 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const { db, COINS, getAllCoins } = require('../db');
 const { tick, applyTradePressure } = require('../game/market');
-const { getBotStats, listBotsRaw, createBot, deleteBot, setBotCash, updateBotPreset } = require('../game/bots');
+const { getBotStats, createBot, deleteBot, setBotCash, updateBotPreset } = require('../game/bots');
 
 function auth(req, res, next) {
   if (!req.session.username) return res.status(401).json({ error: 'Не авторизован' });

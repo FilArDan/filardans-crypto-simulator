@@ -1,0 +1,14 @@
+{
+  "id": "crypto-simulator",
+  "title": "FilArDan's Crypto Simulator",
+  "description": "Small, but versatile simulator for all of your economic needs: Cryptocurrencies, investments, loans etc. Ideal for modern or sci-fi settings.",
+  "version": "0.1.0",
+  "compatibility": {
+    "minimum": "13",
+    "verified": "14"
+  },
+  "authors": [{ "name": "FilArDan" }],
+  "esmodules": ["scripts/main.js"],
+  "styles":    ["styles/module.css"],
+  "socket": true
+}

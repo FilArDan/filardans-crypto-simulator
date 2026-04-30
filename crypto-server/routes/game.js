@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { db, COINS, getAllCoins } = require('../db');
+const { db, COINS, COIN_META, getAllCoins } = require('../db');
 const { tick, applyTradePressure } = require('../game/market');
 const { getBotStats } = require('../game/bots');
 
@@ -254,7 +254,6 @@ router.post('/admin/coin/create', auth, adminOnly, async (req, res) => {
     const isBase = COINS.includes(ticker);
     const baseMeta = isBase ? COIN_META[ticker] : null;
 
-    // Если это базовая монета — восстанавливаем с дефолтными значениями
     const startPrice  = Math.max(0.0001, parseFloat(price)  || (baseMeta?.basePrice ?? 1));
     const startVol    = Math.max(0.005, Math.min(0.30, parseFloat(vol)   || (baseMeta?.vol   ?? 0.05)));
     const startDrift  = Math.max(-0.10, Math.min(0.10, parseFloat(drift) || 0));
@@ -265,7 +264,6 @@ router.post('/admin/coin/create', auth, adminOnly, async (req, res) => {
     await db.prices.insert({ coin: ticker, price: startPrice, basePrice: startPrice, vol: startVol, drift: startDrift, supply: startSupply });
     await db.wallets.update({}, { $set: { [ticker]: 0 } }, { multi: true });
 
-    // Кастомные монеты регистрируем в customCoins (базовые уже известны по COIN_META)
     if (!isBase) {
       await db.customCoins.insert({ ticker, name: coinName, emoji: coinEmoji, createdAt: Date.now() });
     }
@@ -293,7 +291,6 @@ router.delete('/admin/coin/:ticker', auth, adminOnly, async (req, res) => {
     const priceDoc = await db.prices.findOne({ coin: ticker });
     if (!priceDoc) return res.status(404).json({ error: 'Монета не найдена' });
 
-    // Возвращаем USD игрокам за их запасы
     const curPrice = priceDoc.price || 0;
     const wallets  = await db.wallets.find({});
     for (const w of wallets) {
@@ -304,7 +301,6 @@ router.delete('/admin/coin/:ticker', auth, adminOnly, async (req, res) => {
       }
     }
 
-    // Удаляем из prices и из customCoins (если там есть)
     await db.prices.remove({ coin: ticker }, {});
     await db.customCoins.remove({ ticker }, {});
 
@@ -339,12 +335,12 @@ router.get('/admin/tick-speed', auth, adminOnly, (req, res) => {
 router.post('/admin/set-tick-speed', auth, adminOnly, (req, res) => {
   try {
     const ms = Math.max(500, Math.min(120000, parseInt(req.body.ms) || 25000));
+    // setTickSpeed уже делает io.emit('tickSpeedChanged') — не дублируем
     req.app.get('setTickSpeed')(ms);
     const label = ms < 1000 ? ms + 'мс' : (ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 1) + 'с';
     const ev = { ts: Date.now(), text: `Админ изменил скорость тика: ${label}` };
     db.events.insert(ev);
     req.app.get('io').emit('newEvent', ev);
-    req.app.get('io').emit('tickSpeedChanged', { ms });
     res.json({ ok: true, ms });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });

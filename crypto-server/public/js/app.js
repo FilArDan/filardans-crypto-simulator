@@ -1,6 +1,7 @@
 const socket = io();
 let myUsername = '';
 let prices = {};
+let currentCoins = [];
 
 async function api(method, path, body) {
   const r = await fetch(path, {
@@ -30,7 +31,7 @@ function renderTicker(p, prev) {
   const el = document.getElementById('ticker');
   if (!el) return;
   el.innerHTML = Object.entries(p).map(([coin, price]) => {
-    const dec = (coin === 'DOGE' || coin === 'XRP') ? 4 : 2;
+    const dec = price < 1 ? 4 : 2;
     const dir = prev && prev[coin] != null
       ? (price > prev[coin] ? 'up' : price < prev[coin] ? 'dn' : '')
       : '';
@@ -77,18 +78,18 @@ function renderTransferSelect(players) {
     .forEach(p => {
       const o = document.createElement('option');
       o.value = p.username;
-      o.textContent = p.username; // баланс не показываем
+      o.textContent = p.username;
       sc.appendChild(o);
     });
 }
 
-function renderPortfolio(wallet) {
-  const coins = ['BTC','ETH','SOL','XRP','DOGE'];
+function renderPortfolio(wallet, coins) {
+  const activeCoinsList = coins || currentCoins;
   const body = document.getElementById('portfolioBody');
   if (!body) return;
-  const rows = coins.filter(c => (wallet[c] || 0) > 0).map(c => {
+  const rows = activeCoinsList.filter(c => (wallet[c] || 0) > 0).map(c => {
     const val = (wallet[c] || 0) * (prices[c] || 0);
-    const dec = (c === 'DOGE' || c === 'XRP') ? 4 : 2;
+    const dec = (prices[c] || 0) < 1 ? 4 : 2;
     return `<tr><td>${c}</td><td>${fmt(wallet[c], 5)}</td><td>$${fmt(prices[c] || 0, dec)}</td><td>$${fmt(val)}</td></tr>`;
   });
   body.innerHTML = rows.length
@@ -108,19 +109,30 @@ function renderFeed(events) {
   }).join('');
 }
 
+function renderTradeAssets(coins) {
+  const sel = document.getElementById('tradeAsset');
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = coins.map(c => `<option value="${c}">${c}</option>`).join('');
+  if (coins.includes(prev)) sel.value = prev;
+}
+
 // ── ЗАГРУЗКА СОСТОЯНИЯ ─────────────────────────────────────────────────────────
 async function loadState() {
   const data = await api('GET', '/api/state');
   if (data.error) return;
 
+  if (data.coins) currentCoins = data.coins;
+
   renderTicker(data.prices);
-  renderPortfolio(data.wallet);
+  renderPortfolio(data.wallet, data.coins);
   renderFeed(data.events || []);
   renderLeaderboard(data.players);
   renderTransferSelect(data.players);
+  renderTradeAssets(data.coins || currentCoins);
   addPricePoint(data.prices);
 
-  const coinsVal = ['BTC','ETH','SOL','XRP','DOGE']
+  const coinsVal = (data.coins || currentCoins)
     .reduce((s, c) => s + (data.wallet[c] || 0) * (data.prices[c] || 0), 0);
   const debt = (data.loans || []).reduce((s, l) => s + l.due, 0);
 
@@ -219,6 +231,13 @@ socket.on('newEvent', ev => {
 
 socket.on('walletUpdate', data => {
   if (data.username === myUsername) renderPortfolio(data.wallet);
+  loadState();
+});
+
+// Монета создана или удалена — обновить список активов и весь стейт
+socket.on('coinsUpdated', ({ coins }) => {
+  currentCoins = coins;
+  renderTradeAssets(coins);
   loadState();
 });
 

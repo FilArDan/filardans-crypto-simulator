@@ -35,6 +35,7 @@ app.set('setTickSpeed', (ms) => {
   clearInterval(marketTimer);
   tickSpeedMs = ms;
   marketTimer = setInterval(marketTick, tickSpeedMs);
+  // Эмитируем tickSpeedChanged только здесь — роут /admin/set-tick-speed не дублирует
   io.emit('tickSpeedChanged', { ms: tickSpeedMs });
 });
 app.set('getTickSpeed', () => tickSpeedMs);

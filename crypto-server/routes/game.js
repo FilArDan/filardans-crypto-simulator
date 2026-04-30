@@ -185,6 +185,7 @@ router.get('/admin/coins', auth, adminOnly, async (req, res) => {
     const customTickers = new Set(custom.map(c => c.ticker));
     const meta = {};
     docs.forEach(d => {
+      const isBase = COINS.includes(d.coin);
       meta[d.coin] = {
         price:     d.price,
         basePrice: d.basePrice,
@@ -192,8 +193,13 @@ router.get('/admin/coins', auth, adminOnly, async (req, res) => {
         drift:     d.drift,
         supply:    d.supply,
         isCustom:  customTickers.has(d.coin),
-        name:      custom.find(c => c.ticker === d.coin)?.name || d.coin,
-        emoji:     custom.find(c => c.ticker === d.coin)?.emoji || '🪙',
+        isBase,
+        name:  isBase
+          ? (COIN_META[d.coin]?.name  || d.coin)
+          : (custom.find(c => c.ticker === d.coin)?.name  || d.coin),
+        emoji: isBase
+          ? (COIN_META[d.coin]?.emoji || '🪙')
+          : (custom.find(c => c.ticker === d.coin)?.emoji || '🪙'),
       };
     });
     res.json(meta);
@@ -245,19 +251,29 @@ router.post('/admin/coin/create', auth, adminOnly, async (req, res) => {
     const allCoins = await getAllCoins();
     if (allCoins.includes(ticker)) return res.json({ error: `Монета ${ticker} уже существует` });
 
-    const startPrice  = Math.max(0.0001, parseFloat(price)  || 1);
-    const startVol    = Math.max(0.005, Math.min(0.30, parseFloat(vol)   || 0.05));
-    const startDrift  = Math.max(-0.10, Math.min(0.10, parseFloat(drift) || 0));
-    const startSupply = Math.max(1, parseFloat(supply) || 1000000);
+    const isBase = COINS.includes(ticker);
+    const baseMeta = isBase ? COIN_META[ticker] : null;
 
-    await db.customCoins.insert({ ticker, name: name || ticker, emoji: emoji || '🪙', createdAt: Date.now() });
+    // Если это базовая монета — восстанавливаем с дефолтными значениями
+    const startPrice  = Math.max(0.0001, parseFloat(price)  || (baseMeta?.basePrice ?? 1));
+    const startVol    = Math.max(0.005, Math.min(0.30, parseFloat(vol)   || (baseMeta?.vol   ?? 0.05)));
+    const startDrift  = Math.max(-0.10, Math.min(0.10, parseFloat(drift) || 0));
+    const startSupply = Math.max(1, parseFloat(supply) || (baseMeta?.supply ?? 1000000));
+    const coinName    = name  || (baseMeta?.name  ?? ticker);
+    const coinEmoji   = emoji || (baseMeta?.emoji ?? '🪙');
+
     await db.prices.insert({ coin: ticker, price: startPrice, basePrice: startPrice, vol: startVol, drift: startDrift, supply: startSupply });
     await db.wallets.update({}, { $set: { [ticker]: 0 } }, { multi: true });
+
+    // Кастомные монеты регистрируем в customCoins (базовые уже известны по COIN_META)
+    if (!isBase) {
+      await db.customCoins.insert({ ticker, name: coinName, emoji: coinEmoji, createdAt: Date.now() });
+    }
 
     const allCoinsNew   = await getAllCoins();
     const updatedPrices = await getAllPrices();
 
-    const ev = { ts: Date.now(), text: `Админ создал новую монету: ${emoji || '🪙'} ${ticker} (${name || ticker}), цена $${startPrice}` };
+    const ev = { ts: Date.now(), text: `Админ создал монету: ${coinEmoji} ${ticker} (${coinName}), цена $${startPrice}` };
     await db.events.insert(ev);
 
     const io = req.app.get('io');
@@ -269,18 +285,16 @@ router.post('/admin/coin/create', auth, adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── АДМИН: удаление кастомной монеты ─────────────────────────────────────────
+// ── АДМИН: удаление монеты (любой, в том числе базовой) ──────────────────────
 router.delete('/admin/coin/:ticker', auth, adminOnly, async (req, res) => {
   try {
     const ticker = (req.params.ticker || '').toUpperCase();
-    if (COINS.includes(ticker))
-      return res.status(403).json({ error: 'Базовые монеты (BTC/ETH/SOL/XRP/DOGE) нельзя удалять' });
-
-    const existing = await db.customCoins.findOne({ ticker });
-    if (!existing) return res.status(404).json({ error: 'Кастомная монета не найдена' });
 
     const priceDoc = await db.prices.findOne({ coin: ticker });
-    const curPrice = priceDoc ? priceDoc.price : 0;
+    if (!priceDoc) return res.status(404).json({ error: 'Монета не найдена' });
+
+    // Возвращаем USD игрокам за их запасы
+    const curPrice = priceDoc.price || 0;
     const wallets  = await db.wallets.find({});
     for (const w of wallets) {
       const holding = w[ticker] || 0;
@@ -290,13 +304,15 @@ router.delete('/admin/coin/:ticker', auth, adminOnly, async (req, res) => {
       }
     }
 
-    await db.customCoins.remove({ ticker }, {});
+    // Удаляем из prices и из customCoins (если там есть)
     await db.prices.remove({ coin: ticker }, {});
+    await db.customCoins.remove({ ticker }, {});
 
     const allCoinsNew   = await getAllCoins();
     const updatedPrices = await getAllPrices();
 
-    const ev = { ts: Date.now(), text: `Админ удалил монету: ${ticker}` };
+    const isBase = COINS.includes(ticker);
+    const ev = { ts: Date.now(), text: `Админ удалил монету: ${ticker}${isBase ? ' (можно восстановить через форму создания)' : ''}` };
     await db.events.insert(ev);
 
     const io = req.app.get('io');

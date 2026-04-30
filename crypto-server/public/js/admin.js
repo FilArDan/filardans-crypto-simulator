@@ -33,9 +33,10 @@ function fmtTime(ts) {
 function coinDec(c)  { return BASE_COINS.includes(c) ? 5 : 3; }
 function priceDec(c) {
   const p = prices[c] || 0;
-  if (BASE_COINS.includes(c)) return (c === 'XRP' || c === 'DOGE') ? 4 : 2;
-  if (p >= 100) return 2;
-  if (p >= 1)   return 3;
+  if (p >= 10000) return 2;
+  if (p >= 100)   return 2;
+  if (p >= 1)     return 3;
+  if (p >= 0.01)  return 4;
   return 5;
 }
 
@@ -49,6 +50,28 @@ async function deletePlayer(username) {
 }
 
 // ── СОЗДАНИЕ МОНЕТЫ ──────────────────────────────────────────────────────────
+// Автозаполнение для базовых монет (подсказывает дефолтные параметры)
+const BASE_COIN_DEFAULTS = {
+  BTC:  { name: 'Bitcoin',  emoji: '₿',  price: 45000, vol: 3,   supply: 21000000     },
+  ETH:  { name: 'Ethereum', emoji: 'Ξ',  price: 2800,  vol: 4.5, supply: 120000000    },
+  SOL:  { name: 'Solana',   emoji: '◎',  price: 120,   vol: 7,   supply: 440000000    },
+  XRP:  { name: 'XRP',      emoji: '✕',  price: 0.52,  vol: 5,   supply: 45000000000  },
+  DOGE: { name: 'Dogecoin', emoji: '🐕', price: 0.08,  vol: 6,   supply: 140000000000 },
+};
+
+document.getElementById('newTicker').addEventListener('input', function () {
+  const ticker = this.value.toUpperCase();
+  const d = BASE_COIN_DEFAULTS[ticker];
+  if (d) {
+    document.getElementById('newName').value   = d.name;
+    document.getElementById('newEmoji').value  = d.emoji;
+    document.getElementById('newPrice').value  = d.price;
+    document.getElementById('newVol').value    = d.vol;
+    document.getElementById('newDrift').value  = 0;
+    document.getElementById('newSupply').value = d.supply;
+  }
+});
+
 document.getElementById('createCoinForm').addEventListener('submit', async e => {
   e.preventDefault();
   const btn = document.getElementById('createCoinBtn');
@@ -76,10 +99,14 @@ document.getElementById('createCoinForm').addEventListener('submit', async e => 
   btn.disabled = false; btn.textContent = '🚀 Создать монету';
 });
 
-// ── УДАЛЕНИЕ КАСТОМНОЙ МОНЕТЫ ────────────────────────────────────────────────
+// ── УДАЛЕНИЕ МОНЕТЫ (любой, включая базовые) ────────────────────────────────
 async function deleteCoin(ticker) {
   const m = coinMeta[ticker] || {};
-  if (!confirm(`Удалить монету ${m.emoji || '🪙'} ${ticker}?\n\nИгрокам будут возвращены USD по текущей цене.`)) return;
+  const isBase = BASE_COINS.includes(ticker);
+  const warn = isBase
+    ? `\n\n⚠️ Это базовая монета. После удаления её можно восстановить через форму создания (тикер ${ticker}).`
+    : '';
+  if (!confirm(`Удалить монету ${m.emoji || '🪙'} ${ticker}?\n\nИгрокам будут возвращены USD по текущей цене.${warn}`)) return;
   const r = await fetch(`/api/admin/coin/${encodeURIComponent(ticker)}`, { method: 'DELETE' });
   const data = await r.json();
   if (data.error) { alert(data.error); return; }
@@ -100,9 +127,11 @@ function renderCoinParams() {
     const base     = m.basePrice || '';
     const driftCol = driftPct > 0 ? 'var(--up)' : driftPct < 0 ? 'var(--dn)' : 'var(--mu)';
     const isCustom = m.isCustom || !BASE_COINS.includes(coin);
-    const label    = isCustom
-      ? `${m.emoji || '🪙'} ${coin} <span class="tag-custom">custom</span>`
-      : `<strong>${coin}</strong>`;
+    const isBase   = BASE_COINS.includes(coin) && !m.isCustom;
+    const emoji    = m.emoji || (isBase ? '' : '🪙');
+    const label    = isBase
+      ? `<strong>${emoji ? emoji + ' ' : ''}${coin}</strong>`
+      : `${emoji} ${coin} <span class="tag-custom">custom</span>`;
 
     return `<tr id="coin-row-${coin}">
       <td>${label}</td>
@@ -145,9 +174,7 @@ function renderCoinParams() {
         <button class="btn btn-secondary btn-sm" onclick="saveCoinParams('${coin}')">
           Сохранить
         </button>
-        ${isCustom
-          ? `<button class="btn btn-dan btn-sm" onclick="deleteCoin('${coin}')" title="Удалить монету">🗑️</button>`
-          : ''}
+        <button class="btn btn-dan btn-sm" onclick="deleteCoin('${coin}')" title="Удалить монету">🗑️</button>
       </td>
     </tr>`;
   }).join('');

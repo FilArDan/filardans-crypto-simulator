@@ -28,36 +28,33 @@ const DEFAULT_BOTS = [
 ];
 
 const INITIAL_USERS = [
-  { username: 'WARDEN',      password: 'sherpaIsGay', role: 'admin',  startUsd: 0     },
-  { username: 'Артур',       password: 'alpha101',    role: 'player', startUsd: 10000 },
-  { username: 'Даня',        password: 'beta202',     role: 'player', startUsd: 12000 },
-  { username: 'Злодей',      password: 'gamma303',    role: 'player', startUsd: 8000  },
-  { username: 'Игорь',       password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Лукашенко',   password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Миха',        password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Серега',      password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Юра',         password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: 'WARDEN',    password: 'sherpaIsGay', role: 'admin',  startUsd: 0     },
+  { username: 'Артур',     password: 'alpha101',    role: 'player', startUsd: 10000 },
+  { username: 'Даня',      password: 'beta202',     role: 'player', startUsd: 12000 },
+  { username: 'Злодей',    password: 'gamma303',    role: 'player', startUsd: 8000  },
+  { username: 'Игорь',     password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: 'Лукашенко', password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: 'Миха',      password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: 'Серега',    password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: 'Юра',       password: 'delta404',    role: 'player', startUsd: 15000 },
 ];
 
-// Базовые (несъёмные) монеты
+// Базовые монеты — список тикеров для инициализации и восстановления
 const COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 
+// Полные метаданные базовых монет (используются при создании/пересоздании)
 const COIN_META = {
-  BTC:  { basePrice: 45000, vol: 0.030, drift: 0, supply: 21000000        },
-  ETH:  { basePrice: 2800,  vol: 0.045, drift: 0, supply: 120000000       },
-  SOL:  { basePrice: 120,   vol: 0.070, drift: 0, supply: 440000000       },
-  XRP:  { basePrice: 0.52,  vol: 0.050, drift: 0, supply: 45000000000     },
-  DOGE: { basePrice: 0.08,  vol: 0.060, drift: 0, supply: 140000000000    },
+  BTC:  { name: 'Bitcoin',  emoji: '₿',  basePrice: 45000, vol: 0.030, drift: 0, supply: 21000000     },
+  ETH:  { name: 'Ethereum', emoji: 'Ξ',  basePrice: 2800,  vol: 0.045, drift: 0, supply: 120000000    },
+  SOL:  { name: 'Solana',   emoji: '◎',  basePrice: 120,   vol: 0.070, drift: 0, supply: 440000000    },
+  XRP:  { name: 'XRP',      emoji: '✕',  basePrice: 0.52,  vol: 0.050, drift: 0, supply: 45000000000  },
+  DOGE: { name: 'Dogecoin', emoji: '🐕', basePrice: 0.08,  vol: 0.060, drift: 0, supply: 140000000000 },
 };
 
-const INITIAL_PRICES = Object.fromEntries(
-  Object.entries(COIN_META).map(([coin, meta]) => [coin, meta.basePrice])
-);
-
+// Возвращает все монеты, активные в данный момент (те что есть в prices)
 async function getAllCoins() {
-  const base   = [...COINS];
-  const custom = await db.customCoins.find({});
-  return [...base, ...custom.map(c => c.ticker)];
+  const docs = await db.prices.find({});
+  return docs.map(d => d.coin);
 }
 
 async function initDb() {
@@ -82,19 +79,21 @@ async function initDb() {
     }
   }
 
+  // Инициализация базовых монет (только если ещё не существуют)
   for (const coin of COINS) {
     const exists = await db.prices.findOne({ coin });
     if (!exists) {
       const meta = COIN_META[coin];
       await db.prices.insert({
         coin,
-        price:     INITIAL_PRICES[coin],
+        price:     meta.basePrice,
         basePrice: meta.basePrice,
         vol:       meta.vol,
         drift:     meta.drift,
         supply:    meta.supply,
       });
     } else {
+      // Добавить недостающие поля если нужно
       const meta = COIN_META[coin];
       const patch = {};
       if (exists.basePrice == null) patch.basePrice = meta.basePrice;

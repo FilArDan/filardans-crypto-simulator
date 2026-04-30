@@ -38,27 +38,29 @@ function renderTicker(p, prev) {
   }).join('');
 }
 
-// Таблица лидерборда — балансы других игроков не показываются
+// Таблица лидерборда — сортировка по usd, баланс виден
 function renderLeaderboard(players) {
   const tbody = document.getElementById('leaderBody');
   if (!tbody || !players) return;
-  const sorted = [...players].sort((a, b) => a.username.localeCompare(b.username));
+  const sorted = [...players].sort((a, b) => b.usd - a.usd);
+  const maxUsd = sorted[0] ? sorted[0].usd : 1;
   tbody.innerHTML = '';
   sorted.forEach((p, i) => {
     const isMine = p.username === myUsername;
-    const rank = i + 1;
+    const rank = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1;
+    const barW = Math.round(p.usd / maxUsd * 100);
     const tr = document.createElement('tr');
     if (isMine) tr.className = 'me';
     tr.innerHTML = `
       <td><span class="rank">${rank}</span></td>
       <td><span class="${isMine ? 'inv-name me' : 'inv-name'}">${p.username}</span></td>
-      <td>${isMine ? '<span class="up">Вы</span>' : '—'}</td>
-      <td></td>`;
+      <td>$${fmt(p.usd)}</td>
+      <td><span class="bar-wrap"><span class="bar-fill" style="width:${barW}%"></span></span></td>`;
     tbody.appendChild(tr);
   });
 }
 
-// Селект перевода — только имя игрока
+// Селект перевода — только имя (без баланса)
 function renderTransferSelect(players) {
   const sc = document.getElementById('transferTarget');
   if (!sc || !players) return;
@@ -143,7 +145,6 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
   showApp(res.username);
 });
 
-// ── ВЫХОД ──────────────────────────────────────────────────────────────────────────────
 document.getElementById('logoutBtn').addEventListener('click', async () => {
   await api('POST', '/auth/logout');
   location.reload();
@@ -187,7 +188,6 @@ document.getElementById('loanForm').addEventListener('submit', async e => {
   loadState();
 });
 
-// ── ПОГАШЕНИЕ ──────────────────────────────────────────────────────────────────────
 document.getElementById('repayBtn').addEventListener('click', async () => {
   const err = document.getElementById('loanError');
   err.textContent = '';

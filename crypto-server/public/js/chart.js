@@ -1,35 +1,74 @@
 /* ===== CHART — Multiplayer ===== */
-const COIN_COLORS = {
+const BASE_COIN_COLORS = {
   BTC:  '#f7931a',
   ETH:  '#627eea',
   SOL:  '#9945ff',
   XRP:  '#00aae4',
   DOGE: '#c2a633'
 };
-const COINS_LIST = ['BTC','ETH','SOL','XRP','DOGE'];
+
+// Цвета для кастомных монет — генерируются из тикера детерминированно
+function coinColor(ticker) {
+  if (BASE_COIN_COLORS[ticker]) return BASE_COIN_COLORS[ticker];
+  let hash = 0;
+  for (let i = 0; i < ticker.length; i++) {
+    hash = ticker.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = ((hash % 360) + 360) % 360;
+  return `hsl(${hue}, 65%, 58%)`;
+}
 
 const priceHistory = {};
-COINS_LIST.forEach(c => priceHistory[c] = []);
-
 let selectedCoin = 'BTC';
 let chartRange   = 40;
 let chrt         = null;
 
+// Текущий список монет (обновляется из app.js через updateChartCoins)
+let chartCoins = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
+
+// ── Вызывается из app.js при получении актуального списка монет ──────────
+function updateChartCoins(coins) {
+  const prev = chartCoins;
+  chartCoins = coins;
+
+  // Инициализируем историю для новых монет
+  coins.forEach(c => {
+    if (!priceHistory[c]) priceHistory[c] = [];
+  });
+
+  // Если выбранная монета удалена — переключаемся на первую
+  if (!coins.includes(selectedCoin)) {
+    selectedCoin = coins[0] || 'BTC';
+  }
+
+  // Перерисовываем табы только если список изменился
+  const changed = prev.length !== coins.length || prev.some((c, i) => c !== coins[i]);
+  if (changed) renderChartTabs();
+}
+
 // ── Добавить новую точку (вызывается из app.js при priceUpdate) ──────────
 function addPricePoint(prices) {
-  COINS_LIST.forEach(c => {
-    if (prices[c] != null) priceHistory[c].push(prices[c]);
+  chartCoins.forEach(c => {
+    if (prices[c] != null) {
+      if (!priceHistory[c]) priceHistory[c] = [];
+      priceHistory[c].push(prices[c]);
+    }
   });
   updateChartLive();
 }
 
-// ── Инициализация: рисуем табы и первый чарт ───────────────────────────
-function initChart() {
+// ── Рисуем табы ──────────────────────────────────────────────────────────
+function renderChartTabs() {
   const tabs = document.getElementById('chartTabs');
   if (!tabs) return;
-  tabs.innerHTML = COINS_LIST.map(c =>
+  tabs.innerHTML = chartCoins.map(c =>
     `<button class="ctab${c === selectedCoin ? ' on' : ''}" data-coin="${c}" onclick="selectCoin('${c}')">${c}</button>`
   ).join('');
+}
+
+// ── Инициализация: рисуем табы и первый чарт ─────────────────────────────
+function initChart() {
+  renderChartTabs();
   renderChart();
 }
 
@@ -41,7 +80,7 @@ function selectCoin(coin) {
 }
 
 function getHistory(coin) {
-  const raw = priceHistory[coin].filter(v => typeof v === 'number' && isFinite(v));
+  const raw = (priceHistory[coin] || []).filter(v => typeof v === 'number' && isFinite(v));
   return chartRange === 0 ? raw : raw.slice(-chartRange);
 }
 
@@ -49,7 +88,7 @@ function renderChart() {
   const dark = document.documentElement.getAttribute('data-theme') === 'dark';
   const gc   = dark ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.07)';
   const tc   = dark ? '#797876' : '#9a9790';
-  const col  = COIN_COLORS[selectedCoin];
+  const col  = coinColor(selectedCoin);
   const data = getHistory(selectedCoin);
 
   const info = document.getElementById('cinfo');
@@ -68,7 +107,7 @@ function renderChart() {
       datasets: [{
         data,
         borderColor: col,
-        backgroundColor: col + '28',
+        backgroundColor: col.startsWith('hsl') ? col.replace(')', ', 0.15)').replace('hsl(', 'hsla(') : col + '28',
         borderWidth: 2.5,
         tension: 0.35,
         fill: true,
@@ -114,11 +153,11 @@ function renderChart() {
 function updateChartLive() {
   if (!chrt) return;
   const data = getHistory(selectedCoin);
-  const col  = COIN_COLORS[selectedCoin];
+  const col  = coinColor(selectedCoin);
   chrt.data.labels = data.map((_, i) => i + 1);
   chrt.data.datasets[0].data = data;
   chrt.data.datasets[0].borderColor = col;
-  chrt.data.datasets[0].backgroundColor = col + '28';
+  chrt.data.datasets[0].backgroundColor = col.startsWith('hsl') ? col.replace(')', ', 0.15)').replace('hsl(', 'hsla(') : col + '28';
   chrt.update('none');
 
   const info = document.getElementById('cinfo');

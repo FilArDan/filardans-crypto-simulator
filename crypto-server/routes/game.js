@@ -2,7 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const { db, COINS, getAllCoins } = require('../db');
 const { tick, applyTradePressure } = require('../game/market');
-const { getBotStats } = require('../game/bots');
+const { getBotStats, listBotsRaw, createBot, deleteBot, setBotCash, updateBotPreset } = require('../game/bots');
 
 function auth(req, res, next) {
   if (!req.session.username) return res.status(401).json({ error: 'Не авторизован' });
@@ -35,7 +35,7 @@ router.get('/state', auth, async (req, res) => {
     const players = allWallets.map(w => ({ username: w.username, usd: w.usd, isBot: false }));
 
     // Боты — добавляем в общий список (видны всем как конкуренты)
-    const bots = getBotStats(prices).map(b => ({
+    const bots = (await getBotStats(prices)).map(b => ({
       username: `${b.botEmoji} ${b.username}`,
       usd:      b.usd,
       isBot:    true,
@@ -141,7 +141,7 @@ router.get('/admin/players', auth, adminOnly, async (req, res) => {
     const wallets    = await db.wallets.find({});
     const loans      = await db.loans.find({ paid: { $ne: true } });
     const prices     = await getAllPrices();
-    const bots       = getBotStats(prices);
+    const bots       = await getBotStats(prices);
     res.json({ wallets, loans, bots });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -306,6 +306,56 @@ router.delete('/admin/coin/:ticker', auth, adminOnly, async (req, res) => {
 });
 
 // ── АДМИН: тик, скорость ──────────────────────────────────────────────────────
+router.get('/admin/bots', auth, adminOnly, async (req, res) => {
+  try {
+    const prices = Object.fromEntries((await db.prices.find({})).map(p => [p.coin, p.price]));
+    const bots = await getBotStats(prices);
+    res.json({ bots });
+  } catch (e) {
+    res.status(500).json({ error: 'Не удалось получить ботов' });
+  }
+});
+
+router.post('/admin/bot/create', auth, adminOnly, async (req, res) => {
+  try {
+    const { name, type, usd } = req.body || {};
+    const bot = await createBot({ name, type, usd });
+    res.json({ ok: true, bot });
+  } catch (e) {
+    res.status(400).json({ error: e.message || 'Не удалось создать бота' });
+  }
+});
+
+router.post('/admin/bot/set-cash', auth, adminOnly, async (req, res) => {
+  try {
+    const { name, usd } = req.body || {};
+    const bot = await setBotCash(name, usd);
+    res.json({ ok: true, bot });
+  } catch (e) {
+    res.status(400).json({ error: e.message || 'Не удалось обновить баланс бота' });
+  }
+});
+
+router.post('/admin/bot/set-preset', auth, adminOnly, async (req, res) => {
+  try {
+    const { name, type } = req.body || {};
+    const bot = await updateBotPreset(name, type);
+    res.json({ ok: true, bot });
+  } catch (e) {
+    res.status(400).json({ error: e.message || 'Не удалось обновить пресет бота' });
+  }
+});
+
+router.delete('/admin/bot/:name', auth, adminOnly, async (req, res) => {
+  try {
+    await deleteBot(req.params.name);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message || 'Не удалось удалить бота' });
+  }
+});
+
+
 router.post('/admin/tick', auth, adminOnly, async (req, res) => {
   try {
     await tick(req.app.get('io'));

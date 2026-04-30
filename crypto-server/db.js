@@ -11,7 +11,21 @@ const db = {
   events:      new NeDB({ filename: path.join(dbDir, 'events.db'),      autoload: true }),
   prices:      new NeDB({ filename: path.join(dbDir, 'prices.db'),      autoload: true }),
   customCoins: new NeDB({ filename: path.join(dbDir, 'customCoins.db'), autoload: true }),
+  bots:        new NeDB({ filename: path.join(dbDir, 'bots.db'),        autoload: true }),
 };
+
+const DEFAULT_BOTS = [
+  { name: 'Агрессор-1', type: 'bull', usd: 15000, held: {}, avgP: {}, target: {} },
+  { name: 'Агрессор-2', type: 'bull', usd: 18000, held: {}, avgP: {}, target: {} },
+  { name: 'Лис-1',      type: 'fox',  usd: 10000, held: {}, avgP: {}, target: {} },
+  { name: 'Лис-2',      type: 'fox',  usd: 10000, held: {}, avgP: {}, target: {} },
+  { name: 'Лис-3',      type: 'fox',  usd: 12000, held: {}, avgP: {}, target: {} },
+  { name: 'Крок-1',     type: 'croc', usd: 20000, held: {}, avgP: {}, target: {} },
+  { name: 'Крок-2',     type: 'croc', usd: 20000, held: {}, avgP: {}, target: {} },
+  { name: 'Лис-4',      type: 'fox',  usd:  9000, held: {}, avgP: {}, target: {} },
+  { name: 'Лис-5',      type: 'fox',  usd: 11000, held: {}, avgP: {}, target: {} },
+  { name: 'Лис-6',      type: 'fox',  usd: 10000, held: {}, avgP: {}, target: {} },
+];
 
 const INITIAL_USERS = [
   { username: 'WARDEN',      password: 'sherpaIsGay', role: 'admin',  startUsd: 0     },
@@ -36,26 +50,42 @@ const COIN_META = {
   DOGE: { basePrice: 0.08,  vol: 0.060, drift: 0, supply: 140000000000    },
 };
 
-const INITIAL_PRICES = { BTC: 45000, ETH: 2800, SOL: 120, XRP: 0.52, DOGE: 0.08 };
+const INITIAL_PRICES = Object.fromEntries(
+  Object.entries(COIN_META).map(([coin, meta]) => [coin, meta.basePrice])
+);
 
-// Возвращает все активные тикеры: базовые + кастомные
 async function getAllCoins() {
+  const base   = [...COINS];
   const custom = await db.customCoins.find({});
-  return [...COINS, ...custom.map(c => c.ticker)];
+  return [...base, ...custom.map(c => c.ticker)];
 }
 
 async function initDb() {
-  const fs = require('fs');
-  if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
-
   for (const u of INITIAL_USERS) {
     const exists = await db.users.findOne({ username: u.username });
     if (!exists) {
       const hash = bcrypt.hashSync(u.password, 10);
       await db.users.insert({ username: u.username, passwordHash: hash, role: u.role });
-      await db.wallets.insert({
-        username: u.username, usd: u.startUsd,
-        BTC: 0, ETH: 0, SOL: 0, XRP: 0, DOGE: 0
+      if (u.role === 'player') {
+        await db.wallets.insert({
+          username: u.username,
+          usd: u.startUsd,
+          holdings: {}
+        });
+      }
+    }
+  }
+
+  const botCount = await db.bots.count({});
+  if (botCount === 0) {
+    for (const bot of DEFAULT_BOTS) {
+      await db.bots.insert({
+        name: bot.name,
+        type: bot.type,
+        usd: bot.usd,
+        held: bot.held || {},
+        avgP: bot.avgP || {},
+        target: bot.target || {},
       });
     }
   }

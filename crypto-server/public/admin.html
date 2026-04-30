@@ -181,6 +181,37 @@
     </div>
   </div>
 
+  <!-- БОТЫ -->
+  <div class="card section-gap">
+    <h2>🤖 Боты</h2>
+    <form id="createBotForm">
+      <div class="create-grid">
+        <label class="fld">Имя бота *
+          <input id="botName" type="text" maxlength="32" placeholder="Лис-7" required>
+        </label>
+        <label class="fld">Пресет поведения
+          <select id="botPreset">
+            <option value="bull">🐂 Агрессор</option>
+            <option value="fox" selected>🦊 Осторожный</option>
+            <option value="croc">🐊 Накопитель</option>
+          </select>
+        </label>
+        <label class="fld">Стартовый баланс (USD)
+          <input id="botUsd" type="number" min="0" step="1" value="10000" required>
+        </label>
+      </div>
+      <button class="btn btn-secondary" type="submit">➕ Создать бота</button>
+    </form>
+    <div style="overflow-x:auto; margin-top:16px;">
+      <table>
+        <thead>
+          <tr><th>Имя</th><th>Пресет</th><th>USD</th><th>Портфель</th><th>Действия</th></tr>
+        </thead>
+        <tbody id="botsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- ТАБЛИЦА ИГРОКОВ -->
   <div class="card section-gap">
     <h2>👥 Балансы и портфели игроков</h2>

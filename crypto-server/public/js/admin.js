@@ -460,3 +460,107 @@ api('GET', '/auth/me').then(res => {
   loadAdminData();
   loadTickSpeed();
 });
+
+const botsBody = document.getElementById('botsBody');
+const createBotForm = document.getElementById('createBotForm');
+const botName = document.getElementById('botName');
+const botPreset = document.getElementById('botPreset');
+const botUsd = document.getElementById('botUsd');
+
+async function api(url, options = {}) {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    ...options,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Ошибка запроса');
+  return data;
+}
+
+async function loadBots() {
+  if (!botsBody) return;
+  try {
+    const { bots } = await api('/api/game/admin/bots');
+    botsBody.innerHTML = bots.map(bot => `
+      <tr>
+        <td>${bot.botEmoji || '🤖'} ${bot.username}</td>
+        <td>
+          <select data-bot-preset="${bot.username}">
+            <option value="bull" ${bot.botType === 'bull' ? 'selected' : ''}>🐂 Агрессор</option>
+            <option value="fox" ${bot.botType === 'fox' ? 'selected' : ''}>🦊 Осторожный</option>
+            <option value="croc" ${bot.botType === 'croc' ? 'selected' : ''}>🐊 Накопитель</option>
+          </select>
+        </td>
+        <td>
+          <input data-bot-cash="${bot.username}" type="number" min="0" step="1" value="${Math.round(bot.usd)}" style="width:110px">
+          <button class="btn btn-secondary btn-sm" data-bot-save="${bot.username}" type="button">Сохранить</button>
+        </td>
+        <td>$${Number(bot.total || 0).toFixed(2)}</td>
+        <td><button class="btn btn-dan btn-sm" data-bot-delete="${bot.username}" type="button">Удалить</button></td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    botsBody.innerHTML = `<tr><td colspan="5">${e.message}</td></tr>`;
+  }
+}
+
+createBotForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    await api('/api/game/admin/bot/create', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: botName.value.trim(),
+        type: botPreset.value,
+        usd: Number(botUsd.value || 0)
+      })
+    });
+    botName.value = '';
+    botPreset.value = 'fox';
+    botUsd.value = 10000;
+    await loadBots();
+    if (typeof loadAdmin === 'function') await loadAdmin();
+  } catch (e) {
+    alert(e.message);
+  }
+});
+
+document.addEventListener('click', async (e) => {
+  const del = e.target.closest('[data-bot-delete]');
+  const save = e.target.closest('[data-bot-save]');
+
+  if (del) {
+    const name = del.getAttribute('data-bot-delete');
+    if (!confirm(`Удалить бота «${name}»?`)) return;
+    try {
+      await api(`/api/game/admin/bot/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      await loadBots();
+      if (typeof loadAdmin === 'function') await loadAdmin();
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  if (save) {
+    const name = save.getAttribute('data-bot-save');
+    const cashEl = document.querySelector(`[data-bot-cash="${CSS.escape(name)}"]`);
+    const presetEl = document.querySelector(`[data-bot-preset="${CSS.escape(name)}"]`);
+    try {
+      await api('/api/game/admin/bot/set-cash', {
+        method: 'POST',
+        body: JSON.stringify({ name, usd: Number(cashEl.value || 0) })
+      });
+      await api('/api/game/admin/bot/set-preset', {
+        method: 'POST',
+        body: JSON.stringify({ name, type: presetEl.value })
+      });
+      await loadBots();
+      if (typeof loadAdmin === 'function') await loadAdmin();
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+});
+
+loadBots();

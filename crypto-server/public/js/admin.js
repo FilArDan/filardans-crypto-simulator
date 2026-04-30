@@ -32,6 +32,44 @@ function coinDec(c) {
   return (c === 'DOGE' || c === 'XRP') ? 4 : 5;
 }
 
+// ── СЛАЙДЕР СКОРОСТИ ТИКА ───────────────────────────────────────────────────
+let sliderDebounce = null;
+
+function updateSpeedLabel(ms) {
+  const sec = Math.round(ms / 1000);
+  const label = sec >= 60
+    ? (sec / 60).toFixed(1).replace('.0', '') + ' мин'
+    : sec + ' сек';
+  const el = document.getElementById('speedLabel');
+  const stat = document.getElementById('tickSpeedStat');
+  if (el)   el.textContent = label + '/тик';
+  if (stat) stat.textContent = label;
+}
+
+function setSliderValue(ms) {
+  const slider = document.getElementById('speedSlider');
+  if (slider) slider.value = ms;
+  updateSpeedLabel(ms);
+}
+
+async function loadTickSpeed() {
+  const data = await api('GET', '/api/admin/tick-speed');
+  if (data.ms) setSliderValue(data.ms);
+}
+
+document.getElementById('speedSlider').addEventListener('input', function () {
+  updateSpeedLabel(parseInt(this.value));
+  clearTimeout(sliderDebounce);
+  sliderDebounce = setTimeout(async () => {
+    await api('POST', '/api/admin/set-tick-speed', { ms: parseInt(this.value) });
+  }, 400); // дебаунс: отправляем запрос только после остановки движения
+});
+
+// Синхронизация слайдера со всеми подключёнными клиентами
+socket.on('tickSpeedChanged', ({ ms }) => {
+  setSliderValue(ms);
+});
+
 // ── ТАБЛИЦА ИГРОКОВ ─────────────────────────────────────────────────────────
 function renderPlayers() {
   const tbody = document.getElementById('adminPlayersBody');
@@ -56,7 +94,6 @@ function renderPlayers() {
     const debt = allLoans
       .filter(l => l.username === w.username)
       .reduce((s, l) => s + l.due, 0);
-    const portVal = COINS.reduce((s, c) => s + (w[c] || 0) * (prices[c] || 0), 0);
 
     return `<tr>
       <td><strong>${w.username}</strong></td>
@@ -127,7 +164,7 @@ function renderFeed(events) {
   `).join('');
 }
 
-// ── SELECT ИГРОКОВ ДЛЯ УСТАНОВКИ БАЛАНСА ──────────────────────────────────────────
+// ── SELECT ИГРОКОВ ───────────────────────────────────────────────────────────────────
 function fillPlayerSelect() {
   const sel = document.getElementById('cashUsername');
   if (!sel) return;
@@ -224,7 +261,7 @@ socket.on('disconnect', () => {
 socket.on('priceUpdate', p => {
   prices = p;
   renderPrices();
-  renderPlayers(); // стоимость портфелей меняется
+  renderPlayers();
 });
 
 socket.on('newEvent', ev => {
@@ -243,7 +280,6 @@ socket.on('newEvent', ev => {
     const el = document.getElementById('dealCount');
     if (el) el.textContent = dealCount;
   }
-  // Перезагрузить кошельки для актуальных балансов
   loadAdminData();
 });
 
@@ -260,4 +296,5 @@ api('GET', '/auth/me').then(res => {
   const el = document.getElementById('adminName');
   if (el) el.textContent = res.username;
   loadAdminData();
+  loadTickSpeed(); // Загрузить текущую скорость с сервера
 });

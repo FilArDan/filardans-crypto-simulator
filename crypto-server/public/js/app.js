@@ -39,7 +39,6 @@ function renderTicker(p, prev) {
   }).join('');
 }
 
-// Таблица лидерборда — сортировка по usd, баланс виден
 function renderLeaderboard(players) {
   const tbody = document.getElementById('leaderBody');
   if (!tbody || !players) return;
@@ -61,7 +60,6 @@ function renderLeaderboard(players) {
   });
 }
 
-// Селект перевода — только имя (без баланса)
 function renderTransferSelect(players) {
   const sc = document.getElementById('transferTarget');
   if (!sc || !players) return;
@@ -122,7 +120,10 @@ async function loadState() {
   const data = await api('GET', '/api/state');
   if (data.error) return;
 
-  if (data.coins) currentCoins = data.coins;
+  if (data.coins) {
+    currentCoins = data.coins;
+    updateChartCoins(data.coins);  // ← синхронизируем табы графика
+  }
 
   renderTicker(data.prices);
   renderPortfolio(data.wallet, data.coins);
@@ -234,9 +235,10 @@ socket.on('walletUpdate', data => {
   loadState();
 });
 
-// Монета создана или удалена — обновить список активов и весь стейт
+// Монета создана или удалена — обновить всё включая табы графика
 socket.on('coinsUpdated', ({ coins }) => {
   currentCoins = coins;
+  updateChartCoins(coins);   // ← табы графика перерисовываются мгновенно
   renderTradeAssets(coins);
   loadState();
 });

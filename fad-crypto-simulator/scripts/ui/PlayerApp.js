@@ -1,15 +1,18 @@
 // ===== ОКНО ИГРОКА =====
-import { getMarket, getPlayerState, savePlayerState } from '../state.js';
-import { SYMS, FEE } from '../coins.js';
+import { getMarket, getPlayerState } from '../state.js';
+import { SYMS } from '../coins.js';
 import { fmt, fmtC, portV } from '../utils.js';
-import { emitToGM, setupSocket, MSG } from '../socket.js';
+import { emitToGM, MSG } from '../socket.js';
+
+// Локальный кеш — обновляется при каждом тике через сокет
+let _marketCache = null;
 
 export class PlayerApp extends Application {
 
   static get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
       id:        'crypto-player-panel',
-      title:     '📈 Крипто-симулятор',
+      title:     '📈 FilArDan\'s Crypto Simulator',
       template:  'modules/fad-crypto-simulator/templates/player.hbs',
       width:     480,
       height:    620,
@@ -18,45 +21,49 @@ export class PlayerApp extends Application {
     });
   }
 
-  // Последнее сообщение о сделке
-  _msg = '';
-  _msgOk = true;
+  _msg    = '';
+  _msgOk  = true;
+  _selSym = SYMS[0];
+
+  // Получаем актуальный market — из кеша или из settings
+  _getMarket() {
+    return _marketCache ?? getMarket();
+  }
 
   getData() {
-    const market = getMarket();
+    const market = this._getMarket();
     const ps     = getPlayerState(game.user.id);
     const coins  = market.coins;
 
-    const total  = ps.cash + portV(ps.held, coins);
-    const pnl    = total - 10000; // относительно старта
+    const total = ps.cash + portV(ps.held, coins);
+    const pnl   = total - 10000;
 
     const coinList = SYMS.map(s => {
-      const own = ps.held[s] ?? 0;
-      const avg = ps.avgP[s] ?? 0;
-      const val = own * coins[s].price;
+      const own  = ps.held[s] ?? 0;
+      const avg  = ps.avgP[s] ?? 0;
+      const val  = own * coins[s].price;
       const pnlH = own > 0 ? val - own * avg : 0;
       return {
-        sym:      s,
-        name:     coins[s].name,
-        col:      coins[s].col,
-        price:    fmt(coins[s].price),
-        own:      fmtC(own),
-        avg:      avg ? fmt(avg) : '—',
-        val:      fmt(val),
-        pnlH:     fmt(pnlH),
-        pnlUp:    pnlH >= 0,
+        sym:        s,
+        name:       coins[s].name,
+        col:        coins[s].col,
+        price:      fmt(coins[s].price),
+        own:        fmtC(own),
+        avg:        avg ? fmt(avg) : '—',
+        val:        fmt(val),
+        pnlH:       fmt(pnlH),
+        pnlUp:      pnlH >= 0,
         sanctioned: !!ps.sanctions?.[s],
       };
     });
 
-    // История — только сделки этого игрока
     const hist = [...(ps.hist ?? [])].reverse().slice(0, 50).map(h => ({
-      buy:  h.t === 'B',
-      sym:  h.s,
-      amt:  fmtC(h.a),
+      buy:   h.t === 'B',
+      sym:   h.s,
+      amt:   fmtC(h.a),
       price: fmt(h.p),
-      tot:  fmt(h.tot),
-      time: h.time,
+      tot:   fmt(h.tot),
+      time:  h.time,
     }));
 
     return {
@@ -66,14 +73,13 @@ export class PlayerApp extends Application {
       totalFmt: fmt(total),
       pnlFmt:   fmt(pnl),
       pnlUp:    pnl >= 0,
-      loan:     ps.loan > 0,
+      loan:     (ps.loan ?? 0) > 0,
       loanFmt:  fmt(ps.loan ?? 0),
-      loanRate: market.loanRate ? (market.loanRate * 100).toFixed(3) + '%' : '—',
       coinList,
       hist,
       msg:      this._msg,
       msgOk:    this._msgOk,
-      selSym:   this._selSym ?? SYMS[0],
+      selSym:   this._selSym,
     };
   }
 
@@ -81,23 +87,19 @@ export class PlayerApp extends Application {
     super.activateListeners(html);
     const h = html[0];
 
-    // Выбор монеты обновляет инфо
     h.querySelector('[data-action="sel-coin"]')?.addEventListener('change', e => {
       this._selSym = e.target.value;
       this.render();
     });
 
-    // Купить
     h.querySelector('[data-action="buy"]')?.addEventListener('click', () => {
       this._sendTrade('buy', h);
     });
 
-    // Продать
     h.querySelector('[data-action="sell"]')?.addEventListener('click', () => {
       this._sendTrade('sell', h);
     });
 
-    // Продать всё по выбранной монете
     h.querySelector('[data-action="sell-all"]')?.addEventListener('click', () => {
       const sym = h.querySelector('[data-action="sel-coin"]')?.value ?? SYMS[0];
       const ps  = getPlayerState(game.user.id);
@@ -116,9 +118,8 @@ export class PlayerApp extends Application {
 
   _dispatch(action, sym, amount) {
     const ps = getPlayerState(game.user.id);
-    if(ps.frozen) { this._setMsg('❌ Счёт заморожен ГМом.', false); this.render(); return; }
-    if(ps.sanctions?.[sym]) { this._setMsg(`❌ Торговля ${sym} заблокирована санкциями.`, false); this.render(); return; }
-
+    if(ps.frozen)             { this._setMsg('❌ Счёт заморожен ГМом.', false); this.render(); return; }
+    if(ps.sanctions?.[sym])   { this._setMsg(`❌ Торговля ${sym} заблокирована санкциями.`, false); this.render(); return; }
     emitToGM(MSG.TRADE_REQUEST, { userId: game.user.id, action, sym, amount });
     this._setMsg('⏳ Отправляем заявку...', true);
     this.render();
@@ -126,10 +127,14 @@ export class PlayerApp extends Application {
 
   _setMsg(text, ok) { this._msg = text; this._msgOk = ok; }
 
-  // Вызывается из main.js при получении TRADE_RESULT / TICK_UPDATE
+  // Вызывается из main.js при получении сообщений через сокет
   onUpdate(msg) {
     if(msg.type === MSG.TRADE_RESULT) {
       this._setMsg(msg.payload.msg, msg.payload.ok);
+    }
+    if(msg.type === MSG.TICK_UPDATE && msg.payload?.market) {
+      // Сохраняем в кеш — это главный фикс
+      _marketCache = msg.payload.market;
     }
     this.render();
   }

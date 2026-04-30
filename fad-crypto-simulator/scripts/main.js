@@ -1,5 +1,5 @@
 // ===== ТОЧКА ВХОДА =====
-import { registerSettings, getPlayerState } from './state.js';
+import { registerSettings } from './state.js';
 import { setupSocket, MSG } from './socket.js';
 import { tick } from './market.js';
 import { GMApp } from './ui/GMApp.js';
@@ -16,7 +16,6 @@ Hooks.once('init', () => {
   Handlebars.registerHelper('add', (a, b) => a + b);
   Handlebars.registerHelper('eq',  (a, b) => a === b);
 
-  // Горячая клавиша для ГМ
   game.keybindings.register(MODULE, 'openGM', {
     name: 'Открыть панель ГМ',
     hint: 'Крипто-симулятор',
@@ -24,7 +23,6 @@ Hooks.once('init', () => {
     onDown: () => { if(game.user.isGM) _openGM(); },
   });
 
-  // Горячая клавиша для игрока
   game.keybindings.register(MODULE, 'openPlayer', {
     name: 'Открыть торговый терминал',
     hint: 'Крипто-симулятор',
@@ -37,18 +35,27 @@ Hooks.once('init', () => {
 
 Hooks.once('ready', async () => {
   setupSocket({
+    // ГМ обрабатывает запросы на сделку
     [MSG.TRADE_REQUEST]: (payload, senderId) => {
       if(!game.user.isGM) return;
       _handleTradeRequest(payload, senderId);
     },
+    // Игрок: результат сделки
     [MSG.TRADE_RESULT]: (payload) => {
       if(game.user.isGM) return;
       _playerApp?.onUpdate({ type: MSG.TRADE_RESULT, payload });
     },
+    // Все клиенты получают свежий market из тика
     [MSG.TICK_UPDATE]: (payload) => {
-      if(game.user.isGM) return;
-      _playerApp?.onUpdate({ type: MSG.TICK_UPDATE, payload });
+      if(game.user.isGM) {
+        // ГМ перерисовывает свою панель
+        _gmApp?.render();
+      } else {
+        // Игрок получает payload с рынком и сразу рисует
+        _playerApp?.onUpdate({ type: MSG.TICK_UPDATE, payload });
+      }
     },
+    // Принудительный рефреш (санкции, заморозка, баланс)
     [MSG.FORCE_REFRESH]: () => {
       _playerApp?.render();
       _gmApp?.render();
@@ -58,37 +65,24 @@ Hooks.once('ready', async () => {
   if(game.user.isGM) {
     _startTick();
   } else {
-    // Игрок: автооткрытие
     _openPlayer();
   }
 
-  // Кнопка в сайдбаре (работает в v13)
-  Hooks.on('renderSidebar', (_app, html) => {
-    // Не добавлять дважды
-    if(html.querySelector?.('#cs-sidebar-btn') || html[0]?.querySelector('#cs-sidebar-btn')) return;
-
-    const el = html[0] ?? html;
+  // Плавающая кнопка (работает в v13/v14)
+  Hooks.on('renderSidebar', () => {
+    if(document.querySelector('#cs-sidebar-btn')) return;
     const btn = document.createElement('button');
     btn.id    = 'cs-sidebar-btn';
     btn.title = game.user.isGM ? 'Крипто-симулятор (ГМ)' : 'Мой торговый терминал';
     btn.innerHTML = '<i class="fas fa-chart-line"></i>';
-    btn.style.cssText = [
-      'position:fixed',
-      'bottom:60px',
-      'left:4px',
-      'width:36px',
-      'height:36px',
-      'border-radius:8px',
-      'border:1px solid #3a3836',
-      'background:#222120',
-      'color:#cdccca',
-      'cursor:pointer',
-      'z-index:9999',
-      'display:flex',
-      'align-items:center',
-      'justify-content:center',
-      'font-size:15px',
-    ].join(';');
+    Object.assign(btn.style, {
+      position: 'fixed', bottom: '60px', left: '4px',
+      width: '36px', height: '36px', borderRadius: '8px',
+      border: '1px solid #3a3836', background: '#222120',
+      color: '#cdccca', cursor: 'pointer', zIndex: '9999',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: '15px',
+    });
     btn.addEventListener('click', () => game.user.isGM ? _openGM() : _openPlayer());
     document.body.appendChild(btn);
   });

@@ -1,0 +1,41 @@
+/* ===== DESIGN TOKENS ===== */
+:root,[data-theme="light"]{
+  --bg:#f7f6f2;--sf:#ffffff;--sf2:#f3f0ec;--sf3:#edeae5;
+  --txt:#28251d;--mu:#7a7974;--fa:#bab9b4;--bd:rgba(40,37,29,.12);
+  --pri:#01696f;--prih:#0c4e54;
+  --dan:#a12c7b;--danh:#7d1e5e;
+  --ok:#437a22;--warn:#da7101;
+  --sh:0 6px 24px rgba(0,0,0,.08);--r:16px;
+}
+[data-theme="dark"]{
+  --bg:#171614;--sf:#1c1b19;--sf2:#222120;--sf3:#2a2826;
+  --txt:#cdccca;--mu:#797876;--fa:#4a4947;--bd:rgba(255,255,255,.09);
+  --pri:#4f98a3;--prih:#6db4bf;
+  --dan:#d163a7;--danh:#db80bb;
+  --ok:#6daa45;--warn:#fdab43;
+  --sh:0 10px 32px rgba(0,0,0,.36);--r:16px;
+}
+
+/* ===== RESET ===== */
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);line-height:1.5;}
+button,input,select{font:inherit;color:inherit;cursor:pointer;}
+img{display:block;max-width:100%;}
+
+/* ===== SHARED COMPONENTS ===== */
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mu);margin-bottom:5px;}
+.up{color:var(--ok);font-weight:700;}
+.dn{color:var(--dan);font-weight:700;}
+.ilist{display:grid;gap:10px;max-height:370px;overflow:auto;}
+.item{background:var(--sf2);border:1px solid var(--bd);border-radius:14px;padding:12px 14px;}
+.ir{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;}
+.sm{font-size:12px;color:var(--mu);margin-top:6px;}
+.badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;letter-spacing:.04em;}
+.badge-warn{background:var(--warn);color:#fff;}
+.badge-pause{background:var(--warn);color:#fff;display:none;}
+.badge-pause.visible{display:inline-block;}
+
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:999px;background:var(--sf3);outline:none;cursor:pointer;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;background:var(--pri);cursor:pointer;transition:background .15s,transform .1s;}
+input[type=range]::-webkit-slider-thumb:hover{background:var(--prih);transform:scale(1.15);}
+input[type=range].danger::-webkit-slider-thumb{background:var(--dan);}

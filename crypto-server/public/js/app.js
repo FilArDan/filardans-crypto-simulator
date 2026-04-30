@@ -24,8 +24,7 @@ function showApp(username) {
   loadState();
 }
 
-// ── РЕНДЕР (как renderAll в синглплеере) ──────────────────────────────────────
-
+// ── РЕНДЕР ──────────────────────────────────────────────────────────────────────
 function renderTicker(p, prev) {
   prices = p;
   const el = document.getElementById('ticker');
@@ -39,29 +38,27 @@ function renderTicker(p, prev) {
   }).join('');
 }
 
-// По образцу renderLeaderboard() из синглплеера — список игроков в таблицу
+// Таблица лидерборда — балансы других игроков не показываются
 function renderLeaderboard(players) {
   const tbody = document.getElementById('leaderBody');
   if (!tbody || !players) return;
-  const sorted = [...players].sort((a, b) => b.usd - a.usd);
-  const maxUsd = sorted[0] ? sorted[0].usd : 1;
+  const sorted = [...players].sort((a, b) => a.username.localeCompare(b.username));
   tbody.innerHTML = '';
   sorted.forEach((p, i) => {
     const isMine = p.username === myUsername;
-    const rank = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1;
-    const barW = Math.round(p.usd / maxUsd * 100);
+    const rank = i + 1;
     const tr = document.createElement('tr');
     if (isMine) tr.className = 'me';
     tr.innerHTML = `
       <td><span class="rank">${rank}</span></td>
       <td><span class="${isMine ? 'inv-name me' : 'inv-name'}">${p.username}</span></td>
-      <td>$${fmt(p.usd)}</td>
-      <td><span class="bar-wrap"><span class="bar-fill" style="width:${barW}%"></span></span></td>`;
+      <td>${isMine ? '<span class="up">Вы</span>' : '—'}</td>
+      <td></td>`;
     tbody.appendChild(tr);
   });
 }
 
-// По образцу renderControls() из синглплеера — заполняем select перевода из того же массива
+// Селект перевода — только имя игрока
 function renderTransferSelect(players) {
   const sc = document.getElementById('transferTarget');
   if (!sc || !players) return;
@@ -78,7 +75,7 @@ function renderTransferSelect(players) {
     .forEach(p => {
       const o = document.createElement('option');
       o.value = p.username;
-      o.textContent = `${p.username}  ($${fmt(p.usd)})`;
+      o.textContent = p.username; // баланс не показываем
       sc.appendChild(o);
     });
 }
@@ -109,7 +106,7 @@ function renderFeed(events) {
   }).join('');
 }
 
-// ── ЕДИНЫЙ ЗАПРОС СОСТОЯНИЯ (как в синглплеере один st) ─────────────────────
+// ── ЗАГРУЗКА СОСТОЯНИЯ ─────────────────────────────────────────────────────────
 async function loadState() {
   const data = await api('GET', '/api/state');
   if (data.error) return;
@@ -117,8 +114,8 @@ async function loadState() {
   renderTicker(data.prices);
   renderPortfolio(data.wallet);
   renderFeed(data.events || []);
-  renderLeaderboard(data.players);    // как renderLeaderboard() в синглплеере
-  renderTransferSelect(data.players); // как renderControls() -> sCoin в синглплеере
+  renderLeaderboard(data.players);
+  renderTransferSelect(data.players);
   addPricePoint(data.prices);
 
   const coinsVal = ['BTC','ETH','SOL','XRP','DOGE']
@@ -133,7 +130,7 @@ async function loadState() {
   if (elDebt)  elDebt.textContent  = debt > 0 ? '$' + fmt(debt) : '—';
 }
 
-// ── ЛОГИН ────────────────────────────────────────────────────────────────────
+// ── ЛОГИН ──────────────────────────────────────────────────────────────────────────────
 document.getElementById('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
   const username = document.getElementById('usernameInput').value.trim();
@@ -146,13 +143,13 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
   showApp(res.username);
 });
 
-// ── ВЫХОД ────────────────────────────────────────────────────────────────────
+// ── ВЫХОД ──────────────────────────────────────────────────────────────────────────────
 document.getElementById('logoutBtn').addEventListener('click', async () => {
   await api('POST', '/auth/logout');
   location.reload();
 });
 
-// ── ТОРГОВЛЯ ─────────────────────────────────────────────────────────────────
+// ── ТОРГОВЛЯ ───────────────────────────────────────────────────────────────────────
 document.getElementById('tradeForm').addEventListener('submit', async e => {
   e.preventDefault();
   const coin   = document.getElementById('tradeAsset').value;
@@ -166,7 +163,7 @@ document.getElementById('tradeForm').addEventListener('submit', async e => {
   loadState();
 });
 
-// ── ПЕРЕВОД ──────────────────────────────────────────────────────────────────
+// ── ПЕРЕВОД ───────────────────────────────────────────────────────────────────────
 document.getElementById('transferForm').addEventListener('submit', async e => {
   e.preventDefault();
   const to     = document.getElementById('transferTarget').value;
@@ -179,7 +176,7 @@ document.getElementById('transferForm').addEventListener('submit', async e => {
   loadState();
 });
 
-// ── КРЕДИТ ───────────────────────────────────────────────────────────────────
+// ── КРЕДИТ ──────────────────────────────────────────────────────────────────────────
 document.getElementById('loanForm').addEventListener('submit', async e => {
   e.preventDefault();
   const amount = parseFloat(document.getElementById('loanAmount').value);
@@ -190,7 +187,7 @@ document.getElementById('loanForm').addEventListener('submit', async e => {
   loadState();
 });
 
-// ── ПОГАШЕНИЕ ────────────────────────────────────────────────────────────────
+// ── ПОГАШЕНИЕ ──────────────────────────────────────────────────────────────────────
 document.getElementById('repayBtn').addEventListener('click', async () => {
   const err = document.getElementById('loanError');
   err.textContent = '';
@@ -202,7 +199,7 @@ document.getElementById('repayBtn').addEventListener('click', async () => {
   loadState();
 });
 
-// ── SOCKET ───────────────────────────────────────────────────────────────────
+// ── SOCKET ──────────────────────────────────────────────────────────────────────────────
 let prevPrices = null;
 socket.on('priceUpdate', p => {
   renderTicker(p, prevPrices);
@@ -222,10 +219,10 @@ socket.on('newEvent', ev => {
 
 socket.on('walletUpdate', data => {
   if (data.username === myUsername) renderPortfolio(data.wallet);
-  loadState(); // перерисовать всё включая список игроков
+  loadState();
 });
 
-// ── ТЕМА ─────────────────────────────────────────────────────────────────────
+// ── ТЕМА ──────────────────────────────────────────────────────────────────────────────
 (function() {
   const btn = document.getElementById('themeBtn');
   const html = document.documentElement;
@@ -241,7 +238,7 @@ socket.on('walletUpdate', data => {
   }
 })();
 
-// ── ПРОВЕРКА СЕССИИ ──────────────────────────────────────────────────────────
+// ── ПРОВЕРКА СЕССИИ ───────────────────────────────────────────────────────────────────
 api('GET', '/auth/me').then(res => {
   if (res.username) {
     if (res.role === 'admin') { window.location.href = '/admin.html'; return; }

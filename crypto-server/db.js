@@ -13,11 +13,15 @@ const db = {
 };
 
 const INITIAL_USERS = [
-  { username: 'FilArDan', password: 'alpha101', role: 'player', startUsd: 10000 },
-  { username: 'Vishot', password: 'beta202',  role: 'player', startUsd: 12000 },
-  { username: 'Kocherga', password: 'gamma303', role: 'player', startUsd: 8000  },
-  { username: 'Zlodei', password: 'delta404', role: 'player', startUsd: 15000 },
-  { username: 'WARDEN',    password: 'sherpaIsGay', role: 'admin', startUsd: 0     },
+  { username: 'WARDEN',  password: 'sherpaIsGay', role: 'admin', startUsd: 0  },
+  { username: 'Артур', password: 'alpha101', role: 'player', startUsd: 10000 },
+  { username: 'Даня', password: 'beta202',  role: 'player', startUsd: 12000 },
+  { username: 'Злодей', password: 'gamma303', role: 'player', startUsd: 8000  },
+  { username: 'Игорь', password: 'delta404', role: 'player', startUsd: 15000 },
+  { username: 'Лукашенко', password: 'delta404', role: 'player', startUsd: 15000 },
+  { username: 'Миха', password: 'delta404', role: 'player', startUsd: 15000 },
+  { username: 'Серега', password: 'delta404', role: 'player', startUsd: 15000 },
+  { username: 'Юра', password: 'delta404', role: 'player', startUsd: 15000 },
 ];
 
 const COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];

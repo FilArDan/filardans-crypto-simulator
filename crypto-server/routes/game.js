@@ -23,7 +23,6 @@ router.get('/state', auth, async (req, res) => {
     const events = await db.events.find({}).sort({ ts: -1 }).limit(25);
 
     const allWallets = await db.wallets.find({ username: { $ne: 'admin' } });
-    // Передаём usd для рейтинга, но не показываем в дропдауне перевода (контроль на стороне клиента)
     const players = allWallets.map(w => ({ username: w.username, usd: w.usd }));
 
     res.json({ prices, wallet, loans, events, players });
@@ -119,6 +118,24 @@ router.post('/admin/set-cash', auth, adminOnly, async (req, res) => {
     const { username, usd } = req.body;
     await db.wallets.update({ username }, { $set: { usd: parseFloat(usd) } });
     const ev = { ts: Date.now(), text: `Админ установил баланс ${username}: $${usd}` };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Удаление игрока: пользователь + кошелёк + все кредиты
+router.delete('/admin/player/:username', auth, adminOnly, async (req, res) => {
+  try {
+    const { username } = req.params;
+    if (username === 'admin' || username === 'WARDEN')
+      return res.status(403).json({ error: 'Системные аккаунты нельзя удалять' });
+    const user = await db.users.findOne({ username });
+    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+    await db.users.remove({ username }, {});
+    await db.wallets.remove({ username }, {});
+    await db.loans.remove({ username }, { multi: true });
+    const ev = { ts: Date.now(), text: `Админ удалил аккаунт: ${username}` };
     await db.events.insert(ev);
     req.app.get('io').emit('newEvent', ev);
     res.json({ ok: true });

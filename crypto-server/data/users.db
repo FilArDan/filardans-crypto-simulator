@@ -1,0 +1,5 @@
+{"username":"trader01","passwordHash":"$2a$10$FfFLffR2HS45kP3DUE.fVONVKCauR8eNXL1rw0RFkVfTFUzHV7AQO","role":"player","_id":"dDjEubj81hKh4M2h"}
+{"username":"trader02","passwordHash":"$2a$10$jRFL3L9MLydNlrrkCcDdJuBf0.kRFpsJyHsljXIArWQtvFxByLBku","role":"player","_id":"JRO6f3psk3WxZOcN"}
+{"username":"trader03","passwordHash":"$2a$10$VklS/3dKJdPVfGU1TSRM4OIok1g3dyVV98mwW6r.bBfyhmjWFnVzS","role":"player","_id":"w7orCFsD0vZwoq1g"}
+{"username":"trader04","passwordHash":"$2a$10$CTl/8WOIrQ78lPTYMnfGzOiKB4nNkKEWFV8XUc3oZBpFh3/VC.A/S","role":"player","_id":"9JK3MP3Cq2BNacjl"}
+{"username":"admin","passwordHash":"$2a$10$xvFfV3yOQLTlAM1ZLpcDv.tuJqwEpx5RAp3NO4n9LtGXIzmiQP4y2","role":"admin","_id":"FgryIbrhadnERMSQ"}

@@ -127,7 +127,6 @@ function renderLoanInfo(info) {
   const rateStr = `${(info.rate * 100).toFixed(3)}%/тик`;
 
   if (info.loan) {
-    // Есть активный кредит — показываем статус
     if (activePanel) activePanel.style.display = 'block';
     if (newPanel)    newPanel.style.display    = 'none';
 
@@ -140,7 +139,6 @@ function renderLoanInfo(info) {
     if (rate) rate.textContent = rateStr;
     if (elDebt) elDebt.textContent = '$' + fmt(info.loan.due);
 
-    // Маржин-бар (0–100%)
     const pct = Math.min(Math.round(info.marginRatio * 100), 100);
     const danger = pct >= 70;
     const warn   = pct >= 50;
@@ -153,7 +151,6 @@ function renderLoanInfo(info) {
       lbl.style.color = danger ? '#e05252' : warn ? '#f7931a' : '';
     }
   } else {
-    // Нет кредита — показываем форму нового
     if (activePanel) activePanel.style.display = 'none';
     if (newPanel)    newPanel.style.display    = 'block';
     if (rateNote)    rateNote.textContent       = `Ставка: ${rateStr} · Максимум: $${fmt(info.maxLoan, 0)}`;
@@ -286,7 +283,6 @@ socket.on('walletUpdate', data => {
   }
 });
 
-// Маржин-колл — драматичное уведомление
 socket.on('marginCall', ({ username, remaining }) => {
   if (username !== myUsername) return;
   const msg = remaining > 0.01
@@ -296,7 +292,6 @@ socket.on('marginCall', ({ username, remaining }) => {
   loadState();
 });
 
-// Монета создана или удалена — обновить везде
 socket.on('coinsUpdated', ({ coins }) => {
   currentCoins = coins;
   updateChartCoins(coins);
@@ -306,11 +301,12 @@ socket.on('coinsUpdated', ({ coins }) => {
 
 // ── ТЕМА ──────────────────────────────────────────────────────────────────────
 (function() {
-  const btn = document.getElementById('themeBtn');
+  const btn  = document.getElementById('themeBtn');
   const html = document.documentElement;
-  let dark = html.getAttribute('data-theme') === 'dark';
+  // По умолчанию светлая; data-theme уже выставлен в html как "light"
+  let dark = false;
   if (btn) {
-    btn.textContent = dark ? '☀️' : '🌙';
+    btn.textContent = '🌙';
     btn.addEventListener('click', () => {
       dark = !dark;
       html.setAttribute('data-theme', dark ? 'dark' : 'light');

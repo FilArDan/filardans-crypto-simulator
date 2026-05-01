@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru" data-theme="dark">
+<html lang="ru" data-theme="light">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -12,7 +12,7 @@
 </head>
 <body>
 
-<!-- ── ЛОГИН ──────────────────────────────────────────────────────────── -->
+<!-- ── ЛОГИН ──────────────────────────────────────────────────────────────────────────── -->
 <div class="login-wrap" id="loginScreen">
   <div class="login-box">
     <div class="login-brand">
@@ -34,7 +34,7 @@
   </div>
 </div>
 
-<!-- ── ПРИЛОЖЕНИЕ ─────────────────────────────────────────────────────── -->
+<!-- ── ПРИЛОЖЕНИЕ ─────────────────────────────────────────────────────────────────────── -->
 <div class="app hidden" id="appScreen">
 
   <!-- TOPBAR -->
@@ -50,7 +50,7 @@
     </div>
     <div class="topbar-right">
       <span class="badge badge-ok">Онлайн</span>
-      <button class="tbtn" id="themeBtn" aria-label="Сменить тему">☀️</button>
+      <button class="tbtn" id="themeBtn" aria-label="Сменить тему">🌙</button>
       <button class="btn btn-secondary btn-sm" id="logoutBtn">Выйти</button>
     </div>
   </div>
@@ -106,7 +106,6 @@
       <form class="card stack" id="loanForm">
         <h2>🏦 Кредит</h2>
 
-        <!-- Панель активного кредита (скрыта если кредита нет) -->
         <div id="loanActivePanel" style="display:none">
           <div style="display:flex;justify-content:space-between;margin-bottom:4px">
             <span class="muted" style="font-size:12px">Текущий долг</span>
@@ -116,19 +115,16 @@
             <span class="muted" style="font-size:12px">Ставка / тик</span>
             <span id="loanRateDisplay" style="font-size:12px">—</span>
           </div>
-          <!-- Маржин-бар -->
-          <div style="background:var(--border,#333);border-radius:4px;height:8px;margin-bottom:4px;overflow:hidden">
+          <div style="background:var(--border,#ccc);border-radius:4px;height:8px;margin-bottom:4px;overflow:hidden">
             <div id="marginBarFill" style="height:100%;width:0%;border-radius:4px;transition:width .5s,background .5s"></div>
           </div>
           <div id="marginLabel" class="muted" style="font-size:11px;margin-bottom:10px"></div>
-          <!-- Частичное / полное погашение -->
           <div style="display:flex;gap:8px;align-items:center">
             <input id="repayAmount" type="number" min="1" step="1" placeholder="Сумма (пусто = всё)" style="flex:1;min-width:0"/>
             <button class="btn btn-dan btn-sm" type="button" id="repayBtn">Погасить</button>
           </div>
         </div>
 
-        <!-- Панель нового кредита (скрыта если кредит уже есть) -->
         <div id="loanNewPanel">
           <div class="fld"><label>Сумма<input id="loanAmount" type="number" min="100" step="50" value="500"/></label></div>
           <p id="loanRateNote" class="muted" style="font-size:12px">Ставка: загружается…</p>

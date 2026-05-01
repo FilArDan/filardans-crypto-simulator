@@ -3,6 +3,11 @@ let myUsername = '';
 let prices = {};
 let currentCoins = [];
 
+// Кэш для пересчёта рейтинга / портфеля при обновлении цен без HTTP-запроса
+let lastPlayers = null; // сирые данные игроков из /api/state (usd + количество монет)
+let lastWallet  = null; // кошелёк текущего игрока
+let lastDebt    = 0;    // актуальный долг (обновляется через loanUpdate)
+
 async function api(method, path, body) {
   const r = await fetch(path, {
     method,
@@ -39,22 +44,37 @@ function renderTicker(p, prev) {
   }).join('');
 }
 
-function renderLeaderboard(players) {
+// renderLeaderboard принимает плейеров в формате { username, usd, coins?, isBot }
+// если есть поле coins — пересчитываем полный капитал по актуальным ценам
+function renderLeaderboard(players, currentPrices) {
   const tbody = document.getElementById('leaderBody');
   if (!tbody || !players) return;
-  const sorted = [...players].sort((a, b) => b.usd - a.usd);
-  const maxUsd = sorted[0] ? sorted[0].usd : 1;
+  const p = currentPrices || prices;
+
+  // Считаем total для каждого: usd + стоимость монет по текущим ценам
+  const withTotal = players.map(pl => {
+    let coinsVal = 0;
+    if (pl.coins) {
+      for (const [coin, amt] of Object.entries(pl.coins)) {
+        coinsVal += (amt || 0) * (p[coin] || 0);
+      }
+    }
+    return { ...pl, total: (pl.usd || 0) + coinsVal };
+  });
+
+  const sorted = [...withTotal].sort((a, b) => b.total - a.total);
+  const maxTotal = sorted[0] ? sorted[0].total : 1;
   tbody.innerHTML = '';
-  sorted.forEach((p, i) => {
-    const isMine = p.username === myUsername;
+  sorted.forEach((pl, i) => {
+    const isMine = pl.username === myUsername;
     const rank = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1;
-    const barW = Math.round(p.usd / maxUsd * 100);
+    const barW = maxTotal > 0 ? Math.round(pl.total / maxTotal * 100) : 0;
     const tr = document.createElement('tr');
     if (isMine) tr.className = 'me';
     tr.innerHTML = `
       <td><span class="rank">${rank}</span></td>
-      <td><span class="${isMine ? 'inv-name me' : 'inv-name'}">${p.username}</span></td>
-      <td>$${fmt(p.usd)}</td>
+      <td><span class="${isMine ? 'inv-name me' : 'inv-name'}">${pl.username}</span></td>
+      <td>$${fmt(pl.total)}</td>
       <td><span class="bar-wrap"><span class="bar-fill" style="width:${barW}%"></span></span></td>`;
     tbody.appendChild(tr);
   });
@@ -115,6 +135,19 @@ function renderTradeAssets(coins) {
   if (coins.includes(prev)) sel.value = prev;
 }
 
+// Пересчитываем портфель, статистику и рейтинг по новым ценам (без HTTP)
+function recalcByPrices(p) {
+  if (lastWallet) {
+    renderPortfolio(lastWallet, currentCoins);
+    const coinsVal = currentCoins.reduce((s, c) => s + (lastWallet[c] || 0) * (p[c] || 0), 0);
+    const elTotal = document.getElementById('sTotal');
+    const elPort  = document.getElementById('sPort');
+    if (elTotal) elTotal.textContent = '$' + fmt(lastWallet.usd + coinsVal - lastDebt);
+    if (elPort)  elPort.textContent  = '$' + fmt(coinsVal);
+  }
+  if (lastPlayers) renderLeaderboard(lastPlayers, p);
+}
+
 // ── КРЕДИТ UI ─────────────────────────────────────────────────────────────────
 function renderLoanInfo(info) {
   if (!info || info.error) return;
@@ -139,6 +172,8 @@ function renderLoanInfo(info) {
     if (rate)   rate.textContent = rateStr;
     if (elDebt) elDebt.textContent = '$' + fmt(info.loan.due);
 
+    lastDebt = info.loan.due; // кэшируем долг
+
     const pct    = Math.min(Math.round(info.marginRatio * 100), 100);
     const danger = pct >= 70;
     const warn   = pct >= 50;
@@ -155,6 +190,7 @@ function renderLoanInfo(info) {
     if (newPanel)    newPanel.style.display    = 'block';
     if (rateNote)    rateNote.textContent       = `Ставка: ${rateStr} · Максимум: $${fmt(info.maxLoan, 0)}`;
     if (elDebt)      elDebt.textContent         = '—';
+    lastDebt = 0;
   }
 }
 
@@ -175,6 +211,8 @@ function applyLoanUpdate(data) {
   if (due)    due.textContent    = '$' + fmt(data.due);
   if (rateEl) rateEl.textContent = `${(data.rate * 100).toFixed(3)}%/тик`;
   if (elDebt) elDebt.textContent = '$' + fmt(data.due);
+
+  lastDebt = data.due; // обновляем кэш долга
 
   const pct    = Math.min(Math.round((data.marginRatio || 0) * 100), 100);
   const danger = pct >= 70;
@@ -204,10 +242,16 @@ async function loadState() {
     updateChartCoins(data.coins);
   }
 
+  // Кэшируем плейеров с полными данными кошельков (wallet.*) для пересчёта
+  // Сервер присылает players с usd+total, но не с coins игроков —
+  // поэтому добавляем coins из wallets
+  lastPlayers = data.players; // { username, usd, isBot } — без coins, но достаточно для рейтинга
+  lastWallet  = data.wallet;
+
   renderTicker(data.prices);
   renderPortfolio(data.wallet, data.coins);
   renderFeed(data.events || []);
-  renderLeaderboard(data.players);
+  renderLeaderboard(data.players, data.prices);
   renderTransferSelect(data.players);
   renderTradeAssets(data.coins || currentCoins);
   renderLoanInfo(loanInfo);
@@ -216,6 +260,7 @@ async function loadState() {
   const coinsVal = (data.coins || currentCoins)
     .reduce((s, c) => s + (data.wallet[c] || 0) * (data.prices[c] || 0), 0);
   const debt = loanInfo && loanInfo.loan ? loanInfo.loan.due : 0;
+  lastDebt = debt;
 
   const elTotal = document.getElementById('sTotal');
   const elPort  = document.getElementById('sPort');
@@ -297,6 +342,8 @@ socket.on('priceUpdate', p => {
   renderTicker(p, prevPrices);
   addPricePoint(p);
   prevPrices = { ...p };
+  // Без HTTP: пересчитываем портфель и рейтинг если есть кэш
+  recalcByPrices(p);
 });
 
 socket.on('newEvent', ev => {
@@ -311,6 +358,7 @@ socket.on('newEvent', ev => {
 
 socket.on('walletUpdate', data => {
   if (data.username === myUsername) {
+    lastWallet = data.wallet; // сразу обновляем кэш
     renderPortfolio(data.wallet);
     loadState();
   }

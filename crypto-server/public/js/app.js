@@ -25,7 +25,7 @@ function showApp(username) {
   loadState();
 }
 
-// ── РЕНДЕР ────────────────────────────────────────────────────────────────────
+// ── РЕНДЕР ────────────────────────────────────────────────────────────────────────────
 function renderTicker(p, prev) {
   prices = p;
   const el = document.getElementById('ticker');
@@ -115,7 +115,7 @@ function renderTradeAssets(coins) {
   if (coins.includes(prev)) sel.value = prev;
 }
 
-// ── КРЕДИТ UI ─────────────────────────────────────────────────────────────────
+// ── КРЕДИТ UI ───────────────────────────────────────────────────────────────────────────
 function renderLoanInfo(info) {
   if (!info || info.error) return;
 
@@ -135,11 +135,11 @@ function renderLoanInfo(info) {
     const bar  = document.getElementById('marginBarFill');
     const lbl  = document.getElementById('marginLabel');
 
-    if (due)  due.textContent  = '$' + fmt(info.loan.due);
-    if (rate) rate.textContent = rateStr;
+    if (due)    due.textContent  = '$' + fmt(info.loan.due);
+    if (rate)   rate.textContent = rateStr;
     if (elDebt) elDebt.textContent = '$' + fmt(info.loan.due);
 
-    const pct = Math.min(Math.round(info.marginRatio * 100), 100);
+    const pct    = Math.min(Math.round(info.marginRatio * 100), 100);
     const danger = pct >= 70;
     const warn   = pct >= 50;
     if (bar) {
@@ -158,7 +158,48 @@ function renderLoanInfo(info) {
   }
 }
 
-// ── ЗАГРУЗКА СОСТОЯНИЯ ────────────────────────────────────────────────────────
+// Обновить панель кредита напрямую по socket-событию loanUpdate
+function applyLoanUpdate(data) {
+  if (data.username !== myUsername) return;
+
+  const activePanel = document.getElementById('loanActivePanel');
+  const newPanel    = document.getElementById('loanNewPanel');
+  const due         = document.getElementById('loanDueDisplay');
+  const rateEl      = document.getElementById('loanRateDisplay');
+  const bar         = document.getElementById('marginBarFill');
+  const lbl         = document.getElementById('marginLabel');
+  const elDebt      = document.getElementById('sDebt');
+  const elTotal     = document.getElementById('sTotal');
+
+  if (activePanel) activePanel.style.display = 'block';
+  if (newPanel)    newPanel.style.display    = 'none';
+
+  if (due)    due.textContent    = '$' + fmt(data.due);
+  if (rateEl) rateEl.textContent = `${(data.rate * 100).toFixed(3)}%/тик`;
+  if (elDebt) elDebt.textContent = '$' + fmt(data.due);
+
+  const pct    = Math.min(Math.round((data.marginRatio || 0) * 100), 100);
+  const danger = pct >= 70;
+  const warn   = pct >= 50;
+  if (bar) {
+    bar.style.width      = pct + '%';
+    bar.style.background = danger ? '#e05252' : warn ? '#f7931a' : '#4f98a3';
+  }
+  if (lbl) {
+    lbl.textContent = `Маржа: ${pct}% (маржин-колл при 80%)`;
+    lbl.style.color = danger ? '#e05252' : warn ? '#f7931a' : '';
+  }
+
+  // Обновить общий счётчик "Чистый капитал"
+  if (elTotal) {
+    const curTotal = parseFloat((elTotal.textContent || '').replace(/[^\d.,-]/g, '').replace(',', '.')) || 0;
+    // Вычитаем разницу между предыдущим и новым долгом
+    // (проще вызвать loadState, но это лишний HTTP-запрос)
+    loadState();
+  }
+}
+
+// ── ЗАГРУЗКА СОСТОЯНИЯ ──────────────────────────────────────────────────────────────
 async function loadState() {
   const [data, loanInfo] = await Promise.all([
     api('GET', '/api/state'),
@@ -190,8 +231,8 @@ async function loadState() {
   if (elPort)  elPort.textContent  = '$' + fmt(coinsVal);
 }
 
-// ── ЛОГИН ─────────────────────────────────────────────────────────────────────
-document.getElementById('loginForm').addEventListener('submit', async e => {
+// ── ЛОГИН ────────────────────────────────────────────────────────────────────────────────
+Document.getElementById('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
   const username = document.getElementById('usernameInput').value.trim();
   const password = document.getElementById('passwordInput').value;
@@ -208,7 +249,7 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
   location.reload();
 });
 
-// ── ТОРГОВЛЯ ──────────────────────────────────────────────────────────────────
+// ── ТОРГОВЛЯ ────────────────────────────────────────────────────────────────────────────
 document.getElementById('tradeForm').addEventListener('submit', async e => {
   e.preventDefault();
   const coin   = document.getElementById('tradeAsset').value;
@@ -222,7 +263,7 @@ document.getElementById('tradeForm').addEventListener('submit', async e => {
   loadState();
 });
 
-// ── ПЕРЕВОД ───────────────────────────────────────────────────────────────────
+// ── ПЕРЕВОД ────────────────────────────────────────────────────────────────────────────
 document.getElementById('transferForm').addEventListener('submit', async e => {
   e.preventDefault();
   const to     = document.getElementById('transferTarget').value;
@@ -235,7 +276,7 @@ document.getElementById('transferForm').addEventListener('submit', async e => {
   loadState();
 });
 
-// ── КРЕДИТ: взять ─────────────────────────────────────────────────────────────
+// ── КРЕДИТ: взять ───────────────────────────────────────────────────────────────────────
 document.getElementById('loanForm').addEventListener('submit', async e => {
   e.preventDefault();
   const amount = parseFloat(document.getElementById('loanAmount').value);
@@ -246,7 +287,7 @@ document.getElementById('loanForm').addEventListener('submit', async e => {
   loadState();
 });
 
-// ── КРЕДИТ: погасить ──────────────────────────────────────────────────────────
+// ── КРЕДИТ: погасить ──────────────────────────────────────────────────────────────────────
 document.getElementById('repayBtn').addEventListener('click', async () => {
   const err        = document.getElementById('loanError');
   const repayInput = document.getElementById('repayAmount');
@@ -258,7 +299,7 @@ document.getElementById('repayBtn').addEventListener('click', async () => {
   loadState();
 });
 
-// ── SOCKET ────────────────────────────────────────────────────────────────────
+// ── SOCKET ────────────────────────────────────────────────────────────────────────────────
 let prevPrices = null;
 socket.on('priceUpdate', p => {
   renderTicker(p, prevPrices);
@@ -283,6 +324,9 @@ socket.on('walletUpdate', data => {
   }
 });
 
+// Новое событие: проценты начислены, долг изменился
+socket.on('loanUpdate', applyLoanUpdate);
+
 socket.on('marginCall', ({ username, remaining }) => {
   if (username !== myUsername) return;
   const msg = remaining > 0.01
@@ -299,11 +343,10 @@ socket.on('coinsUpdated', ({ coins }) => {
   loadState();
 });
 
-// ── ТЕМА ──────────────────────────────────────────────────────────────────────
+// ── ТЕМА ────────────────────────────────────────────────────────────────────────────────
 (function() {
   const btn  = document.getElementById('themeBtn');
   const html = document.documentElement;
-  // По умолчанию светлая; data-theme уже выставлен в html как "light"
   let dark = false;
   if (btn) {
     btn.textContent = '🌙';
@@ -316,7 +359,7 @@ socket.on('coinsUpdated', ({ coins }) => {
   }
 })();
 
-// ── ПРОВЕРКА СЕССИИ ───────────────────────────────────────────────────────────
+// ── ПРОВЕРКА СЕССИИ ──────────────────────────────────────────────────────────────────────
 api('GET', '/auth/me').then(res => {
   if (res.username) {
     if (res.role === 'admin') { window.location.href = '/admin.html'; return; }

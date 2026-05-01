@@ -25,7 +25,7 @@ function showApp(username) {
   loadState();
 }
 
-// ── РЕНДЕР ──────────────────────────────────────────────────────────────────────
+// ── РЕНДЕР ────────────────────────────────────────────────────────────────────
 function renderTicker(p, prev) {
   prices = p;
   const el = document.getElementById('ticker');
@@ -115,14 +115,63 @@ function renderTradeAssets(coins) {
   if (coins.includes(prev)) sel.value = prev;
 }
 
-// ── ЗАГРУЗКА СОСТОЯНИЯ ─────────────────────────────────────────────────────────
+// ── КРЕДИТ UI ─────────────────────────────────────────────────────────────────
+function renderLoanInfo(info) {
+  if (!info || info.error) return;
+
+  const activePanel = document.getElementById('loanActivePanel');
+  const newPanel    = document.getElementById('loanNewPanel');
+  const rateNote    = document.getElementById('loanRateNote');
+  const elDebt      = document.getElementById('sDebt');
+
+  const rateStr = `${(info.rate * 100).toFixed(3)}%/тик`;
+
+  if (info.loan) {
+    // Есть активный кредит — показываем статус
+    if (activePanel) activePanel.style.display = 'block';
+    if (newPanel)    newPanel.style.display    = 'none';
+
+    const due  = document.getElementById('loanDueDisplay');
+    const rate = document.getElementById('loanRateDisplay');
+    const bar  = document.getElementById('marginBarFill');
+    const lbl  = document.getElementById('marginLabel');
+
+    if (due)  due.textContent  = '$' + fmt(info.loan.due);
+    if (rate) rate.textContent = rateStr;
+    if (elDebt) elDebt.textContent = '$' + fmt(info.loan.due);
+
+    // Маржин-бар (0–100%)
+    const pct = Math.min(Math.round(info.marginRatio * 100), 100);
+    const danger = pct >= 70;
+    const warn   = pct >= 50;
+    if (bar) {
+      bar.style.width      = pct + '%';
+      bar.style.background = danger ? '#e05252' : warn ? '#f7931a' : '#4f98a3';
+    }
+    if (lbl) {
+      lbl.textContent = `Маржа: ${pct}% (маржин-колл при 80%)`;
+      lbl.style.color = danger ? '#e05252' : warn ? '#f7931a' : '';
+    }
+  } else {
+    // Нет кредита — показываем форму нового
+    if (activePanel) activePanel.style.display = 'none';
+    if (newPanel)    newPanel.style.display    = 'block';
+    if (rateNote)    rateNote.textContent       = `Ставка: ${rateStr} · Максимум: $${fmt(info.maxLoan, 0)}`;
+    if (elDebt)      elDebt.textContent         = '—';
+  }
+}
+
+// ── ЗАГРУЗКА СОСТОЯНИЯ ────────────────────────────────────────────────────────
 async function loadState() {
-  const data = await api('GET', '/api/state');
+  const [data, loanInfo] = await Promise.all([
+    api('GET', '/api/state'),
+    api('GET', '/api/loan/info'),
+  ]);
   if (data.error) return;
 
   if (data.coins) {
     currentCoins = data.coins;
-    updateChartCoins(data.coins);  // ← синхронизируем табы графика
+    updateChartCoins(data.coins);
   }
 
   renderTicker(data.prices);
@@ -131,21 +180,20 @@ async function loadState() {
   renderLeaderboard(data.players);
   renderTransferSelect(data.players);
   renderTradeAssets(data.coins || currentCoins);
+  renderLoanInfo(loanInfo);
   addPricePoint(data.prices);
 
   const coinsVal = (data.coins || currentCoins)
     .reduce((s, c) => s + (data.wallet[c] || 0) * (data.prices[c] || 0), 0);
-  const debt = (data.loans || []).reduce((s, l) => s + l.due, 0);
+  const debt = loanInfo && loanInfo.loan ? loanInfo.loan.due : 0;
 
   const elTotal = document.getElementById('sTotal');
   const elPort  = document.getElementById('sPort');
-  const elDebt  = document.getElementById('sDebt');
   if (elTotal) elTotal.textContent = '$' + fmt(data.wallet.usd + coinsVal - debt);
   if (elPort)  elPort.textContent  = '$' + fmt(coinsVal);
-  if (elDebt)  elDebt.textContent  = debt > 0 ? '$' + fmt(debt) : '—';
 }
 
-// ── ЛОГИН ──────────────────────────────────────────────────────────────────────────────
+// ── ЛОГИН ─────────────────────────────────────────────────────────────────────
 document.getElementById('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
   const username = document.getElementById('usernameInput').value.trim();
@@ -163,7 +211,7 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
   location.reload();
 });
 
-// ── ТОРГОВЛЯ ───────────────────────────────────────────────────────────────────────
+// ── ТОРГОВЛЯ ──────────────────────────────────────────────────────────────────
 document.getElementById('tradeForm').addEventListener('submit', async e => {
   e.preventDefault();
   const coin   = document.getElementById('tradeAsset').value;
@@ -177,7 +225,7 @@ document.getElementById('tradeForm').addEventListener('submit', async e => {
   loadState();
 });
 
-// ── ПЕРЕВОД ───────────────────────────────────────────────────────────────────────
+// ── ПЕРЕВОД ───────────────────────────────────────────────────────────────────
 document.getElementById('transferForm').addEventListener('submit', async e => {
   e.preventDefault();
   const to     = document.getElementById('transferTarget').value;
@@ -190,7 +238,7 @@ document.getElementById('transferForm').addEventListener('submit', async e => {
   loadState();
 });
 
-// ── КРЕДИТ ──────────────────────────────────────────────────────────────────────────
+// ── КРЕДИТ: взять ─────────────────────────────────────────────────────────────
 document.getElementById('loanForm').addEventListener('submit', async e => {
   e.preventDefault();
   const amount = parseFloat(document.getElementById('loanAmount').value);
@@ -201,18 +249,19 @@ document.getElementById('loanForm').addEventListener('submit', async e => {
   loadState();
 });
 
+// ── КРЕДИТ: погасить ──────────────────────────────────────────────────────────
 document.getElementById('repayBtn').addEventListener('click', async () => {
-  const err = document.getElementById('loanError');
-  err.textContent = '';
-  const state = await api('GET', '/api/state');
-  const loan = (state.loans || []).find(l => !l.paid);
-  if (!loan) { err.textContent = 'Нет активных кредитов'; return; }
-  const res = await api('POST', '/api/repay', { loanId: loan._id, amount: loan.due });
+  const err        = document.getElementById('loanError');
+  const repayInput = document.getElementById('repayAmount');
+  err.textContent  = '';
+  const amount = repayInput && repayInput.value ? parseFloat(repayInput.value) : undefined;
+  const res = await api('POST', '/api/repay', amount ? { amount } : {});
   if (res.error) { err.textContent = res.error; return; }
+  if (repayInput) repayInput.value = '';
   loadState();
 });
 
-// ── SOCKET ──────────────────────────────────────────────────────────────────────────────
+// ── SOCKET ────────────────────────────────────────────────────────────────────
 let prevPrices = null;
 socket.on('priceUpdate', p => {
   renderTicker(p, prevPrices);
@@ -231,19 +280,31 @@ socket.on('newEvent', ev => {
 });
 
 socket.on('walletUpdate', data => {
-  if (data.username === myUsername) renderPortfolio(data.wallet);
+  if (data.username === myUsername) {
+    renderPortfolio(data.wallet);
+    loadState();
+  }
+});
+
+// Маржин-колл — драматичное уведомление
+socket.on('marginCall', ({ username, remaining }) => {
+  if (username !== myUsername) return;
+  const msg = remaining > 0.01
+    ? `🚨 МАРЖИН-КОЛЛ!\nВсе активы принудительно проданы.\nОстаток долга: $${fmt(remaining)}`
+    : `🚨 МАРЖИН-КОЛЛ!\nВсе активы проданы — долг полностью погашен.`;
+  alert(msg);
   loadState();
 });
 
-// Монета создана или удалена — обновить всё включая табы графика
+// Монета создана или удалена — обновить везде
 socket.on('coinsUpdated', ({ coins }) => {
   currentCoins = coins;
-  updateChartCoins(coins);   // ← табы графика перерисовываются мгновенно
+  updateChartCoins(coins);
   renderTradeAssets(coins);
   loadState();
 });
 
-// ── ТЕМА ──────────────────────────────────────────────────────────────────────────────
+// ── ТЕМА ──────────────────────────────────────────────────────────────────────
 (function() {
   const btn = document.getElementById('themeBtn');
   const html = document.documentElement;
@@ -259,7 +320,7 @@ socket.on('coinsUpdated', ({ coins }) => {
   }
 })();
 
-// ── ПРОВЕРКА СЕССИИ ───────────────────────────────────────────────────────────────────
+// ── ПРОВЕРКА СЕССИИ ───────────────────────────────────────────────────────────
 api('GET', '/auth/me').then(res => {
   if (res.username) {
     if (res.role === 'admin') { window.location.href = '/admin.html'; return; }

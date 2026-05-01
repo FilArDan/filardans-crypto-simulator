@@ -36,15 +36,14 @@ async function tick(io) {
   updatePriceHistory(prices);
   await botTick(io, prices);
 
-  // Актуальные цены после сделок ботов
+  // Повторно получить актуальные цены после сделок ботов
   const updatedDocs = await db.prices.find({});
   const updatedPrices = {};
   updatedDocs.forEach(d => { updatedPrices[d.coin] = d.price; });
+  if (io) io.emit('priceUpdate', updatedPrices);
 
   // Начислить проценты по кредитам и проверить маржин-коллы
   await accrueInterest(io, updatedPrices);
-
-  if (io) io.emit('priceUpdate', updatedPrices);
 }
 
 async function applyTradePressure(coin, amount, action) {

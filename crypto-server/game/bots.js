@@ -48,7 +48,7 @@ function botPortfolioValue(bot, prices) {
   return total;
 }
 
-// ── 🐂 Агрессор ──────────────────────────────────────────────────────────────────────────────
+// ── 🐂 Агрессор ──────────────────────────────────────────────────────────────
 async function bullTick(bot, coins, prices) {
   const coin = coins[Math.floor(Math.random() * coins.length)];
   const price = prices[coin];
@@ -77,7 +77,7 @@ async function bullTick(bot, coins, prices) {
   }
 }
 
-// ── 🦊 Осторожный ────────────────────────────────────────────────────────────────────────────
+// ── 🦊 Осторожный ────────────────────────────────────────────────────────────
 async function foxTick(bot, coins, prices) {
   if (Math.random() > 0.40) return;
   const coin = coins[Math.floor(Math.random() * coins.length)];
@@ -107,7 +107,7 @@ async function foxTick(bot, coins, prices) {
   }
 }
 
-// ── 🐊 Накопитель ────────────────────────────────────────────────────────────────────────────────────────────────
+// ── 🐊 Накопитель ────────────────────────────────────────────────────────────
 async function crocTick(bot, coins, prices) {
   const coin = coins[Math.floor(Math.random() * coins.length)];
   const price = prices[coin];
@@ -144,7 +144,7 @@ async function crocTick(bot, coins, prices) {
   }
 }
 
-// ── DB helpers ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── DB helpers ────────────────────────────────────────────────────────────────
 function listBotsRaw() {
   return db.bots.find({});
 }
@@ -154,7 +154,7 @@ async function replaceBotState(name, state) {
   await db.bots.update({ name }, { $set: { usd: clean.usd, held: clean.held, avgP: clean.avgP, target: clean.target } });
 }
 
-// ── Главный тик ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── Главный тик ───────────────────────────────────────────────────────────────
 async function botTick(io, currentPrices) {
   if (!currentPrices || Object.keys(currentPrices).length === 0) return;
   const coins = Object.keys(currentPrices);
@@ -172,7 +172,7 @@ async function botTick(io, currentPrices) {
   }
 }
 
-// ── Статистика ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── Статистика ────────────────────────────────────────────────────────────────
 async function getBotStats(prices) {
   const bots = await listBotsRaw();
   return bots.map(bot => {
@@ -189,7 +189,7 @@ async function getBotStats(prices) {
   });
 }
 
-// ── CRUD (для админки) ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── CRUD (для будущей админки ботов) ─────────────────────────────────────────
 async function createBot({ name, type, usd }) {
   const cleanName = String(name || '').trim();
   if (!cleanName) throw new Error('Укажите имя бота');
@@ -227,5 +227,5 @@ module.exports = {
   deleteBot,
   setBotCash,
   updateBotPreset,
-  priceHistory, // экспортируем для bank.js (динамическая ставка)
+  priceHistory,  // экспортируем для bank.js и game.js
 };

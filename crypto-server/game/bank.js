@@ -24,12 +24,20 @@ function computeLoanRate(priceHistory) {
   return Math.max(MIN_RATE, Math.min(MAX_RATE, BASE_RATE * (1 + avgVol * 5)));
 }
 
-// ── Полная стоимость портфеля ───────────────────────────────────────────────────────
-function portfolioValue(wallet, prices, coins) {
+// ── Стоимость монет без USD (для расчёта маржи) ──────────────────────────────────
+// Маржа = долг / стоимость монет. USD не включается — иначе игрок может держать
+// весь долг в кэше и маржин-колл никогда не сработает корректно.
+function coinValue(wallet, prices, coins) {
   if (!wallet) return 0;
-  let total = wallet.usd || 0;
+  let total = 0;
   for (const coin of coins) total += (wallet[coin] || 0) * (prices[coin] || 0);
   return total;
+}
+
+// ── Полная стоимость портфеля (для лимита кредита) ─────────────────────────────────
+function portfolioValue(wallet, prices, coins) {
+  if (!wallet) return 0;
+  return (wallet.usd || 0) + coinValue(wallet, prices, coins);
 }
 
 // ── Начисление процентов (вызывается каждый тик из market.js) ──────────────────
@@ -47,8 +55,9 @@ async function accrueInterest(io, prices, priceHistory) {
     const wallet  = await db.wallets.findOne({ username: loan.username });
     if (!wallet) continue;
 
-    const portVal = portfolioValue(wallet, prices, coins);
-    const marginRatio = portVal > 0 ? newDue / portVal : 1;
+    // Маржа считается только по монетам (без usd)
+    const coinsVal    = coinValue(wallet, prices, coins);
+    const marginRatio = coinsVal > 0 ? newDue / coinsVal : (newDue > 0 ? 1 : 0);
 
     // Пушим loanUpdate, чтобы клиент обновил цифру долга в реальном времени
     if (io) {
@@ -60,7 +69,7 @@ async function accrueInterest(io, prices, priceHistory) {
       });
     }
 
-    if (portVal > 0 && marginRatio >= MARGIN_THRESHOLD) {
+    if (marginRatio >= MARGIN_THRESHOLD) {
       await executeMarginCall(loan.username, wallet, newDue, prices, coins, io);
     }
   }
@@ -96,7 +105,14 @@ async function executeMarginCall(username, wallet, loanDue, prices, coins, io) {
     io.emit('newEvent',     ev);
     io.emit('marginCall',   { username, remaining });
     io.emit('walletUpdate', { username, wallet: finalWallet });
+    // Уведомляем клиента о новом состоянии долга после колла
+    io.emit('loanUpdate', {
+      username,
+      due:         remaining,
+      rate:        0,
+      marginRatio: 0,
+    });
   }
 }
 
-module.exports = { accrueInterest, computeLoanRate, portfolioValue, MARGIN_THRESHOLD, MAX_LOAN_RATIO };
+module.exports = { accrueInterest, computeLoanRate, coinValue, portfolioValue, MARGIN_THRESHOLD, MAX_LOAN_RATIO };

@@ -8,7 +8,7 @@ const MAX_LOAN_RATIO   = 2.0;
 const MARGIN_THRESHOLD = 0.80;
 const FEE              = 0.001;
 
-// ── Динамическая ставка ──────────────────────────────────────────────────────────────────────────
+// ── Динамическая ставка ──────────────────────────────────────────────────────
 function computeLoanRate(priceHistory) {
   const coins = Object.keys(priceHistory || {});
   if (!coins.length) return BASE_RATE;
@@ -24,7 +24,7 @@ function computeLoanRate(priceHistory) {
   return Math.max(MIN_RATE, Math.min(MAX_RATE, BASE_RATE * (1 + avgVol * 5)));
 }
 
-// ── Стоимость монет без USD ──────────────────────────────────────────────────────────────────────
+// ── Стоимость монет без USD ───────────────────────────────────────────────────
 function coinValue(wallet, prices, coins) {
   if (!wallet) return 0;
   let total = 0;
@@ -32,55 +32,53 @@ function coinValue(wallet, prices, coins) {
   return total;
 }
 
-// ── Полная стоимость портфеля (USD + монеты) ─────────────────────────────────────────────────
+// ── Полная стоимость портфеля (USD + монеты) ─────────────────────────────────
 function portfolioValue(wallet, prices, coins) {
   if (!wallet) return 0;
   return (wallet.usd || 0) + coinValue(wallet, prices, coins);
 }
 
-// ── Расчёт маржи ──────────────────────────────────────────────────────────────────────────
-// Маржа = долг / полный портфель (USD + монеты)
-// Разделить на 0 можно только если у игрока вообще нет ничего (USD=0 И монет=0)
-// Если игрок только что взял кредит и не купил монеты — coinsVal=0, но usd>0,
-// поэтому маржа = долг / usd — занимает нормальное значение
+// ── Расчёт маржи (единая формула для всего кода) ─────────────────────────────
+// Маржа = долг / (USD + монеты)
+// Если портфель пустой и долг есть — маржа = 1 (максимум, колл неизбежен)
+// Если долга нет — маржа = 0
 function computeMarginRatio(wallet, prices, coins, loanDue) {
+  if (!loanDue || loanDue <= 0) return 0;
   const total = portfolioValue(wallet, prices, coins);
-  if (total <= 0) return loanDue > 0 ? 1 : 0;
+  if (total <= 0) return 1;
   return loanDue / total;
 }
 
-// ── Начисление процентов (вызывается каждый тик из market.js) ─────────────────────
-function accrueInterest(io, prices, priceHistory) {
-  return new Promise(async (resolve) => {
-    const coins = await getAllCoins();
-    const loans = await db.loans.find({ paid: { $ne: true } });
-    if (!loans.length) return resolve();
+// ── Начисление процентов (вызывается каждый тик из market.js) ────────────────
+async function accrueInterest(io, prices, priceHistory) {
+  const coins = await getAllCoins();
+  const loans = await db.loans.find({ paid: { $ne: true } });
+  if (!loans.length) return;
 
-    const rate = computeLoanRate(priceHistory || {});
+  const rate = computeLoanRate(priceHistory || {});
 
-    for (const loan of loans) {
-      const newDue = loan.due * (1 + rate);
-      await db.loans.update({ _id: loan._id }, { $set: { due: newDue, rate } });
+  for (const loan of loans) {
+    const newDue = loan.due * (1 + rate);
+    await db.loans.update({ _id: loan._id }, { $set: { due: newDue, rate } });
 
-      const wallet = await db.wallets.findOne({ username: loan.username });
-      if (!wallet) continue;
+    const wallet = await db.wallets.findOne({ username: loan.username });
+    if (!wallet) continue;
 
-      const marginRatio = computeMarginRatio(wallet, prices, coins, newDue);
+    const marginRatio = computeMarginRatio(wallet, prices, coins, newDue);
 
-      if (io) {
-        io.emit('loanUpdate', { username: loan.username, due: newDue, rate, marginRatio });
-      }
-
-      if (marginRatio >= MARGIN_THRESHOLD) {
-        await executeMarginCall(loan.username, wallet, newDue, prices, coins, io);
-      }
+    if (io) {
+      io.emit('loanUpdate', { username: loan.username, due: newDue, rate, marginRatio });
     }
-    resolve();
-  });
+
+    if (marginRatio >= MARGIN_THRESHOLD) {
+      await executeMarginCall(loan.username, wallet, newDue, prices, coins, io);
+    }
+  }
 }
 
-// ── Маржин-колл ──────────────────────────────────────────────────────────────────────────────────
+// ── Маржин-колл ───────────────────────────────────────────────────────────────
 async function executeMarginCall(username, wallet, loanDue, prices, coins, io) {
+  // Продаём все монеты
   let proceeds = 0;
   for (const coin of coins) {
     const amt = wallet[coin] || 0;
@@ -90,20 +88,28 @@ async function executeMarginCall(username, wallet, loanDue, prices, coins, io) {
     }
   }
   await db.wallets.update({ username }, { $inc: { usd: proceeds } });
+
+  // Погашаем долг из USD (без Math.max — usd может быть отрицательным только
+  // если БД некорректна; Math.min гарантирует что платим не больше чем есть)
   const freshWallet = await db.wallets.findOne({ username });
-  const pay = Math.min(Math.max(freshWallet.usd, 0), loanDue);
-  await db.wallets.update({ username }, { $inc: { usd: -pay } });
+  const pay = Math.min(freshWallet.usd || 0, loanDue);
+  if (pay > 0) {
+    await db.wallets.update({ username }, { $inc: { usd: -pay } });
+  }
   const remaining = Math.max(0, loanDue - pay);
+
   if (remaining < 0.01) {
     await db.loans.update({ username, paid: { $ne: true } }, { $set: { due: 0, paid: true } });
   } else {
     await db.loans.update({ username, paid: { $ne: true } }, { $set: { due: remaining } });
   }
+
   const ev = {
     ts:   Date.now(),
     text: `🚨 МАРЖИН-КОЛЛ! ${username} — активы принудительно проданы ($${proceeds.toFixed(2)}). Остаток долга: $${remaining.toFixed(2)}`
   };
   await db.events.insert(ev);
+
   if (io) {
     const finalWallet = await db.wallets.findOne({ username });
     io.emit('newEvent',     ev);
@@ -113,4 +119,12 @@ async function executeMarginCall(username, wallet, loanDue, prices, coins, io) {
   }
 }
 
-module.exports = { accrueInterest, computeLoanRate, computeMarginRatio, coinValue, portfolioValue, MARGIN_THRESHOLD, MAX_LOAN_RATIO };
+module.exports = {
+  accrueInterest,
+  computeLoanRate,
+  computeMarginRatio,
+  coinValue,
+  portfolioValue,
+  MARGIN_THRESHOLD,
+  MAX_LOAN_RATIO,
+};

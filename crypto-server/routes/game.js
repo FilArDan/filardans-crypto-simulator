@@ -34,7 +34,7 @@ router.get('/state', auth, async (req, res) => {
     const players = allWallets.map(w => ({ username: w.username, usd: w.usd, isBot: false }));
     const bots = (await getBotStats(prices)).map(b => ({
       username: `${b.botEmoji} ${b.username}`,
-      usd:      b.total, // fix: используем total (кэш + монеты), а не только usd
+      usd:      b.total,
       isBot:    true,
     }));
     players.push(...bots);
@@ -54,7 +54,6 @@ router.post('/trade', auth, async (req, res) => {
     const baseValue = priceDoc.price * amount;
 
     if (action === 'buy') {
-      // Игрок платит baseValue + комиссия
       const cost = baseValue * (1 + TRADE_FEE);
       if (wallet.usd < cost) return res.json({ error: `Недостаточно USD (нужно $${cost.toFixed(2)})` });
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: -cost, [coin]: amount } });
@@ -70,7 +69,6 @@ router.post('/trade', auth, async (req, res) => {
       io.emit('priceUpdate', updatedPrices);
       res.json({ wallet: updated, prices: updatedPrices });
     } else {
-      // Игрок получает baseValue - комиссия
       if ((wallet[coin] || 0) < amount) return res.json({ error: `Недостаточно ${coin}` });
       const proceeds = baseValue * (1 - TRADE_FEE);
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: proceeds, [coin]: -amount } });
@@ -114,18 +112,17 @@ router.post('/transfer', auth, async (req, res) => {
 // GET /api/loan/info — ставка, лимит, состояние долга
 router.get('/loan/info', auth, async (req, res) => {
   try {
-    const { computeLoanRate, coinValue, MARGIN_THRESHOLD, MAX_LOAN_RATIO } = require('../game/bank');
+    const { computeLoanRate, computeMarginRatio, portfolioValue, MAX_LOAN_RATIO, MARGIN_THRESHOLD } = require('../game/bank');
     const rate    = computeLoanRate(priceHistory);
     const wallet  = await db.wallets.findOne({ username: req.session.username });
     const prices  = await getAllPrices();
     const coins   = await getAllCoins();
-    // Для лимита кредита используем полный портфель (usd + монеты)
-    const portVal = (wallet.usd || 0) + coinValue(wallet, prices, coins);
+    // Лимит кредита — от полного портфеля (usd + монеты)
+    const portVal = portfolioValue(wallet, prices, coins);
     const maxLoan = Math.floor(portVal * MAX_LOAN_RATIO);
     const loan    = await db.loans.findOne({ username: req.session.username, paid: { $ne: true } });
-    // Для маржи используем только стоимость монет (без usd)
-    const coinsVal    = coinValue(wallet, prices, coins);
-    const marginRatio = (loan && coinsVal > 0) ? loan.due / coinsVal : 0;
+    // Маржа — та же формула что и в accrueInterest: долг / (usd + монеты)
+    const marginRatio = loan ? computeMarginRatio(wallet, prices, coins, loan.due) : 0;
     res.json({ loan: loan || null, rate, maxLoan, portVal, marginThreshold: MARGIN_THRESHOLD, marginRatio });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -137,11 +134,11 @@ router.post('/loan', auth, async (req, res) => {
     if (!num || num < 100) return res.json({ error: 'Минимум $100' });
     const existing = await db.loans.findOne({ username: req.session.username, paid: { $ne: true } });
     if (existing) return res.json({ error: `Сначала погаси текущий долг ($${existing.due.toFixed(2)})` });
-    const { computeLoanRate, coinValue, MAX_LOAN_RATIO } = require('../game/bank');
+    const { computeLoanRate, portfolioValue, MAX_LOAN_RATIO } = require('../game/bank');
     const wallet  = await db.wallets.findOne({ username: req.session.username });
     const prices  = await getAllPrices();
     const coins   = await getAllCoins();
-    const portVal = (wallet.usd || 0) + coinValue(wallet, prices, coins);
+    const portVal = portfolioValue(wallet, prices, coins);
     const maxLoan = Math.floor(portVal * MAX_LOAN_RATIO);
     if (num > maxLoan) return res.json({ error: `Максимум $${maxLoan.toLocaleString('ru')} (${MAX_LOAN_RATIO}× портфель $${portVal.toFixed(0)})` });
     const rate = computeLoanRate(priceHistory);

@@ -8,7 +8,7 @@ const MAX_LOAN_RATIO   = 2.0;
 const MARGIN_THRESHOLD = 0.80;
 const FEE              = 0.001;
 
-// ── Динамическая ставка ─────────────────────────────────────────────────────────────
+// ── Динамическая ставка ──────────────────────────────────────────────────────────────────────────
 function computeLoanRate(priceHistory) {
   const coins = Object.keys(priceHistory || {});
   if (!coins.length) return BASE_RATE;
@@ -24,9 +24,7 @@ function computeLoanRate(priceHistory) {
   return Math.max(MIN_RATE, Math.min(MAX_RATE, BASE_RATE * (1 + avgVol * 5)));
 }
 
-// ── Стоимость монет без USD (для расчёта маржи) ──────────────────────────────────
-// Маржа = долг / стоимость монет. USD не включается — иначе игрок может держать
-// весь долг в кэше и маржин-колл никогда не сработает корректно.
+// ── Стоимость монет без USD ──────────────────────────────────────────────────────────────────────
 function coinValue(wallet, prices, coins) {
   if (!wallet) return 0;
   let total = 0;
@@ -34,48 +32,54 @@ function coinValue(wallet, prices, coins) {
   return total;
 }
 
-// ── Полная стоимость портфеля (для лимита кредита) ─────────────────────────────────
+// ── Полная стоимость портфеля (USD + монеты) ─────────────────────────────────────────────────
 function portfolioValue(wallet, prices, coins) {
   if (!wallet) return 0;
   return (wallet.usd || 0) + coinValue(wallet, prices, coins);
 }
 
-// ── Начисление процентов (вызывается каждый тик из market.js) ──────────────────
-async function accrueInterest(io, prices, priceHistory) {
-  const coins = await getAllCoins();
-  const loans = await db.loans.find({ paid: { $ne: true } });
-  if (!loans.length) return;
-
-  const rate = computeLoanRate(priceHistory || {});
-
-  for (const loan of loans) {
-    const newDue = loan.due * (1 + rate);
-    await db.loans.update({ _id: loan._id }, { $set: { due: newDue, rate } });
-
-    const wallet  = await db.wallets.findOne({ username: loan.username });
-    if (!wallet) continue;
-
-    // Маржа считается только по монетам (без usd)
-    const coinsVal    = coinValue(wallet, prices, coins);
-    const marginRatio = coinsVal > 0 ? newDue / coinsVal : (newDue > 0 ? 1 : 0);
-
-    // Пушим loanUpdate, чтобы клиент обновил цифру долга в реальном времени
-    if (io) {
-      io.emit('loanUpdate', {
-        username: loan.username,
-        due:      newDue,
-        rate,
-        marginRatio,
-      });
-    }
-
-    if (marginRatio >= MARGIN_THRESHOLD) {
-      await executeMarginCall(loan.username, wallet, newDue, prices, coins, io);
-    }
-  }
+// ── Расчёт маржи ──────────────────────────────────────────────────────────────────────────
+// Маржа = долг / полный портфель (USD + монеты)
+// Разделить на 0 можно только если у игрока вообще нет ничего (USD=0 И монет=0)
+// Если игрок только что взял кредит и не купил монеты — coinsVal=0, но usd>0,
+// поэтому маржа = долг / usd — занимает нормальное значение
+function computeMarginRatio(wallet, prices, coins, loanDue) {
+  const total = portfolioValue(wallet, prices, coins);
+  if (total <= 0) return loanDue > 0 ? 1 : 0;
+  return loanDue / total;
 }
 
-// ── Маржин-колл ───────────────────────────────────────────────────────────────────
+// ── Начисление процентов (вызывается каждый тик из market.js) ─────────────────────
+function accrueInterest(io, prices, priceHistory) {
+  return new Promise(async (resolve) => {
+    const coins = await getAllCoins();
+    const loans = await db.loans.find({ paid: { $ne: true } });
+    if (!loans.length) return resolve();
+
+    const rate = computeLoanRate(priceHistory || {});
+
+    for (const loan of loans) {
+      const newDue = loan.due * (1 + rate);
+      await db.loans.update({ _id: loan._id }, { $set: { due: newDue, rate } });
+
+      const wallet = await db.wallets.findOne({ username: loan.username });
+      if (!wallet) continue;
+
+      const marginRatio = computeMarginRatio(wallet, prices, coins, newDue);
+
+      if (io) {
+        io.emit('loanUpdate', { username: loan.username, due: newDue, rate, marginRatio });
+      }
+
+      if (marginRatio >= MARGIN_THRESHOLD) {
+        await executeMarginCall(loan.username, wallet, newDue, prices, coins, io);
+      }
+    }
+    resolve();
+  });
+}
+
+// ── Маржин-колл ──────────────────────────────────────────────────────────────────────────────────
 async function executeMarginCall(username, wallet, loanDue, prices, coins, io) {
   let proceeds = 0;
   for (const coin of coins) {
@@ -105,14 +109,8 @@ async function executeMarginCall(username, wallet, loanDue, prices, coins, io) {
     io.emit('newEvent',     ev);
     io.emit('marginCall',   { username, remaining });
     io.emit('walletUpdate', { username, wallet: finalWallet });
-    // Уведомляем клиента о новом состоянии долга после колла
-    io.emit('loanUpdate', {
-      username,
-      due:         remaining,
-      rate:        0,
-      marginRatio: 0,
-    });
+    io.emit('loanUpdate',   { username, due: remaining, rate: 0, marginRatio: 0 });
   }
 }
 
-module.exports = { accrueInterest, computeLoanRate, coinValue, portfolioValue, MARGIN_THRESHOLD, MAX_LOAN_RATIO };
+module.exports = { accrueInterest, computeLoanRate, computeMarginRatio, coinValue, portfolioValue, MARGIN_THRESHOLD, MAX_LOAN_RATIO };

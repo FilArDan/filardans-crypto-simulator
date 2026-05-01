@@ -28,15 +28,15 @@ const DEFAULT_BOTS = [
 ];
 
 const INITIAL_USERS = [
-  { username: 'WARDEN',    password: 'sherpaIsGay', role: 'admin',  startUsd: 0     },
-  { username: 'Артур',     password: 'alpha101',    role: 'player', startUsd: 10000 },
-  { username: 'Даня',      password: 'beta202',     role: 'player', startUsd: 12000 },
-  { username: 'Злодей',    password: 'gamma303',    role: 'player', startUsd: 8000  },
-  { username: 'Игорь',     password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Лукашенко', password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Миха',      password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Серега',    password: 'delta404',    role: 'player', startUsd: 15000 },
-  { username: 'Юра',       password: 'delta404',    role: 'player', startUsd: 15000 },
+  { username: 'WARDEN',    password: 'sherpa', role: 'admin',  startUsd: 0     },
+  { username: 'Артур',     password: '1m1',    role: 'player', startUsd: 10000 },
+  { username: 'Даня',      password: '2m2',     role: 'player', startUsd: 12000 },
+  { username: 'Злодей',    password: '3m3',    role: 'player', startUsd: 8000  },
+  { username: 'Игорь',     password: '4m4',    role: 'player', startUsd: 15000 },
+  { username: 'Лукашенко', password: '5m5',    role: 'player', startUsd: 15000 },
+  { username: 'Миха',      password: '6m6',    role: 'player', startUsd: 15000 },
+  { username: 'Серега',    password: '7m7',    role: 'player', startUsd: 15000 },
+  { username: 'Юра',       password: '8m8',    role: 'player', startUsd: 15000 },
 ];
 
 // Базовые монеты — список тикеров для инициализации и восстановления

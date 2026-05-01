@@ -2,9 +2,9 @@ const express = require('express');
 const router  = express.Router();
 const { db, COINS, COIN_META, getAllCoins } = require('../db');
 const { tick, applyTradePressure } = require('../game/market');
-const { getBotStats, priceHistory } = require('../game/bots');
+const { getBotStats, priceHistory, listBotsRaw, createBot, deleteBot, setBotCash, updateBotPreset } = require('../game/bots');
 
-const TRADE_FEE = 0.001; // 0.1% — совпадает с FEE у ботов
+const TRADE_FEE = 0.001;
 
 function auth(req, res, next) {
   if (!req.session.username) return res.status(401).json({ error: 'Не авторизован' });
@@ -22,7 +22,7 @@ async function getAllPrices() {
   return obj;
 }
 
-// ── СОСТОЯНИЕ ───────────────────────────────────────────────────────────────────────
+// ── СОСТОЯНИЕ ────────────────────────────────────────────────────────────────
 router.get('/state', auth, async (req, res) => {
   try {
     const prices     = await getAllPrices();
@@ -42,7 +42,7 @@ router.get('/state', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── ТОРГОВЛЯ ─────────────────────────────────────────────────────────────────────────
+// ── ТОРГОВЛЯ ─────────────────────────────────────────────────────────────────
 router.post('/trade', auth, async (req, res) => {
   try {
     const { coin, amount, action } = req.body;
@@ -87,7 +87,7 @@ router.post('/trade', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── ПЕРЕВОД ────────────────────────────────────────────────────────────────────────
+// ── ПЕРЕВОД ──────────────────────────────────────────────────────────────────
 router.post('/transfer', auth, async (req, res) => {
   try {
     const { to, amount } = req.body;
@@ -107,9 +107,8 @@ router.post('/transfer', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── КРЕДИТЫ ─────────────────────────────────────────────────────────────────────────
+// ── КРЕДИТЫ ──────────────────────────────────────────────────────────────────
 
-// GET /api/loan/info — ставка, лимит, состояние долга
 router.get('/loan/info', auth, async (req, res) => {
   try {
     const { computeLoanRate, computeMarginRatio, portfolioValue, MAX_LOAN_RATIO, MARGIN_THRESHOLD } = require('../game/bank');
@@ -117,17 +116,14 @@ router.get('/loan/info', auth, async (req, res) => {
     const wallet  = await db.wallets.findOne({ username: req.session.username });
     const prices  = await getAllPrices();
     const coins   = await getAllCoins();
-    // Лимит кредита — от полного портфеля (usd + монеты)
     const portVal = portfolioValue(wallet, prices, coins);
     const maxLoan = Math.floor(portVal * MAX_LOAN_RATIO);
     const loan    = await db.loans.findOne({ username: req.session.username, paid: { $ne: true } });
-    // Маржа — та же формула что и в accrueInterest: долг / (usd + монеты)
     const marginRatio = loan ? computeMarginRatio(wallet, prices, coins, loan.due) : 0;
     res.json({ loan: loan || null, rate, maxLoan, portVal, marginThreshold: MARGIN_THRESHOLD, marginRatio });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/loan — взять кредит
 router.post('/loan', auth, async (req, res) => {
   try {
     const num = parseFloat(req.body.amount);
@@ -152,7 +148,6 @@ router.post('/loan', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/repay — погасить (полностью или частично)
 router.post('/repay', auth, async (req, res) => {
   try {
     const loan = await db.loans.findOne({ username: req.session.username, paid: { $ne: true } });
@@ -178,7 +173,7 @@ router.post('/repay', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── АДМИН: игроки ───────────────────────────────────────────────────────────────────
+// ── АДМИН: игроки ─────────────────────────────────────────────────────────────
 router.get('/admin/players', auth, adminOnly, async (req, res) => {
   try {
     const wallets    = await db.wallets.find({});
@@ -217,7 +212,70 @@ router.delete('/admin/player/:username', auth, adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── АДМИН: параметры монет ─────────────────────────────────────────────────────────────
+// ── АДМИН: боты ───────────────────────────────────────────────────────────────
+
+// GET /api/admin/bots — список всех ботов с текущими данными
+router.get('/admin/bots', auth, adminOnly, async (req, res) => {
+  try {
+    const prices = await getAllPrices();
+    const stats  = await getBotStats(prices);
+    res.json(stats);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/admin/bot/preset — сменить пресет бота
+router.post('/admin/bot/preset', auth, adminOnly, async (req, res) => {
+  try {
+    const { name, type } = req.body;
+    if (!name) return res.json({ error: 'Укажи имя бота' });
+    const updated = await updateBotPreset(name, type);
+    const PRESET_LABELS = { bull: '🐂 Агрессор', fox: '🦊 Осторожный', croc: '🐊 Накопитель' };
+    const ev = { ts: Date.now(), text: `Админ изменил пресет бота ${name}: ${PRESET_LABELS[type] || type}` };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ ok: true, bot: updated });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/admin/bot/cash — установить баланс бота
+router.post('/admin/bot/cash', auth, adminOnly, async (req, res) => {
+  try {
+    const { name, usd } = req.body;
+    if (!name) return res.json({ error: 'Укажи имя бота' });
+    const updated = await setBotCash(name, usd);
+    const ev = { ts: Date.now(), text: `Админ установил баланс бота ${name}: $${parseFloat(usd).toFixed(2)}` };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ ok: true, bot: updated });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/admin/bot/create — создать нового бота
+router.post('/admin/bot/create', auth, adminOnly, async (req, res) => {
+  try {
+    const { name, type, usd } = req.body;
+    const bot = await createBot({ name, type, usd });
+    const PRESET_LABELS = { bull: '🐂 Агрессор', fox: '🦊 Осторожный', croc: '🐊 Накопитель' };
+    const ev = { ts: Date.now(), text: `Админ создал бота: ${name} (${PRESET_LABELS[type] || type})` };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ ok: true, bot });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/admin/bot/:name — удалить бота
+router.delete('/admin/bot/:name', auth, adminOnly, async (req, res) => {
+  try {
+    const name = decodeURIComponent(req.params.name);
+    await deleteBot(name);
+    const ev = { ts: Date.now(), text: `Админ удалил бота: ${name}` };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── АДМИН: параметры монет ────────────────────────────────────────────────────
 router.get('/admin/coins', auth, adminOnly, async (req, res) => {
   try {
     const docs   = await db.prices.find({});
@@ -330,7 +388,7 @@ router.delete('/admin/coin/:ticker', auth, adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── АДМИН: тик, скорость ──────────────────────────────────────────────────────────────
+// ── АДМИН: тик, скорость ──────────────────────────────────────────────────────
 router.post('/admin/tick', auth, adminOnly, async (req, res) => {
   try {
     await tick(req.app.get('io'));

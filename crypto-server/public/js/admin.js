@@ -1,11 +1,18 @@
 const socket = io();
 let prices     = {};
-let coinMeta   = {};   // vol, drift, supply, basePrice, isCustom per coin
+let coinMeta   = {};
 let allWallets = [];
 let allLoans   = [];
+let allBots    = [];
 let dealCount  = 0;
-let COINS      = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE']; // обновляется динамически
+let COINS      = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 const BASE_COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
+
+const PRESET_INFO = {
+  bull: { label: '🐂 Агрессор',    desc: 'Крупные сделки, высокий риск' },
+  fox:  { label: '🦊 Осторожный',  desc: 'Редкие небольшие сделки' },
+  croc: { label: '🐊 Накопитель',  desc: 'Накапливает, фиксирует по цели' },
+};
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 async function api(method, path, body) {
@@ -50,7 +57,6 @@ async function deletePlayer(username) {
 }
 
 // ── СОЗДАНИЕ МОНЕТЫ ──────────────────────────────────────────────────────────
-// Автозаполнение для базовых монет (подсказывает дефолтные параметры)
 const BASE_COIN_DEFAULTS = {
   BTC:  { name: 'Bitcoin',  emoji: '₿',  price: 45000, vol: 3,   supply: 21000000     },
   ETH:  { name: 'Ethereum', emoji: 'Ξ',  price: 2800,  vol: 4.5, supply: 120000000    },
@@ -99,7 +105,7 @@ document.getElementById('createCoinForm').addEventListener('submit', async e => 
   btn.disabled = false; btn.textContent = '🚀 Создать монету';
 });
 
-// ── УДАЛЕНИЕ МОНЕТЫ (любой, включая базовые) ────────────────────────────────
+// ── УДАЛЕНИЕ МОНЕТЫ ──────────────────────────────────────────────────────────
 async function deleteCoin(ticker) {
   const m = coinMeta[ticker] || {};
   const isBase = BASE_COINS.includes(ticker);
@@ -202,6 +208,95 @@ async function saveCoinParams(coin) {
   if (btn) { btn.disabled = false; btn.textContent = 'Сохранить'; }
 }
 
+// ── БОТЫ ─────────────────────────────────────────────────────────────────────
+function renderBots() {
+  const grid = document.getElementById('botsGrid');
+  if (!grid) return;
+
+  if (!allBots.length) {
+    grid.innerHTML = `<div style="color:var(--mu);font-size:13px;padding:8px 0">Ботов пока нет. Создай через форму ниже.</div>`;
+    return;
+  }
+
+  grid.innerHTML = allBots.map(bot => {
+    const pInfo = PRESET_INFO[bot.botType] || { label: bot.botType, desc: '' };
+    const presetBtns = Object.entries(PRESET_INFO).map(([key, info]) =>
+      `<button class="preset-btn ${bot.botType === key ? 'active' : ''}" onclick="setBotPreset('${bot.username}','${key}')">${info.label}</button>`
+    ).join('');
+
+    return `
+    <div class="bot-card" id="bot-card-${bot.username.replace(/[^a-zA-Z0-9]/g,'_')}">
+      <div class="bot-avatar">${bot.botEmoji}</div>
+      <div class="bot-info">
+        <div class="bot-name">${bot.username}</div>
+        <div class="bot-meta">${pInfo.desc}</div>
+      </div>
+      <div class="bot-total">$${fmt(bot.total)}</div>
+      <div class="bot-actions">
+        <div class="preset-group">${presetBtns}</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="number" class="bot-cash-input" id="bot-cash-${bot.username.replace(/[^a-zA-Z0-9]/g,'_')}"
+            value="${bot.usd}" min="0" step="100" title="Установить USD">
+          <button class="btn btn-secondary btn-sm" onclick="setBotCashAdmin('${bot.username}')">💰</button>
+          <button class="btn btn-dan btn-sm" onclick="deleteBotAdmin('${bot.username}')" title="Удалить бота">🗑️</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function setBotPreset(name, type) {
+  const res = await api('POST', '/api/admin/bot/preset', { name, type });
+  if (res.error) { alert(res.error); return; }
+  await loadBotsData();
+}
+
+async function setBotCashAdmin(name) {
+  const safeId = name.replace(/[^a-zA-Z0-9]/g,'_');
+  const input  = document.getElementById(`bot-cash-${safeId}`);
+  const usd    = parseFloat(input?.value);
+  if (isNaN(usd) || usd < 0) return;
+  const res = await api('POST', '/api/admin/bot/cash', { name, usd });
+  if (res.error) { alert(res.error); return; }
+  await loadBotsData();
+}
+
+async function deleteBotAdmin(name) {
+  if (!confirm(`Удалить бота "${name}"?`)) return;
+  const r   = await fetch(`/api/admin/bot/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  const res = await r.json();
+  if (res.error) { alert(res.error); return; }
+  await loadBotsData();
+}
+
+document.getElementById('createBotForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn  = document.getElementById('createBotBtn');
+  btn.disabled = true; btn.textContent = '⏳...';
+  const body = {
+    name: document.getElementById('newBotName').value.trim(),
+    type: document.getElementById('newBotType').value,
+    usd:  parseFloat(document.getElementById('newBotUsd').value) || 0,
+  };
+  const res = await api('POST', '/api/admin/bot/create', body);
+  if (res.error) {
+    alert(res.error);
+  } else {
+    document.getElementById('createBotForm').reset();
+    document.getElementById('newBotUsd').value = '10000';
+    await loadBotsData();
+  }
+  btn.disabled = false; btn.textContent = 'Создать';
+});
+
+async function loadBotsData() {
+  const res = await api('GET', '/api/admin/bots');
+  if (!res.error) {
+    allBots = res;
+    renderBots();
+  }
+}
+
 // ── СЛАЙДЕР СКОРОСТИ ТИКА ────────────────────────────────────────────────────
 let sliderDebounce = null;
 
@@ -237,13 +332,12 @@ document.getElementById('speedSlider').addEventListener('input', function () {
 
 socket.on('tickSpeedChanged', ({ ms }) => setSliderValue(ms));
 
-// ── ТАБЛИЦА ИГРОКОВ (динамические колонки) ───────────────────────────────────
+// ── ТАБЛИЦА ИГРОКОВ ──────────────────────────────────────────────────────────
 function renderPlayers() {
   const thead = document.getElementById('playersHead');
   const tbody = document.getElementById('adminPlayersBody');
   if (!thead || !tbody) return;
 
-  // Заголовок — динамический по COINS
   thead.innerHTML = `<tr>
     <th>Игрок</th>
     <th>Наличные</th>
@@ -391,6 +485,7 @@ async function loadAdminData() {
   renderLoans();
   renderCoinParams();
   fillPlayerSelect();
+  await loadBotsData();
 }
 
 // ── КНОПКИ ───────────────────────────────────────────────────────────────────

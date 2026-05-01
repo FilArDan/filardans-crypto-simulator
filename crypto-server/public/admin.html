@@ -32,6 +32,44 @@
       margin-left: 6px;
       vertical-align: middle;
     }
+
+    /* Боты */
+    .bot-card {
+      background: var(--su);
+      border: 1px solid var(--bo);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .bot-avatar {
+      font-size: 32px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .bot-info { flex: 1; min-width: 120px; }
+    .bot-name { font-weight: 700; font-size: 15px; }
+    .bot-meta { font-size: 12px; color: var(--mu); margin-top: 2px; }
+    .bot-total { font-size: 13px; font-weight: 600; color: var(--up); white-space: nowrap; }
+    .preset-btn {
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1.5px solid transparent;
+      background: var(--bg);
+      color: var(--tx);
+      transition: all .15s;
+    }
+    .preset-btn:hover { border-color: var(--pri); color: var(--pri); }
+    .preset-btn.active { background: var(--pri); color: #fff; border-color: var(--pri); }
+    .bot-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .bot-cash-input { width: 90px; }
+    .bots-grid { display: flex; flex-direction: column; gap: 10px; }
+    .preset-group { display: flex; gap: 6px; flex-wrap: wrap; }
   </style>
 </head>
 <body>
@@ -149,6 +187,41 @@
       </div>
       <button class="btn btn-secondary" type="submit" id="createCoinBtn">🚀 Создать монету</button>
     </form>
+  </div>
+
+  <!-- БОТЫ -->
+  <div class="card section-gap">
+    <h2>🤖 Управление ботами</h2>
+    <div class="lbl" style="margin-bottom:14px">
+      <b>🐂 Агрессор</b> — торгует крупными объёмами, высокий риск.&nbsp;&nbsp;
+      <b>🦊 Осторожный</b> — редкие небольшие сделки, консервативен.&nbsp;&nbsp;
+      <b>🐊 Накопитель</b> — постепенно накапливает, фиксирует прибыль по целевой цене.
+    </div>
+    <div class="bots-grid" id="botsGrid"><!-- заполняется JS --></div>
+
+    <!-- Создать бота -->
+    <details style="margin-top:16px">
+      <summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--mu);user-select:none">➕ Создать нового бота</summary>
+      <form id="createBotForm" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:flex-end">
+        <label class="fld" style="margin:0">
+          Имя
+          <input id="newBotName" type="text" maxlength="24" placeholder="Торгаш" style="width:120px" required>
+        </label>
+        <label class="fld" style="margin:0">
+          Пресет
+          <select id="newBotType" style="width:140px">
+            <option value="bull">🐂 Агрессор</option>
+            <option value="fox" selected>🦊 Осторожный</option>
+            <option value="croc">🐊 Накопитель</option>
+          </select>
+        </label>
+        <label class="fld" style="margin:0">
+          Стартовый USD
+          <input id="newBotUsd" type="number" value="10000" min="0" step="100" style="width:100px">
+        </label>
+        <button class="btn btn-secondary btn-sm" type="submit" id="createBotBtn">Создать</button>
+      </form>
+    </details>
   </div>
 
   <!-- ROW: CONTROLS + PRICES -->

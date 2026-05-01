@@ -4,11 +4,11 @@ const { db, getAllCoins } = require('../db');
 const BASE_RATE        = 0.002;  // 0.2%/тик базовая
 const MIN_RATE         = 0.0005; // 0.05%/тик минимум
 const MAX_RATE         = 0.008;  // 0.8%/тик максимум
-const MAX_LOAN_RATIO   = 2.0;    // кредит не более 2× стоимости портфеля
-const MARGIN_THRESHOLD = 0.80;   // маржин-колл когда долг > 80% портфеля
-const FEE              = 0.001;  // комиссия при принудительной продаже
+const MAX_LOAN_RATIO   = 2.0;
+const MARGIN_THRESHOLD = 0.80;
+const FEE              = 0.001;
 
-// ── Динамическая ставка — растёт при высокой волатильности рынка ─────────────
+// ── Динамическая ставка — принимает priceHistory извне (без require('./bots')!) ──
 function computeLoanRate(priceHistory) {
   const coins = Object.keys(priceHistory || {});
   if (!coins.length) return BASE_RATE;
@@ -26,7 +26,7 @@ function computeLoanRate(priceHistory) {
   return Math.max(MIN_RATE, Math.min(MAX_RATE, BASE_RATE * (1 + avgVol * 5)));
 }
 
-// ── Полная стоимость портфеля игрока ─────────────────────────────────────────
+// ── Полная стоимость портфеля ─────────────────────────────────────────────────────
 function portfolioValue(wallet, prices, coins) {
   if (!wallet) return 0;
   let total = wallet.usd || 0;
@@ -36,14 +36,13 @@ function portfolioValue(wallet, prices, coins) {
   return total;
 }
 
-// ── Начисление процентов + проверка маржин-колла (вызывается каждый тик) ─────
-async function accrueInterest(io, prices) {
+// ── Начисление процентов (вызывается из market.js с priceHistory) ───────────────
+async function accrueInterest(io, prices, priceHistory) {
   const coins = await getAllCoins();
   const loans = await db.loans.find({ paid: { $ne: true } });
   if (!loans.length) return;
 
-  const { priceHistory } = require('./bots');
-  const rate = computeLoanRate(priceHistory);
+  const rate = computeLoanRate(priceHistory || {});
 
   for (const loan of loans) {
     const newDue = loan.due * (1 + rate);
@@ -59,10 +58,9 @@ async function accrueInterest(io, prices) {
   }
 }
 
-// ── Маржин-колл: принудительная продажа всех активов ─────────────────────────
+// ── Маржин-колл ───────────────────────────────────────────────────────────────────
 async function executeMarginCall(username, wallet, loanDue, prices, coins, io) {
   let proceeds = 0;
-
   for (const coin of coins) {
     const amt = wallet[coin] || 0;
     if (amt > 0 && (prices[coin] || 0) > 0) {
@@ -70,26 +68,21 @@ async function executeMarginCall(username, wallet, loanDue, prices, coins, io) {
       await db.wallets.update({ username }, { $set: { [coin]: 0 } });
     }
   }
-
-  // Зачисляем выручку и списываем максимум возможного
   await db.wallets.update({ username }, { $inc: { usd: proceeds } });
   const freshWallet = await db.wallets.findOne({ username });
   const pay = Math.min(Math.max(freshWallet.usd, 0), loanDue);
   await db.wallets.update({ username }, { $inc: { usd: -pay } });
-
   const remaining = Math.max(0, loanDue - pay);
   if (remaining < 0.01) {
     await db.loans.update({ username, paid: { $ne: true } }, { $set: { due: 0, paid: true } });
   } else {
     await db.loans.update({ username, paid: { $ne: true } }, { $set: { due: remaining } });
   }
-
   const ev = {
     ts:   Date.now(),
-    text: `🚨 МАРЖИН-КОЛЛ! ${username} — все активы принудительно проданы ($${proceeds.toFixed(2)}). Остаток долга: $${remaining.toFixed(2)}`
+    text: `🚨 МАРЖИН-КОЛЛ! ${username} — активы принудительно проданы ($${proceeds.toFixed(2)}). Остаток долга: $${remaining.toFixed(2)}`
   };
   await db.events.insert(ev);
-
   if (io) {
     const finalWallet = await db.wallets.findOne({ username });
     io.emit('newEvent',     ev);

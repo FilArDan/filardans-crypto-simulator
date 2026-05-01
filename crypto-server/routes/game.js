@@ -2,7 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const { db, COINS, COIN_META, getAllCoins } = require('../db');
 const { tick, applyTradePressure } = require('../game/market');
-const { getBotStats } = require('../game/bots');
+const { getBotStats, priceHistory } = require('../game/bots');
 
 function auth(req, res, next) {
   if (!req.session.username) return res.status(401).json({ error: 'Не авторизован' });
@@ -13,7 +13,6 @@ function adminOnly(req, res, next) {
   next();
 }
 
-// ── Вспомогательная: получить все цены ───────────────────────────────────────
 async function getAllPrices() {
   const docs = await db.prices.find({});
   const obj  = {};
@@ -21,7 +20,7 @@ async function getAllPrices() {
   return obj;
 }
 
-// ── СОСТОЯНИЕ ────────────────────────────────────────────────────────────────
+// ── СОСТОЯНИЕ ───────────────────────────────────────────────────────────────────────
 router.get('/state', auth, async (req, res) => {
   try {
     const prices     = await getAllPrices();
@@ -30,34 +29,27 @@ router.get('/state', auth, async (req, res) => {
     const events     = await db.events.find({}).sort({ ts: -1 }).limit(25);
     const allWallets = await db.wallets.find({ username: { $ne: 'admin' } });
     const allCoins   = await getAllCoins();
-
-    // Реальные игроки
     const players = allWallets.map(w => ({ username: w.username, usd: w.usd, isBot: false }));
-
-    // Боты — добавляем в общий список (видны всем как конкуренты)
     const bots = (await getBotStats(prices)).map(b => ({
       username: `${b.botEmoji} ${b.username}`,
       usd:      b.usd,
       isBot:    true,
     }));
     players.push(...bots);
-
     res.json({ prices, wallet, loans, events, players, coins: allCoins });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── ТОРГОВЛЯ ─────────────────────────────────────────────────────────────────
+// ── ТОРГОВЛЯ ─────────────────────────────────────────────────────────────────────────
 router.post('/trade', auth, async (req, res) => {
   try {
     const { coin, amount, action } = req.body;
     const allCoins = await getAllCoins();
     if (!allCoins.includes(coin))   return res.json({ error: 'Неизвестная монета' });
     if (!amount || amount <= 0)     return res.json({ error: 'Неверное количество' });
-
     const priceDoc = await db.prices.findOne({ coin });
     const wallet   = await db.wallets.findOne({ username: req.session.username });
     const cost     = priceDoc.price * amount;
-
     if (action === 'buy') {
       if (wallet.usd < cost) return res.json({ error: 'Недостаточно USD' });
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: -cost, [coin]: amount } });
@@ -65,27 +57,23 @@ router.post('/trade', auth, async (req, res) => {
       if ((wallet[coin] || 0) < amount) return res.json({ error: `Недостаточно ${coin}` });
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: cost, [coin]: -amount } });
     }
-
     const newCoinPrice  = await applyTradePressure(coin, amount, action);
     const updatedPrices = await getAllPrices();
     const updated       = await db.wallets.findOne({ username: req.session.username });
-
     const txt = action === 'buy'
       ? `${req.session.username} купил ${amount} ${coin} за $${cost.toFixed(2)} (цена: $${newCoinPrice})`
       : `${req.session.username} продал ${amount} ${coin} за $${cost.toFixed(2)} (цена: $${newCoinPrice})`;
     const ev = { ts: Date.now(), text: txt };
     await db.events.insert(ev);
-
     const io = req.app.get('io');
     io.emit('newEvent', ev);
     io.emit('walletUpdate', { username: req.session.username, wallet: updated });
     io.emit('priceUpdate', updatedPrices);
-
     res.json({ wallet: updated, prices: updatedPrices });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── ПЕРЕВОД ──────────────────────────────────────────────────────────────────
+// ── ПЕРЕВОД ────────────────────────────────────────────────────────────────────────
 router.post('/transfer', auth, async (req, res) => {
   try {
     const { to, amount } = req.body;
@@ -105,13 +93,13 @@ router.post('/transfer', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── КРЕДИТЫ ──────────────────────────────────────────────────────────────────
+// ── КРЕДИТЫ ─────────────────────────────────────────────────────────────────────────
 
-// GET /api/loan/info — текущая ставка, лимит, состояние долга
+// GET /api/loan/info — ставка, лимит, состояние долга
 router.get('/loan/info', auth, async (req, res) => {
   try {
     const { computeLoanRate, portfolioValue, MARGIN_THRESHOLD, MAX_LOAN_RATIO } = require('../game/bank');
-    const { priceHistory } = require('../game/bots');
+    // priceHistory импортирован наверху файла из bots.js
     const rate    = computeLoanRate(priceHistory);
     const wallet  = await db.wallets.findOne({ username: req.session.username });
     const prices  = await getAllPrices();
@@ -129,26 +117,19 @@ router.post('/loan', auth, async (req, res) => {
   try {
     const num = parseFloat(req.body.amount);
     if (!num || num < 100) return res.json({ error: 'Минимум $100' });
-
-    // Только один активный кредит
     const existing = await db.loans.findOne({ username: req.session.username, paid: { $ne: true } });
     if (existing) return res.json({ error: `Сначала погаси текущий долг ($${existing.due.toFixed(2)})` });
-
-    // Проверка лимита: не более MAX_LOAN_RATIO × портфель
     const { computeLoanRate, portfolioValue, MAX_LOAN_RATIO } = require('../game/bank');
-    const { priceHistory } = require('../game/bots');
     const wallet  = await db.wallets.findOne({ username: req.session.username });
     const prices  = await getAllPrices();
     const coins   = await getAllCoins();
     const portVal = portfolioValue(wallet, prices, coins);
     const maxLoan = Math.floor(portVal * MAX_LOAN_RATIO);
     if (num > maxLoan) return res.json({ error: `Максимум $${maxLoan.toLocaleString('ru')} (${MAX_LOAN_RATIO}× портфель $${portVal.toFixed(0)})` });
-
     const rate = computeLoanRate(priceHistory);
     await db.loans.insert({ username: req.session.username, principal: num, due: num, rate, ts: Date.now(), paid: false });
     await db.wallets.update({ username: req.session.username }, { $inc: { usd: num } });
     const updated = await db.wallets.findOne({ username: req.session.username });
-
     const ev = { ts: Date.now(), text: `${req.session.username} взял кредит $${num.toFixed(2)} (ставка ${(rate * 100).toFixed(3)}%/тик)` };
     await db.events.insert(ev);
     req.app.get('io').emit('newEvent', ev);
@@ -156,19 +137,17 @@ router.post('/loan', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/repay — погасить кредит (полностью или частично)
+// POST /api/repay — погасить (полностью или частично)
 router.post('/repay', auth, async (req, res) => {
   try {
     const loan = await db.loans.findOne({ username: req.session.username, paid: { $ne: true } });
     if (!loan) return res.json({ error: 'Нет активного кредита' });
-
     const wallet   = await db.wallets.findOne({ username: req.session.username });
     const wantPay  = req.body.amount
       ? Math.min(parseFloat(req.body.amount), loan.due)
-      : loan.due; // пусто → полное погашение
+      : loan.due;
     if (!wantPay || wantPay <= 0) return res.json({ error: 'Неверная сумма' });
     if (wallet.usd < wantPay) return res.json({ error: `Недостаточно USD. Нужно $${wantPay.toFixed(2)}, есть $${wallet.usd.toFixed(2)}` });
-
     await db.wallets.update({ username: req.session.username }, { $inc: { usd: -wantPay } });
     const remaining = loan.due - wantPay;
     if (remaining < 0.01) {
@@ -177,7 +156,6 @@ router.post('/repay', auth, async (req, res) => {
       await db.loans.update({ _id: loan._id }, { $set: { due: remaining } });
     }
     const updated = await db.wallets.findOne({ username: req.session.username });
-
     const ev = { ts: Date.now(), text: `${req.session.username} погасил $${wantPay.toFixed(2)} (остаток: $${Math.max(0, remaining).toFixed(2)})` };
     await db.events.insert(ev);
     req.app.get('io').emit('newEvent', ev);
@@ -185,7 +163,7 @@ router.post('/repay', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── АДМИН: игроки ─────────────────────────────────────────────────────────────
+// ── АДМИН: игроки ───────────────────────────────────────────────────────────────────
 router.get('/admin/players', auth, adminOnly, async (req, res) => {
   try {
     const wallets    = await db.wallets.find({});
@@ -224,7 +202,7 @@ router.delete('/admin/player/:username', auth, adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── АДМИН: параметры монет ────────────────────────────────────────────────────
+// ── АДМИН: параметры монет ─────────────────────────────────────────────────────────────
 router.get('/admin/coins', auth, adminOnly, async (req, res) => {
   try {
     const docs   = await db.prices.find({});
@@ -241,12 +219,8 @@ router.get('/admin/coins', auth, adminOnly, async (req, res) => {
         supply:    d.supply,
         isCustom:  customTickers.has(d.coin),
         isBase,
-        name:  isBase
-          ? (COIN_META[d.coin]?.name  || d.coin)
-          : (custom.find(c => c.ticker === d.coin)?.name  || d.coin),
-        emoji: isBase
-          ? (COIN_META[d.coin]?.emoji || '🪙')
-          : (custom.find(c => c.ticker === d.coin)?.emoji || '🪙'),
+        name:  isBase ? (COIN_META[d.coin]?.name  || d.coin) : (custom.find(c => c.ticker === d.coin)?.name  || d.coin),
+        emoji: isBase ? (COIN_META[d.coin]?.emoji || '🪙') : (custom.find(c => c.ticker === d.coin)?.emoji || '🪙'),
       };
     });
     res.json(meta);
@@ -258,11 +232,10 @@ router.post('/admin/coin/params', auth, adminOnly, async (req, res) => {
     const { coin, vol, drift, supply, basePrice } = req.body;
     const allCoins = await getAllCoins();
     if (!allCoins.includes(coin)) return res.json({ error: 'Неизвестная монета' });
-
     const doc   = await db.prices.findOne({ coin });
     const patch = {};
-    if (vol       != null) patch.vol       = Math.max(0.005, Math.min(0.30,  parseFloat(vol)));
-    if (drift     != null) patch.drift     = Math.max(-0.10, Math.min(0.10,  parseFloat(drift)));
+    if (vol       != null) patch.vol       = Math.max(0.005, Math.min(0.30, parseFloat(vol)));
+    if (drift     != null) patch.drift     = Math.max(-0.10, Math.min(0.10, parseFloat(drift)));
     if (basePrice != null) patch.basePrice = Math.max(0.0001, parseFloat(basePrice));
     if (supply != null && parseFloat(supply) > 0) {
       const oldMcap   = doc.price * (doc.supply || 1);
@@ -271,13 +244,11 @@ router.post('/admin/coin/params', auth, adminOnly, async (req, res) => {
       patch.price  = Math.max(0.0001, oldMcap / newSupply);
     }
     await db.prices.update({ coin }, { $set: patch });
-
     const updatedPrices = await getAllPrices();
     const parts = [];
     if (patch.vol   != null) parts.push(`vol=${(patch.vol*100).toFixed(1)}%`);
     if (patch.drift != null) parts.push(`drift=${patch.drift>=0?'+':''}${(patch.drift*100).toFixed(1)}%`);
     if (patch.supply!= null) parts.push(`supply=${patch.supply.toLocaleString('ru')}`);
-
     const ev = { ts: Date.now(), text: `Админ изменил параметры ${coin}: ${parts.join(', ')}` };
     await db.events.insert(ev);
     const io = req.app.get('io');
@@ -287,87 +258,64 @@ router.post('/admin/coin/params', auth, adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── АДМИН: создание кастомной монеты ─────────────────────────────────────────
 router.post('/admin/coin/create', auth, adminOnly, async (req, res) => {
   try {
     let { ticker, name, emoji, price, vol, drift, supply } = req.body;
-
     ticker = (ticker || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
     if (!ticker || ticker.length < 1) return res.json({ error: 'Укажи тикер (1–8 букв/цифр)' });
-
     const allCoins = await getAllCoins();
     if (allCoins.includes(ticker)) return res.json({ error: `Монета ${ticker} уже существует` });
-
     const isBase = COINS.includes(ticker);
     const baseMeta = isBase ? COIN_META[ticker] : null;
-
     const startPrice  = Math.max(0.0001, parseFloat(price)  || (baseMeta?.basePrice ?? 1));
-    const startVol    = Math.max(0.005, Math.min(0.30, parseFloat(vol)   || (baseMeta?.vol   ?? 0.05)));
+    const startVol    = Math.max(0.005, Math.min(0.30, parseFloat(vol) || (baseMeta?.vol ?? 0.05)));
     const startDrift  = Math.max(-0.10, Math.min(0.10, parseFloat(drift) || 0));
     const startSupply = Math.max(1, parseFloat(supply) || (baseMeta?.supply ?? 1000000));
     const coinName    = name  || (baseMeta?.name  ?? ticker);
     const coinEmoji   = emoji || (baseMeta?.emoji ?? '🪙');
-
     await db.prices.insert({ coin: ticker, price: startPrice, basePrice: startPrice, vol: startVol, drift: startDrift, supply: startSupply });
     await db.wallets.update({}, { $set: { [ticker]: 0 } }, { multi: true });
-
-    if (!isBase) {
-      await db.customCoins.insert({ ticker, name: coinName, emoji: coinEmoji, createdAt: Date.now() });
-    }
-
+    if (!isBase) await db.customCoins.insert({ ticker, name: coinName, emoji: coinEmoji, createdAt: Date.now() });
     const allCoinsNew   = await getAllCoins();
     const updatedPrices = await getAllPrices();
-
     const ev = { ts: Date.now(), text: `Админ создал монету: ${coinEmoji} ${ticker} (${coinName}), цена $${startPrice}` };
     await db.events.insert(ev);
-
     const io = req.app.get('io');
     io.emit('newEvent', ev);
     io.emit('priceUpdate', updatedPrices);
     io.emit('coinsUpdated', { coins: allCoinsNew });
-
     res.json({ ok: true, ticker, coins: allCoinsNew, prices: updatedPrices });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── АДМИН: удаление монеты (любой, в том числе базовой) ──────────────────────
 router.delete('/admin/coin/:ticker', auth, adminOnly, async (req, res) => {
   try {
     const ticker = (req.params.ticker || '').toUpperCase();
-
     const priceDoc = await db.prices.findOne({ coin: ticker });
     if (!priceDoc) return res.status(404).json({ error: 'Монета не найдена' });
-
     const curPrice = priceDoc.price || 0;
     const wallets  = await db.wallets.find({});
     for (const w of wallets) {
       const holding = w[ticker] || 0;
       if (holding > 0 && curPrice > 0) {
-        const refund = holding * curPrice;
-        await db.wallets.update({ _id: w._id }, { $inc: { usd: refund }, $set: { [ticker]: 0 } });
+        await db.wallets.update({ _id: w._id }, { $inc: { usd: holding * curPrice }, $set: { [ticker]: 0 } });
       }
     }
-
     await db.prices.remove({ coin: ticker }, {});
     await db.customCoins.remove({ ticker }, {});
-
     const allCoinsNew   = await getAllCoins();
     const updatedPrices = await getAllPrices();
-
-    const isBase = COINS.includes(ticker);
-    const ev = { ts: Date.now(), text: `Админ удалил монету: ${ticker}${isBase ? ' (можно восстановить через форму создания)' : ''}` };
+    const ev = { ts: Date.now(), text: `Админ удалил монету: ${ticker}` };
     await db.events.insert(ev);
-
     const io = req.app.get('io');
     io.emit('newEvent', ev);
     io.emit('priceUpdate', updatedPrices);
     io.emit('coinsUpdated', { coins: allCoinsNew });
-
     res.json({ ok: true, coins: allCoinsNew });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── АДМИН: тик, скорость ──────────────────────────────────────────────────────
+// ── АДМИН: тик, скорость ──────────────────────────────────────────────────────────────
 router.post('/admin/tick', auth, adminOnly, async (req, res) => {
   try {
     await tick(req.app.get('io'));

@@ -1,5 +1,5 @@
 const { db, getAllCoins } = require('../db');
-const { updatePriceHistory, botTick } = require('./bots');
+const { updatePriceHistory, botTick, priceHistory } = require('./bots');
 const { accrueInterest } = require('./bank');
 
 function roundPrice(p) {
@@ -16,14 +16,11 @@ async function tick(io) {
   for (const coin of coins) {
     const doc = await db.prices.findOne({ coin });
     if (!doc) continue;
-
     const vol   = doc.vol       || 0.04;
     const drift = doc.drift     || 0;
     const base  = doc.basePrice || doc.price;
-
     const noise = (Math.random() - 0.5) * vol;
     const pull  = (base - doc.price) / base * 0.002;
-
     const newPrice = Math.max(0.0001, roundPrice(doc.price * (1 + noise + drift + pull)));
     await db.prices.update({ coin }, { $set: { price: newPrice } });
     prices[coin] = newPrice;
@@ -32,35 +29,32 @@ async function tick(io) {
   await db.events.insert({ ts: Date.now(), text: 'Рынок обновился 📈' });
   if (io) io.emit('priceUpdate', prices);
 
-  // Обновить историю цен и запустить тик ботов
+  // История цен и тик ботов
   updatePriceHistory(prices);
   await botTick(io, prices);
 
-  // Повторно получить актуальные цены после сделок ботов
+  // Актуальные цены после сделок ботов
   const updatedDocs = await db.prices.find({});
   const updatedPrices = {};
   updatedDocs.forEach(d => { updatedPrices[d.coin] = d.price; });
   if (io) io.emit('priceUpdate', updatedPrices);
 
-  // Начислить проценты по кредитам и проверить маржин-коллы
-  await accrueInterest(io, updatedPrices);
+  // Начисление процентов — передаём priceHistory напрямую, без require() внутри bank.js
+  await accrueInterest(io, updatedPrices, priceHistory);
 }
 
 async function applyTradePressure(coin, amount, action) {
   const doc = await db.prices.findOne({ coin });
   if (!doc || !doc.supply || doc.supply <= 0) return doc ? doc.price : 0;
-
   const rawImpact = (amount / doc.supply) * 100;
   const impact    = Math.min(Math.log1p(rawImpact) * 0.015, 0.20);
-
-  const newPrice = roundPrice(
+  const newPrice  = roundPrice(
     Math.max(0.0001,
       action === 'buy'
         ? doc.price * (1 + impact)
         : doc.price * (1 - impact)
     )
   );
-
   await db.prices.update({ coin }, { $set: { price: newPrice } });
   return newPrice;
 }

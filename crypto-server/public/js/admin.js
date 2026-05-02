@@ -533,11 +533,7 @@ document.getElementById('tickBtn').addEventListener('click', async () => {
   btn.disabled = false; btn.textContent = '🔄 Принудительно обновить цены';
 });
 
-document.getElementById('resetBtn').addEventListener('click', () => {
-  if (confirm('Сброс рынка не реализован на сервере. Хотите сделать принудительный тик вместо?')) {
-    document.getElementById('tickBtn').click();
-  }
-});
+
 
 document.getElementById('setCashForm').addEventListener('submit', async e => {
   e.preventDefault();

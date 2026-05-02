@@ -7,6 +7,17 @@ const BOT_EMOJI = { bull: '\uD83D\uDC02', fox: '\uD83E\uDD8A', croc: '\uD83D\uDC
 const HIST_LEN = 30;
 const priceHistory = {};
 
+// Кэш базовых цен монет (загружается один раз при первом тике)
+const basePriceCache = {};
+
+async function getBasePrice(coin) {
+  if (basePriceCache[coin] !== undefined) return basePriceCache[coin];
+  const doc = await db.prices.findOne({ coin });
+  const base = (doc && doc.basePrice) ? doc.basePrice : (doc ? doc.price : null);
+  if (base) basePriceCache[coin] = base;
+  return base || null;
+}
+
 function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 
 function sanitizeBot(bot) {
@@ -54,10 +65,17 @@ async function bullTick(bot, coins, prices) {
   const price = prices[coin];
   if (!price) return;
   const avgLong = getAvgPrice(coin, 20) || price;
+  const base = await getBasePrice(coin);
   const roll = Math.random();
 
-  if (price < avgLong * 0.98 && roll < 0.85) {
-    const spend = bot.usd * (0.30 + Math.random() * 0.30);
+  // Покупает при отклонении от скользящей средней ИЛИ от базовой цены
+  const belowAvg = price < avgLong * 0.98;
+  const belowBase = base && price < base * 0.85;
+
+  if ((belowAvg || belowBase) && roll < 0.85) {
+    // При сильном отклонении от базы тратит больше (агрессивный откуп)
+    const urgency = belowBase ? 1.5 : 1.0;
+    const spend = Math.min(bot.usd, bot.usd * (0.30 + Math.random() * 0.30) * urgency);
     if (spend < 1) return;
     const amt = spend / price;
     const cost = amt * price * (1 + FEE);
@@ -84,9 +102,14 @@ async function foxTick(bot, coins, prices) {
   const price = prices[coin];
   if (!price) return;
   const avgLong = getAvgPrice(coin, 20) || price;
+  const base = await getBasePrice(coin);
   const roll = Math.random();
 
-  if (price < avgLong * 0.97 && roll < 0.60) {
+  // Покупает при отклонении от скользящей средней ИЛИ при глубоком падении от базы
+  const belowAvg = price < avgLong * 0.97;
+  const belowBase = base && price < base * 0.80;
+
+  if ((belowAvg || belowBase) && roll < 0.60) {
     const spend = bot.usd * (0.02 + Math.random() * 0.06);
     if (spend < 1) return;
     const amt = spend / price;
@@ -115,8 +138,17 @@ async function crocTick(bot, coins, prices) {
   if (!bot.target)        bot.target        = {};
   if (!bot.target[coin])  bot.target[coin]  = 1.25 + Math.random() * 0.20;
 
-  if (Math.random() < 0.65) {
-    const spend = bot.usd * (0.01 + Math.random() * 0.03);
+  const base = await getBasePrice(coin);
+
+  // Крок всегда накапливает, но при падении ниже базы — накапливает активнее
+  const belowBase = base && price < base * 0.75;
+  const buyChance = belowBase ? 0.85 : 0.65;
+  const spendFraction = belowBase
+    ? (0.03 + Math.random() * 0.05)   // агрессивнее при глубоком дипе
+    : (0.01 + Math.random() * 0.03);  // обычный режим
+
+  if (Math.random() < buyChance) {
+    const spend = bot.usd * spendFraction;
     if (spend >= 1) {
       const amt = spend / price;
       const cost = amt * price * (1 + FEE);

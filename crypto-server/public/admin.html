@@ -33,6 +33,41 @@
       vertical-align: middle;
     }
 
+    /* Пауза */
+    .pause-bar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .pause-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 20px;
+      background: color-mix(in oklch, var(--up) 12%, transparent);
+      color: var(--up);
+      transition: background .2s, color .2s;
+    }
+    .pause-status.is-paused {
+      background: color-mix(in oklch, var(--wa, #f59e0b) 15%, transparent);
+      color: var(--wa, #f59e0b);
+    }
+    .pause-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse-dot 1.6s ease-in-out infinite;
+    }
+    .pause-status.is-paused .pause-dot { animation: none; }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
     /* Боты */
     .bot-card {
       background: var(--su);
@@ -75,6 +110,7 @@
 <body>
 <div class="app">
 
+
   <!-- TOPBAR -->
   <div class="topbar">
     <div class="logo-row">
@@ -97,6 +133,7 @@
     </div>
   </div>
 
+
   <!-- STATS -->
   <div class="stats">
     <div class="stat">
@@ -117,6 +154,22 @@
     </div>
   </div>
 
+
+  <!-- ПАУЗА -->
+  <div class="card section-gap">
+    <h2>⏸️ Управление игрой</h2>
+    <div class="pause-bar">
+      <div class="pause-status" id="pauseStatus">
+        <span class="pause-dot"></span>
+        <span id="pauseStatusText">Игра идёт</span>
+      </div>
+      <button class="btn btn-dan" id="pauseBtn">⏸️ Пауза</button>
+      <button class="btn btn-secondary" id="resumeBtn" disabled>▶️ Продолжить</button>
+      <span class="lbl" style="margin:0">Во время паузы цены не меняются, боты не торгуют. Сделки игроков по-прежнему доступны.</span>
+    </div>
+  </div>
+
+
   <!-- СЛАЙДЕР СКОРОСТИ ТИКА -->
   <div class="card section-gap">
     <h2>⏱️ Скорость симуляции: <span id="speedLabel" style="color:var(--pri)">25 с/тик</span></h2>
@@ -128,6 +181,7 @@
       <span class="lbl" style="margin:0">2 мин (медленно)</span>
     </div>
   </div>
+
 
   <!-- ПАРАМЕТРЫ МОНЕТ -->
   <div class="card section-gap">
@@ -155,6 +209,7 @@
       🗑️ Удалить можно <b>любую</b> монету; базовые (BTC, ETH...) можно потом создать заново через форму ниже.
     </div>
   </div>
+
 
   <!-- СОЗДАТЬ МОНЕТУ -->
   <div class="card section-gap">
@@ -189,6 +244,7 @@
     </form>
   </div>
 
+
   <!-- БОТЫ -->
   <div class="card section-gap">
     <h2>🤖 Управление ботами</h2>
@@ -200,9 +256,9 @@
     <div class="bots-grid" id="botsGrid"><!-- заполняется JS --></div>
 
     <!-- Создать бота -->
-    <details style="margin-top:16px">
-      <summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--mu);user-select:none">➕ Создать нового бота</summary>
-      <form id="createBotForm" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:flex-end">
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--bo)">
+      <div style="font-weight:600;font-size:13px;margin-bottom:10px">➕ Создать нового бота</div>
+      <form id="createBotForm" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
         <label class="fld" style="margin:0">
           Имя
           <input id="newBotName" type="text" maxlength="24" placeholder="Торгаш" style="width:120px" required>
@@ -221,11 +277,13 @@
         </label>
         <button class="btn btn-secondary btn-sm" type="submit" id="createBotBtn">Создать</button>
       </form>
-    </details>
+    </div>
   </div>
+
 
   <!-- ROW: CONTROLS + PRICES -->
   <div class="g2b section-gap">
+
 
     <div class="card">
       <h2>🎛️ Управление рынком</h2>
@@ -245,6 +303,7 @@
       </form>
     </div>
 
+
     <div class="card">
       <h2>📊 Котировки сейчас</h2>
       <table>
@@ -256,6 +315,7 @@
     </div>
   </div>
 
+
   <!-- ТАБЛИЦА ИГРОКОВ -->
   <div class="card section-gap">
     <h2>👥 Балансы и портфели игроков</h2>
@@ -266,6 +326,7 @@
       </table>
     </div>
   </div>
+
 
   <!-- LOANS + FEED -->
   <div class="g2 section-gap">
@@ -284,7 +345,9 @@
     </div>
   </div>
 
+
 </div><!-- /.app -->
+
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/admin.js"></script>

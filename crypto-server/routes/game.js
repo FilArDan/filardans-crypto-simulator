@@ -38,7 +38,8 @@ router.get('/state', auth, async (req, res) => {
       isBot:    true,
     }));
     players.push(...bots);
-    res.json({ prices, wallet, loans, events, players, coins: allCoins });
+    const paused = req.app.get('isPaused')();
+    res.json({ prices, wallet, loans, events, players, coins: allCoins, paused });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -212,9 +213,33 @@ router.delete('/admin/player/:username', auth, adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── АДМИН: пауза ──────────────────────────────────────────────────────────────
+router.get('/admin/pause-status', auth, adminOnly, (req, res) => {
+  res.json({ paused: req.app.get('isPaused')() });
+});
+
+router.post('/admin/pause', auth, adminOnly, async (req, res) => {
+  try {
+    req.app.get('setPaused')(true);
+    const ev = { ts: Date.now(), text: '⏸️ Админ поставил игру на паузу' };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ ok: true, paused: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/resume', auth, adminOnly, async (req, res) => {
+  try {
+    req.app.get('setPaused')(false);
+    const ev = { ts: Date.now(), text: '▶️ Админ возобновил игру' };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ ok: true, paused: false });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── АДМИН: боты ───────────────────────────────────────────────────────────────
 
-// GET /api/admin/bots — список всех ботов с текущими данными
 router.get('/admin/bots', auth, adminOnly, async (req, res) => {
   try {
     const prices = await getAllPrices();
@@ -223,7 +248,6 @@ router.get('/admin/bots', auth, adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/admin/bot/preset — сменить пресет бота
 router.post('/admin/bot/preset', auth, adminOnly, async (req, res) => {
   try {
     const { name, type } = req.body;
@@ -237,7 +261,6 @@ router.post('/admin/bot/preset', auth, adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/admin/bot/cash — установить баланс бота
 router.post('/admin/bot/cash', auth, adminOnly, async (req, res) => {
   try {
     const { name, usd } = req.body;
@@ -250,7 +273,6 @@ router.post('/admin/bot/cash', auth, adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/admin/bot/create — создать нового бота
 router.post('/admin/bot/create', auth, adminOnly, async (req, res) => {
   try {
     const { name, type, usd } = req.body;
@@ -263,7 +285,6 @@ router.post('/admin/bot/create', auth, adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// DELETE /api/admin/bot/:name — удалить бота
 router.delete('/admin/bot/:name', auth, adminOnly, async (req, res) => {
   try {
     const name = decodeURIComponent(req.params.name);

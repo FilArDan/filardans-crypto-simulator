@@ -24,7 +24,15 @@ app.use(session({
 app.use('/auth', require('./routes/auth'));
 app.use('/api',  require('./routes/game'));
 
-const marketTick = () => tick(io);
+// ── Пауза ─────────────────────────────────────────────────────────────────────
+let paused = false;
+app.set('isPaused',   () => paused);
+app.set('setPaused',  (val) => {
+  paused = !!val;
+  io.emit('pauseChanged', { paused });
+});
+
+const marketTick = () => { if (!paused) tick(io); };
 app.set('marketTick', marketTick);
 
 // Динамическая скорость тика (по умолчанию 25 сек)
@@ -35,15 +43,14 @@ app.set('setTickSpeed', (ms) => {
   clearInterval(marketTimer);
   tickSpeedMs = ms;
   marketTimer = setInterval(marketTick, tickSpeedMs);
-  // Эмитируем tickSpeedChanged только здесь — роут /admin/set-tick-speed не дублирует
   io.emit('tickSpeedChanged', { ms: tickSpeedMs });
 });
 app.set('getTickSpeed', () => tickSpeedMs);
 
 io.on('connection', socket => {
   console.log('[socket] подключился:', socket.id);
-  // Сообщаем новому клиенту текущую скорость
   socket.emit('tickSpeedChanged', { ms: tickSpeedMs });
+  socket.emit('pauseChanged', { paused });
 });
 
 const PORT = process.env.PORT || 3000;

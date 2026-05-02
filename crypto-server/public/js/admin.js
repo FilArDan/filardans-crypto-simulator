@@ -47,6 +47,41 @@ function priceDec(c) {
   return 5;
 }
 
+// ── ПАУЗА ────────────────────────────────────────────────────────────────────
+function applyPauseState(paused) {
+  const statusEl  = document.getElementById('pauseStatus');
+  const statusTxt = document.getElementById('pauseStatusText');
+  const pauseBtn  = document.getElementById('pauseBtn');
+  const resumeBtn = document.getElementById('resumeBtn');
+  if (!statusEl) return;
+
+  if (paused) {
+    statusEl.classList.add('is-paused');
+    statusTxt.textContent = 'На паузе';
+    pauseBtn.disabled  = true;
+    resumeBtn.disabled = false;
+  } else {
+    statusEl.classList.remove('is-paused');
+    statusTxt.textContent = 'Игра идёт';
+    pauseBtn.disabled  = false;
+    resumeBtn.disabled = true;
+  }
+}
+
+document.getElementById('pauseBtn').addEventListener('click', async () => {
+  const res = await api('POST', '/api/admin/pause');
+  if (res.error) { alert(res.error); return; }
+  applyPauseState(true);
+});
+
+document.getElementById('resumeBtn').addEventListener('click', async () => {
+  const res = await api('POST', '/api/admin/resume');
+  if (res.error) { alert(res.error); return; }
+  applyPauseState(false);
+});
+
+socket.on('pauseChanged', ({ paused }) => applyPauseState(paused));
+
 // ── УДАЛЕНИЕ ИГРОКА ──────────────────────────────────────────────────────────
 async function deletePlayer(username) {
   if (!confirm(`Удалить аккаунт "${username}"?\nКошелёк и все кредиты будут удалены безвозвратно.`)) return;
@@ -471,6 +506,7 @@ async function loadAdminData() {
   if (!stateData.error) {
     prices = stateData.prices || {};
     if (stateData.coins) COINS = stateData.coins;
+    if (stateData.paused !== undefined) applyPauseState(stateData.paused);
     const trades = (stateData.events || []).filter(e =>
       e.text.includes('купил') || e.text.includes('продал')
     );

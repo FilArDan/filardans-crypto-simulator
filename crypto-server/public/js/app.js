@@ -3,7 +3,6 @@ let myUsername = '';
 let prices = {};
 let currentCoins = [];
 
-// Кэш для пересчёта рейтинга / портфеля при обновлении цен без HTTP-запроса
 let lastPlayers = null;
 let lastWallet  = null;
 let lastDebt    = 0;
@@ -50,25 +49,29 @@ function renderLeaderboard(players, currentPrices) {
   const p = currentPrices || prices;
   const withTotal = players.map(pl => {
     let coinsVal = 0;
-    if (pl.coins) {
-      for (const [coin, amt] of Object.entries(pl.coins)) {
-        coinsVal += (amt || 0) * (p[coin] || 0);
-      }
+    const coinData = pl.coins || {};
+    for (const [coin, amt] of Object.entries(coinData)) {
+      if (coin === 'username' || coin === '_id' || coin === 'usd') continue;
+      coinsVal += (amt || 0) * (p[coin] || 0);
     }
-    return { ...pl, total: (pl.usd || 0) + coinsVal };
+    const total = pl.total != null ? pl.total : (pl.usd || 0) + coinsVal;
+    return { ...pl, total };
   });
   const sorted = [...withTotal].sort((a, b) => b.total - a.total);
   const maxTotal = sorted[0] ? sorted[0].total : 1;
   tbody.innerHTML = '';
   sorted.forEach((pl, i) => {
     const isMine = pl.username === myUsername;
-    const rank = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1;
+    // Только номер без эмодзи
+    const rank = i + 1;
+    const medal = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
     const barW = maxTotal > 0 ? Math.round(pl.total / maxTotal * 100) : 0;
+    const botBadge = pl.isBot ? ' <span style="font-size:11px;color:var(--mu);opacity:.7">[бот]</span>' : '';
     const tr = document.createElement('tr');
     if (isMine) tr.className = 'me';
     tr.innerHTML = `
-      <td><span class="rank">${rank}</span></td>
-      <td><span class="${isMine ? 'inv-name me' : 'inv-name'}">${pl.username}</span></td>
+      <td><span class="rank ${medal}">${rank}</span></td>
+      <td><span class="${isMine ? 'inv-name me' : 'inv-name'}">${pl.username}${botBadge}</span></td>
       <td>$${fmt(pl.total)}</td>
       <td><span class="bar-wrap"><span class="bar-fill" style="width:${barW}%"></span></span></td>`;
     tbody.appendChild(tr);
@@ -87,11 +90,15 @@ function renderTransferSelect(players) {
     return;
   }
   others
-    .sort((a, b) => a.username.localeCompare(b.username))
+    .sort((a, b) => {
+      // Сначала живые игроки, потом боты
+      if (a.isBot !== b.isBot) return a.isBot ? 1 : -1;
+      return a.username.localeCompare(b.username);
+    })
     .forEach(p => {
       const o = document.createElement('option');
       o.value = p.username;
-      o.textContent = p.username;
+      o.textContent = p.isBot ? `${p.username} [бот]` : p.username;
       sc.appendChild(o);
     });
 }
@@ -144,7 +151,7 @@ function recalcByPrices(p) {
 }
 
 // ── ТОРГОВАЯ ФОРМА: режим и подсказка ────────────────────────────────────────
-let tradeMode = 'qty'; // 'qty' | 'usd'
+let tradeMode = 'qty';
 
 function updateTradeHint() {
   const hint   = document.getElementById('tradeHint');
@@ -235,7 +242,6 @@ function renderLoanInfo(info) {
     if (elDebt)      elDebt.textContent         = '—';
     lastDebt = 0;
 
-    // ── Лимит кредита ───────────────────────────────────────────────────────
     const rateNote  = document.getElementById('loanRateNote');
     const limitBar  = document.getElementById('loanLimitBar');
     const limitFill = document.getElementById('loanLimitFill');
@@ -247,7 +253,6 @@ function renderLoanInfo(info) {
     const maxLoan = info.maxLoan || 0;
     const portVal = info.portVal || 0;
 
-    // Подпись под полем ввода
     if (limitLbl) {
       limitLbl.textContent = maxLoan > 0
         ? `Доступно: $${fmt(maxLoan, 0)} (портфель $${fmt(portVal, 0)})`
@@ -255,14 +260,12 @@ function renderLoanInfo(info) {
       limitLbl.style.color = maxLoan > 0 ? 'var(--ac)' : 'var(--mu)';
     }
 
-    // Прогресс-бар: показывает введённую сумму относительно лимита
     if (limitBar) limitBar.style.display = maxLoan > 0 ? 'block' : 'none';
 
     if (loanInput) {
       loanInput.max = maxLoan;
       loanInput.placeholder = maxLoan > 0 ? `до $${fmt(maxLoan, 0)}` : '0';
 
-      // Перерисовываем бар при каждом вводе
       const updateBar = () => {
         if (!limitFill) return;
         const val = parseFloat(loanInput.value) || 0;
@@ -501,6 +504,13 @@ socket.on('walletUpdate', data => {
     renderPortfolio(data.wallet);
     loadState();
   }
+});
+
+// Динамическое обновление лидерборда и списка для перевода
+socket.on('playersUpdate', players => {
+  lastPlayers = players;
+  renderLeaderboard(players, prices);
+  renderTransferSelect(players);
 });
 
 socket.on('loanUpdate', applyLoanUpdate);

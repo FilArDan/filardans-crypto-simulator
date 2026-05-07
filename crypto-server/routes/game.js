@@ -4,7 +4,7 @@ const { db, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME } = require('../db'
 const { tick, applyTradePressure } = require('../game/market');
 const { getBotStats, priceHistory, listBotsRaw, createBot, deleteBot, setBotCash, updateBotPreset } = require('../game/bots');
 
-const TRADE_FEE = 0.001; // 0.1% — комиссия с каждой сделки, идёт в резерв EXCHANGE
+const TRADE_FEE = 0.001;
 
 function auth(req, res, next) {
   if (!req.session.username) return res.status(401).json({ error: 'Не авторизован' });
@@ -22,11 +22,30 @@ async function getAllPrices() {
   return obj;
 }
 
-// Эмитирует текущий баланс EXCHANGE всем клиентам
 async function emitBankUpdate(io) {
   try {
     const w = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
     if (w) io.emit('bankUpdate', { usd: w.usd || 0 });
+  } catch(_) {}
+}
+
+// Эмитирует обновлённый список игроков (включая ботов) всем клиентам
+async function emitPlayersUpdate(io) {
+  try {
+    const prices     = await getAllPrices();
+    const allWallets = await db.wallets.find({ username: { $ne: 'admin' } });
+    const players = allWallets
+      .filter(w => w.username !== EXCHANGE_USERNAME)
+      .map(w => ({ username: w.username, usd: w.usd, coins: w, isBot: false }));
+    const bots = (await getBotStats(prices)).map(b => ({
+      username: b.username,
+      usd:      b.usd,
+      coins:    b.coins || {},
+      isBot:    true,
+      total:    b.total,
+    }));
+    players.push(...bots);
+    io.emit('playersUpdate', players);
   } catch(_) {}
 }
 
@@ -41,11 +60,13 @@ router.get('/state', auth, async (req, res) => {
     const allCoins   = await getAllCoins();
     const players = allWallets
       .filter(w => w.username !== EXCHANGE_USERNAME)
-      .map(w => ({ username: w.username, usd: w.usd, isBot: false }));
+      .map(w => ({ username: w.username, usd: w.usd, coins: w, isBot: false }));
     const bots = (await getBotStats(prices)).map(b => ({
-      username: `${b.botEmoji} ${b.username}`,
-      usd:      b.total,
+      username: b.username,
+      usd:      b.usd,
+      coins:    b.coins || {},
       isBot:    true,
+      total:    b.total,
     }));
     players.push(...bots);
     const paused = req.app.get('isPaused')();
@@ -73,10 +94,8 @@ router.post('/trade', auth, async (req, res) => {
     if (action === 'buy') {
       const cost = baseValue + feeAmount;
       if (wallet.usd < cost) return res.json({ error: `Недостаточно USD (нужно $${cost.toFixed(2)})` });
-
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: -cost, [coin]: amount } });
       await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: +(baseValue + feeAmount) } });
-
       const newCoinPrice  = await applyTradePressure(coin, amount, action);
       const updatedPrices = await getAllPrices();
       const updated       = await db.wallets.findOne({ username: req.session.username });
@@ -88,14 +107,11 @@ router.post('/trade', auth, async (req, res) => {
       io.emit('priceUpdate', updatedPrices);
       await emitBankUpdate(io);
       res.json({ wallet: updated, prices: updatedPrices });
-
     } else {
       if ((wallet[coin] || 0) < amount) return res.json({ error: `Недостаточно ${coin}` });
-
       const proceeds = baseValue - feeAmount;
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: +proceeds, [coin]: -amount } });
       await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: -(baseValue - feeAmount) } });
-
       const newCoinPrice  = await applyTradePressure(coin, amount, action);
       const updatedPrices = await getAllPrices();
       const updated       = await db.wallets.findOne({ username: req.session.username });
@@ -120,15 +136,28 @@ router.post('/transfer', auth, async (req, res) => {
       return res.json({ error: 'Неверная сумма' });
     if (to === req.session.username) return res.json({ error: 'Нельзя переводить себе' });
     if (to === EXCHANGE_USERNAME)    return res.json({ error: 'Нельзя переводить на системный счёт' });
-    const toUser = await db.wallets.findOne({ username: to });
-    if (!toUser) return res.json({ error: 'Получатель не найден' });
+
     const from = await db.wallets.findOne({ username: req.session.username });
     if (from.usd < numAmount) return res.json({ error: 'Недостаточно USD' });
+
+    // Проверяем: обычный игрок или бот
+    const toUser = await db.wallets.findOne({ username: to });
+    const toBot  = !toUser ? await db.bots.findOne({ name: to }) : null;
+    if (!toUser && !toBot) return res.json({ error: 'Получатель не найден' });
+
     await db.wallets.update({ username: req.session.username }, { $inc: { usd: -numAmount } });
-    await db.wallets.update({ username: to },                   { $inc: { usd: numAmount } });
-    const ev = { ts: Date.now(), text: `${req.session.username} перевёл $${numAmount} → ${to}` };
+    if (toUser) {
+      await db.wallets.update({ username: to }, { $inc: { usd: numAmount } });
+    } else {
+      // Бот хранит баланс в своей таблице
+      await db.bots.update({ name: to }, { $inc: { usd: numAmount } });
+    }
+
+    const io = req.app.get('io');
+    const ev = { ts: Date.now(), text: `${req.session.username} перевёл $${numAmount} → ${to}${toBot ? ' (бот)' : ''}` };
     await db.events.insert(ev);
-    req.app.get('io').emit('newEvent', ev);
+    io.emit('newEvent', ev);
+    await emitPlayersUpdate(io);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });

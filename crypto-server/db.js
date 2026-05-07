@@ -30,7 +30,7 @@ const DEFAULT_BOTS = [
 const INITIAL_USERS = [
   { username: 'WARDEN',    password: 'sherpa', role: 'admin',  startUsd: 0     },
   { username: 'Артур',     password: '1m1',    role: 'player', startUsd: 10000 },
-  { username: 'Даня',      password: '2m2',     role: 'player', startUsd: 12000 },
+  { username: 'Даня',      password: '2m2',    role: 'player', startUsd: 12000 },
   { username: 'Злодей',    password: '3m3',    role: 'player', startUsd: 8000  },
   { username: 'Игорь',     password: '4m4',    role: 'player', startUsd: 15000 },
   { username: 'Лукашенко', password: '5m5',    role: 'player', startUsd: 15000 },
@@ -50,6 +50,15 @@ const COIN_META = {
   XRP:  { name: 'XRP',      emoji: '✕',  basePrice: 0.52,  vol: 0.050, drift: 0, supply: 45000000000  },
   DOGE: { name: 'Dogecoin', emoji: '🐕', basePrice: 0.08,  vol: 0.060, drift: 0, supply: 140000000000 },
 };
+
+// ── EXCHANGE ──────────────────────────────────────────────────────────────────
+// Системный кошелёк биржи — через него проходят все сделки buy/sell,
+// кредиты и стартовые балансы. Суммарный USD в системе = const.
+//
+// EXCHANGE_RESERVE = стартовый резерв биржи (не выданный игрокам/ботам).
+// Итого в системе: игроки ($105k) + боты ($135k) + биржа ($1.2M) = $1.44M
+const EXCHANGE_RESERVE = 1_200_000;
+const EXCHANGE_USERNAME = 'EXCHANGE';
 
 // Возвращает все монеты, активные в данный момент (те что есть в prices)
 async function getAllCoins() {
@@ -77,6 +86,13 @@ async function initDb() {
     for (const bot of DEFAULT_BOTS) {
       await db.bots.insert({ ...bot });
     }
+  }
+
+  // ── Инициализация биржевого резерва ──────────────────────────────────────
+  // Создаётся один раз. Если EXCHANGE уже есть — не трогаем (не сбрасываем баланс).
+  const exchangeWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+  if (!exchangeWallet) {
+    await db.wallets.insert({ username: EXCHANGE_USERNAME, usd: EXCHANGE_RESERVE });
   }
 
   // Инициализация базовых монет (только если ещё не существуют)
@@ -107,4 +123,4 @@ async function initDb() {
   }
 }
 
-module.exports = { db, initDb, COINS, COIN_META, getAllCoins };
+module.exports = { db, initDb, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME };

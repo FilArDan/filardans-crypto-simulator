@@ -1,6 +1,6 @@
 /* ===== СЕРВЕРНЫЕ БОТЫ (порт из singleplayer/js/bots.js) ===== */
 
-const { db } = require('../db');
+const { db, EXCHANGE_USERNAME } = require('../db');
 
 const FEE = 0.001;
 const BOT_EMOJI = { bull: '\uD83D\uDC02', fox: '\uD83E\uDD8A', croc: '\uD83D\uDC0A' };
@@ -16,6 +16,18 @@ async function getBasePrice(coin) {
   const base = (doc && doc.basePrice) ? doc.basePrice : (doc ? doc.price : null);
   if (base) basePriceCache[coin] = base;
   return base || null;
+}
+
+// Обновляет баланс EXCHANGE симметрично сделке бота:
+//   buy  → бот платит cost  USD, EXCHANGE получает +cost
+//   sell → бот получает proc USD, EXCHANGE платит -proc
+async function syncExchange(action, amount) {
+  if (!amount || amount <= 0) return;
+  const delta = action === 'buy' ? +amount : -amount;
+  await db.wallets.update(
+    { username: EXCHANGE_USERNAME },
+    { $inc: { usd: delta } }
+  );
 }
 
 function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
@@ -59,7 +71,7 @@ function botPortfolioValue(bot, prices) {
   return total;
 }
 
-// ── 🐂 Агрессор ──────────────────────────────────────────────────────────────
+// ── 🐂 Агрессор ──────────────────────────────────────────────────────────────────────────────
 async function bullTick(bot, coins, prices) {
   const coin = coins[Math.floor(Math.random() * coins.length)];
   const price = prices[coin];
@@ -68,34 +80,35 @@ async function bullTick(bot, coins, prices) {
   const base = await getBasePrice(coin);
   const roll = Math.random();
 
-  // Покупает при отклонении от скользящей средней ИЛИ от базовой цены
-  const belowAvg = price < avgLong * 0.98;
+  const belowAvg  = price < avgLong * 0.98;
   const belowBase = base && price < base * 0.85;
 
   if ((belowAvg || belowBase) && roll < 0.85) {
-    // При сильном отклонении от базы тратит больше (агрессивный откуп)
     const urgency = belowBase ? 1.5 : 1.0;
     const spend = Math.min(bot.usd, bot.usd * (0.30 + Math.random() * 0.30) * urgency);
     if (spend < 1) return;
-    const amt = spend / price;
+    const amt  = spend / price;
     const cost = amt * price * (1 + FEE);
     if (cost > bot.usd) return;
     const prevTotal = (bot.held[coin] || 0) * (bot.avgP[coin] || 0);
     bot.usd -= cost;
     bot.held[coin] = (bot.held[coin] || 0) + amt;
     bot.avgP[coin] = (prevTotal + amt * price) / bot.held[coin];
+    await syncExchange('buy', cost);              // ← EXCHANGE получает cost
     prices[coin] = await applyTP(coin, amt, 'buy');
   } else if (price > avgLong * 1.03 && (bot.held[coin] || 0) > 0 && roll < 0.80) {
-    const frac = 0.50 + Math.random() * 0.40;
-    const amt = (bot.held[coin] || 0) * frac;
-    bot.usd += amt * price * (1 - FEE);
+    const frac     = 0.50 + Math.random() * 0.40;
+    const amt      = (bot.held[coin] || 0) * frac;
+    const proceeds = amt * price * (1 - FEE);
+    bot.usd += proceeds;
     bot.held[coin] -= amt;
     if (bot.held[coin] < 0.0001) bot.held[coin] = 0;
+    await syncExchange('sell', proceeds);         // ← EXCHANGE платит proceeds
     prices[coin] = await applyTP(coin, amt, 'sell');
   }
 }
 
-// ── 🦊 Осторожный ────────────────────────────────────────────────────────────
+// ── 🦊 Осторожный ────────────────────────────────────────────────────────────────────────────
 async function foxTick(bot, coins, prices) {
   if (Math.random() > 0.40) return;
   const coin = coins[Math.floor(Math.random() * coins.length)];
@@ -105,32 +118,34 @@ async function foxTick(bot, coins, prices) {
   const base = await getBasePrice(coin);
   const roll = Math.random();
 
-  // Покупает при отклонении от скользящей средней ИЛИ при глубоком падении от базы
-  const belowAvg = price < avgLong * 0.97;
+  const belowAvg  = price < avgLong * 0.97;
   const belowBase = base && price < base * 0.80;
 
   if ((belowAvg || belowBase) && roll < 0.60) {
     const spend = bot.usd * (0.02 + Math.random() * 0.06);
     if (spend < 1) return;
-    const amt = spend / price;
+    const amt  = spend / price;
     const cost = amt * price * (1 + FEE);
     if (cost > bot.usd) return;
     const prevTotal = (bot.held[coin] || 0) * (bot.avgP[coin] || 0);
     bot.usd -= cost;
     bot.held[coin] = (bot.held[coin] || 0) + amt;
     bot.avgP[coin] = (prevTotal + amt * price) / bot.held[coin];
+    await syncExchange('buy', cost);              // ← EXCHANGE получает cost
     prices[coin] = await applyTP(coin, amt, 'buy');
   } else if (price > avgLong * 1.05 && (bot.held[coin] || 0) > 0 && roll < 0.50) {
-    const frac = 0.10 + Math.random() * 0.20;
-    const amt = (bot.held[coin] || 0) * frac;
-    bot.usd += amt * price * (1 - FEE);
+    const frac     = 0.10 + Math.random() * 0.20;
+    const amt      = (bot.held[coin] || 0) * frac;
+    const proceeds = amt * price * (1 - FEE);
+    bot.usd += proceeds;
     bot.held[coin] -= amt;
     if (bot.held[coin] < 0.0001) bot.held[coin] = 0;
+    await syncExchange('sell', proceeds);         // ← EXCHANGE платит proceeds
     prices[coin] = await applyTP(coin, amt, 'sell');
   }
 }
 
-// ── 🐊 Накопитель ────────────────────────────────────────────────────────────
+// ── 🐊 Накопитель ───────────────────────────────────────────────────────────────────────────
 async function crocTick(bot, coins, prices) {
   const coin = coins[Math.floor(Math.random() * coins.length)];
   const price = prices[coin];
@@ -140,23 +155,23 @@ async function crocTick(bot, coins, prices) {
 
   const base = await getBasePrice(coin);
 
-  // Крок всегда накапливает, но при падении ниже базы — накапливает активнее
-  const belowBase = base && price < base * 0.75;
-  const buyChance = belowBase ? 0.85 : 0.65;
+  const belowBase    = base && price < base * 0.75;
+  const buyChance    = belowBase ? 0.85 : 0.65;
   const spendFraction = belowBase
-    ? (0.03 + Math.random() * 0.05)   // агрессивнее при глубоком дипе
-    : (0.01 + Math.random() * 0.03);  // обычный режим
+    ? (0.03 + Math.random() * 0.05)
+    : (0.01 + Math.random() * 0.03);
 
   if (Math.random() < buyChance) {
     const spend = bot.usd * spendFraction;
     if (spend >= 1) {
-      const amt = spend / price;
+      const amt  = spend / price;
       const cost = amt * price * (1 + FEE);
       if (cost <= bot.usd) {
         const prevTotal = (bot.held[coin] || 0) * (bot.avgP[coin] || 0);
         bot.usd -= cost;
         bot.held[coin] = (bot.held[coin] || 0) + amt;
         bot.avgP[coin] = (prevTotal + amt * price) / bot.held[coin];
+        await syncExchange('buy', cost);          // ← EXCHANGE получает cost
         prices[coin] = await applyTP(coin, amt, 'buy');
       }
     }
@@ -166,17 +181,19 @@ async function crocTick(bot, coins, prices) {
   if (avg > 0 && (bot.held[coin] || 0) > 0) {
     const targetMult = bot.target[coin] || 1.30;
     if (prices[coin] >= avg * targetMult) {
-      const amt = (bot.held[coin] || 0) * 0.20;
-      bot.usd += amt * prices[coin] * (1 - FEE);
+      const amt      = (bot.held[coin] || 0) * 0.20;
+      const proceeds = amt * prices[coin] * (1 - FEE);
+      bot.usd += proceeds;
       bot.held[coin] -= amt;
       if (bot.held[coin] < 0.0001) { bot.held[coin] = 0; bot.avgP[coin] = 0; }
       bot.target[coin] = 1.25 + Math.random() * 0.20;
+      await syncExchange('sell', proceeds);       // ← EXCHANGE платит proceeds
       prices[coin] = await applyTP(coin, amt, 'sell');
     }
   }
 }
 
-// ── DB helpers ────────────────────────────────────────────────────────────────
+// ── DB helpers ───────────────────────────────────────────────────────────────────────────────
 function listBotsRaw() {
   return db.bots.find({});
 }
@@ -186,12 +203,12 @@ async function replaceBotState(name, state) {
   await db.bots.update({ name }, { $set: { usd: clean.usd, held: clean.held, avgP: clean.avgP, target: clean.target } });
 }
 
-// ── Главный тик ───────────────────────────────────────────────────────────────
+// ── Главный тик ────────────────────────────────────────────────────────────────────────────────
 async function botTick(io, currentPrices) {
   if (!currentPrices || Object.keys(currentPrices).length === 0) return;
-  const coins = Object.keys(currentPrices);
+  const coins  = Object.keys(currentPrices);
   const prices = { ...currentPrices };
-  const bots = await listBotsRaw();
+  const bots   = await listBotsRaw();
 
   for (const bot of bots) {
     const b = sanitizeBot(bot);
@@ -204,7 +221,7 @@ async function botTick(io, currentPrices) {
   }
 }
 
-// ── Статистика ────────────────────────────────────────────────────────────────
+// ── Статистика ──────────────────────────────────────────────────────────────────────────────
 async function getBotStats(prices) {
   const bots = await listBotsRaw();
   return bots.map(bot => {
@@ -221,7 +238,7 @@ async function getBotStats(prices) {
   });
 }
 
-// ── CRUD (для будущей админки ботов) ─────────────────────────────────────────
+// ── CRUD ──────────────────────────────────────────────────────────────────────────────────
 async function createBot({ name, type, usd }) {
   const cleanName = String(name || '').trim();
   if (!cleanName) throw new Error('Укажите имя бота');
@@ -259,5 +276,5 @@ module.exports = {
   deleteBot,
   setBotCash,
   updateBotPreset,
-  priceHistory,  // экспортируем для bank.js и game.js
+  priceHistory,
 };

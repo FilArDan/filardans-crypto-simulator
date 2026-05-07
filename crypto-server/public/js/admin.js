@@ -47,10 +47,14 @@ function priceDec(c) {
   return 5;
 }
 
-// ── БАНК (WARDEN) ─────────────────────────────────────────────────────────────
+// ── БАНК (EXCHANGE) ───────────────────────────────────────────────────────────
+// exchangeUsd обновляется через socket 'bankUpdate' — не нужно ждать loadAdminData
+let exchangeUsd = 0;
+
 function renderBankCard() {
-  const warden = allWallets.find(w => w.username === 'WARDEN');
-  const bankUsd = warden ? (warden.usd || 0) : 0;
+  // Ищем EXCHANGE среди кошельков (приходит в adminData.wallets)
+  const exchange = allWallets.find(w => w.username === 'EXCHANGE');
+  if (exchange) exchangeUsd = exchange.usd || 0;
 
   // Сумма всех выданных кредитов (principal) и сумма к возврату (due)
   const totalIssued = allLoans.reduce((s, l) => s + (l.amount || 0), 0);
@@ -60,7 +64,7 @@ function renderBankCard() {
   const elIssued = document.getElementById('bankIssued');
   const elDebt   = document.getElementById('bankDebt');
 
-  if (elBal)    elBal.textContent    = '$' + fmt(bankUsd);
+  if (elBal)    elBal.textContent    = '$' + fmt(exchangeUsd);
   if (elIssued) elIssued.textContent = '$' + fmt(totalIssued);
   if (elDebt)   elDebt.textContent   = '$' + fmt(totalDebt);
 }
@@ -404,7 +408,7 @@ function renderPlayers() {
     <th>Действия</th>
   </tr>`;
 
-  const players = allWallets.filter(w => w.username !== 'WARDEN');
+  const players = allWallets.filter(w => w.username !== 'WARDEN' && w.username !== 'EXCHANGE');
 
   if (!players.length) {
     tbody.innerHTML = `<tr><td colspan="${COINS.length + 5}" style="text-align:center;color:var(--mu);padding:20px">
@@ -497,7 +501,7 @@ function fillPlayerSelect() {
   const sel = document.getElementById('cashUsername');
   if (!sel) return;
   const players = allWallets
-    .filter(w => w.username !== 'WARDEN')
+    .filter(w => w.username !== 'WARDEN' && w.username !== 'EXCHANGE')
     .sort((a, b) => a.username.localeCompare(b.username));
   sel.innerHTML = players.length
     ? players.map(w => `<option value="${w.username}">${w.username} (баланс: $${fmt(w.usd)})</option>`).join('')
@@ -592,6 +596,13 @@ socket.on('priceUpdate', p => {
       row.cells[1].textContent = '$' + fmt(prices[coin] || 0, priceDec(coin));
     }
   });
+});
+
+// bankUpdate: мгновенное обновление казны без полного loadAdminData
+socket.on('bankUpdate', ({ usd }) => {
+  exchangeUsd = usd;
+  const elBal = document.getElementById('bankBalance');
+  if (elBal) elBal.textContent = '$' + fmt(usd);
 });
 
 socket.on('coinsUpdated', ({ coins }) => {

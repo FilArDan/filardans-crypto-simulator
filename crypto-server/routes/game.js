@@ -22,6 +22,14 @@ async function getAllPrices() {
   return obj;
 }
 
+// Эмитирует текущий баланс EXCHANGE всем клиентам
+async function emitBankUpdate(io) {
+  try {
+    const w = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+    if (w) io.emit('bankUpdate', { usd: w.usd || 0 });
+  } catch(_) {}
+}
+
 // ── СОСТОЯНИЕ ─────────────────────────────────────────────────────────────────────────────
 router.get('/state', auth, async (req, res) => {
   try {
@@ -60,14 +68,13 @@ router.post('/trade', auth, async (req, res) => {
     const wallet    = await db.wallets.findOne({ username: req.session.username });
     const baseValue = priceDoc.price * amount;
     const feeAmount = baseValue * TRADE_FEE;
+    const io        = req.app.get('io');
 
     if (action === 'buy') {
-      const cost = baseValue + feeAmount;           // игрок платит base + комиссия
+      const cost = baseValue + feeAmount;
       if (wallet.usd < cost) return res.json({ error: `Недостаточно USD (нужно $${cost.toFixed(2)})` });
 
-      // Игрок: -cost USD, +монеты
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: -cost, [coin]: amount } });
-      // Биржа: получает baseValue + комиссию (единый резерв)
       await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: +(baseValue + feeAmount) } });
 
       const newCoinPrice  = await applyTradePressure(coin, amount, action);
@@ -76,17 +83,16 @@ router.post('/trade', auth, async (req, res) => {
       const txt = `${req.session.username} купил ${amount} ${coin} за $${cost.toFixed(2)} (цена: $${newCoinPrice}, комиссия: $${feeAmount.toFixed(2)})`;
       const ev  = { ts: Date.now(), text: txt };
       await db.events.insert(ev);
-      const io = req.app.get('io');
       io.emit('newEvent', ev);
       io.emit('walletUpdate', { username: req.session.username, wallet: updated });
       io.emit('priceUpdate', updatedPrices);
+      await emitBankUpdate(io);
       res.json({ wallet: updated, prices: updatedPrices });
 
     } else {
       if ((wallet[coin] || 0) < amount) return res.json({ error: `Недостаточно ${coin}` });
 
-      const proceeds = baseValue - feeAmount;       // игрок получает base − комиссия
-      // Биржа: отдаёт baseValue игроку, комиссия остаётся в резерве
+      const proceeds = baseValue - feeAmount;
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: +proceeds, [coin]: -amount } });
       await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: -(baseValue - feeAmount) } });
 
@@ -96,10 +102,10 @@ router.post('/trade', auth, async (req, res) => {
       const txt = `${req.session.username} продал ${amount} ${coin} за $${proceeds.toFixed(2)} (цена: $${newCoinPrice}, комиссия: $${feeAmount.toFixed(2)})`;
       const ev  = { ts: Date.now(), text: txt };
       await db.events.insert(ev);
-      const io = req.app.get('io');
       io.emit('newEvent', ev);
       io.emit('walletUpdate', { username: req.session.username, wallet: updated });
       io.emit('priceUpdate', updatedPrices);
+      await emitBankUpdate(io);
       res.json({ wallet: updated, prices: updatedPrices });
     }
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -165,9 +171,11 @@ router.post('/loan', auth, async (req, res) => {
     await db.wallets.update({ username: req.session.username }, { $inc: { usd: +num } });
     await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: -num } });
     const updated = await db.wallets.findOne({ username: req.session.username });
+    const io = req.app.get('io');
     const ev = { ts: Date.now(), text: `${req.session.username} взял кредит $${num.toFixed(2)} (ставка ${(rate * 100).toFixed(3)}%/тик)` };
     await db.events.insert(ev);
-    req.app.get('io').emit('newEvent', ev);
+    io.emit('newEvent', ev);
+    await emitBankUpdate(io);
     res.json({ wallet: updated, rate, due: num });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -191,9 +199,11 @@ router.post('/repay', auth, async (req, res) => {
       await db.loans.update({ _id: loan._id }, { $set: { due: remaining } });
     }
     const updated = await db.wallets.findOne({ username: req.session.username });
+    const io = req.app.get('io');
     const ev = { ts: Date.now(), text: `${req.session.username} погасил $${wantPay.toFixed(2)} (остаток: $${Math.max(0, remaining).toFixed(2)})` };
     await db.events.insert(ev);
-    req.app.get('io').emit('newEvent', ev);
+    io.emit('newEvent', ev);
+    await emitBankUpdate(io);
     res.json({ wallet: updated, remaining: Math.max(0, remaining) });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });

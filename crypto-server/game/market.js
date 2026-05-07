@@ -1,5 +1,5 @@
-const { db, getAllCoins } = require('../db');
-const { updatePriceHistory, botTick, priceHistory } = require('./bots');
+const { db, getAllCoins, EXCHANGE_USERNAME } = require('../db');
+const { updatePriceHistory, botTick, priceHistory, getBotStats } = require('./bots');
 const { accrueInterest } = require('./bank');
 
 function roundPrice(p) {
@@ -7,6 +7,24 @@ function roundPrice(p) {
   if (p >= 10)   return Math.round(p * 1000)  / 1000;
   if (p >= 0.1)  return Math.round(p * 10000) / 10000;
   return           Math.round(p * 100000)     / 100000;
+}
+
+async function emitPlayersUpdate(io, currentPrices) {
+  try {
+    const allWallets = await db.wallets.find({ username: { $ne: 'admin' } });
+    const players = allWallets
+      .filter(w => w.username !== EXCHANGE_USERNAME)
+      .map(w => ({ username: w.username, usd: w.usd, coins: w, isBot: false }));
+    const bots = (await getBotStats(currentPrices)).map(b => ({
+      username: b.username,
+      usd:      b.usd,
+      coins:    b.coins || {},
+      isBot:    true,
+      total:    b.total,
+    }));
+    players.push(...bots);
+    io.emit('playersUpdate', players);
+  } catch (_) {}
 }
 
 async function tick(io) {
@@ -29,18 +47,18 @@ async function tick(io) {
   await db.events.insert({ ts: Date.now(), text: 'Рынок обновился 📈' });
   if (io) io.emit('priceUpdate', prices);
 
-  // История цен и тик ботов
   updatePriceHistory(prices);
   await botTick(io, prices);
 
-  // Актуальные цены после сделок ботов
   const updatedDocs = await db.prices.find({});
   const updatedPrices = {};
   updatedDocs.forEach(d => { updatedPrices[d.coin] = d.price; });
   if (io) io.emit('priceUpdate', updatedPrices);
 
-  // Начисление процентов — передаём priceHistory напрямую, без require() внутри bank.js
   await accrueInterest(io, updatedPrices, priceHistory);
+
+  // Обновляем лидерборд после всех действий тика
+  if (io) await emitPlayersUpdate(io, updatedPrices);
 }
 
 async function applyTradePressure(coin, amount, action) {

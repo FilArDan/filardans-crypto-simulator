@@ -62,7 +62,6 @@ function renderLeaderboard(players, currentPrices) {
   tbody.innerHTML = '';
   sorted.forEach((pl, i) => {
     const isMine = pl.username === myUsername;
-    // Только номер без эмодзи
     const rank = i + 1;
     const medal = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
     const barW = maxTotal > 0 ? Math.round(pl.total / maxTotal * 100) : 0;
@@ -81,6 +80,10 @@ function renderLeaderboard(players, currentPrices) {
 function renderTransferSelect(players) {
   const sc = document.getElementById('transferTarget');
   if (!sc || !players) return;
+
+  // Запоминаем текущий выбор, чтобы восстановить его после перестройки
+  const prevValue = sc.value;
+
   const others = players.filter(p => p.username !== myUsername);
   sc.innerHTML = '';
   if (!others.length) {
@@ -91,7 +94,6 @@ function renderTransferSelect(players) {
   }
   others
     .sort((a, b) => {
-      // Сначала живые игроки, потом боты
       if (a.isBot !== b.isBot) return a.isBot ? 1 : -1;
       return a.username.localeCompare(b.username);
     })
@@ -101,6 +103,11 @@ function renderTransferSelect(players) {
       o.textContent = p.isBot ? `${p.username} [бот]` : p.username;
       sc.appendChild(o);
     });
+
+  // Восстанавливаем выбор, если получатель всё ещё в списке
+  if (prevValue && [...sc.options].some(o => o.value === prevValue)) {
+    sc.value = prevValue;
+  }
 }
 
 function renderPortfolio(wallet, coins) {
@@ -506,11 +513,11 @@ socket.on('walletUpdate', data => {
   }
 });
 
-// Динамическое обновление лидерборда и списка для перевода
+// Динамическое обновление лидерборда — выбор в селекте перевода сохраняется
 socket.on('playersUpdate', players => {
   lastPlayers = players;
   renderLeaderboard(players, prices);
-  renderTransferSelect(players);
+  renderTransferSelect(players); // внутри сохраняет prevValue
 });
 
 socket.on('loanUpdate', applyLoanUpdate);

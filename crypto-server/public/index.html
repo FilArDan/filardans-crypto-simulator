@@ -2,194 +2,207 @@
 <html lang="ru" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Crypto Simulator</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CryptoSim</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 
-<!-- ── ЛОГИН ──────────────────────────────────────────────────────────────── -->
+<!-- LOGIN -->
 <div id="loginScreen" class="login-wrap">
   <div class="login-box">
-    <div class="login-logo">₿ CryptoSim</div>
-    <form id="loginForm">
-      <div class="field">
-        <label>Имя игрока</label>
-        <input id="usernameInput" type="text" autocomplete="username" required placeholder="Артур">
-      </div>
-      <div class="field">
-        <label>Пароль</label>
-        <input id="passwordInput" type="password" autocomplete="current-password" required placeholder="••••">
-      </div>
-      <div id="loginError" class="err"></div>
-      <button type="submit" class="btn-primary">Войти</button>
+    <div class="login-brand">
+      <svg class="logo-icon" viewBox="0 0 44 44" fill="none">
+        <circle cx="22" cy="22" r="22" fill="var(--pri)" opacity=".15"/>
+        <path d="M22 10v4M22 30v4M10 22h4M30 22h4" stroke="var(--pri)" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="22" cy="22" r="8" stroke="var(--pri)" stroke-width="2.5"/>
+        <circle cx="22" cy="22" r="3" fill="var(--pri)"/>
+      </svg>
+      <div><h1>CryptoSim</h1><div class="sub">Биржа будущего</div></div>
+    </div>
+    <form id="loginForm" class="stack">
+      <label>Имя игрока
+        <input id="usernameInput" type="text" placeholder="Артур" autocomplete="username" required>
+      </label>
+      <label>Пароль
+        <input id="passwordInput" type="password" placeholder="••••" autocomplete="current-password" required>
+      </label>
+      <div id="loginError" class="err-msg"></div>
+      <button class="btn btn-primary" type="submit">Войти</button>
     </form>
   </div>
 </div>
 
-<!-- ── ПРИЛОЖЕНИЕ ──────────────────────────────────────────────────────────── -->
-<div id="appScreen" class="hidden">
+<!-- APP -->
+<div id="appScreen" class="hidden app">
 
-  <!-- Шапка -->
-  <header class="app-header">
-    <div class="header-left">
-      <span class="logo">₿ CryptoSim</span>
-      <span id="playerName" class="player-tag"></span>
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="logo-row">
+      <svg class="logo-icon" viewBox="0 0 44 44" fill="none">
+        <circle cx="22" cy="22" r="22" fill="var(--pri)" opacity=".15"/>
+        <path d="M22 10v4M22 30v4M10 22h4M30 22h4" stroke="var(--pri)" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="22" cy="22" r="8" stroke="var(--pri)" stroke-width="2.5"/>
+        <circle cx="22" cy="22" r="3" fill="var(--pri)"/>
+      </svg>
+      <div><h1>CryptoSim</h1><div class="sub">Биржа будущего</div></div>
     </div>
-    <div class="header-right">
-      <button id="themeBtn" class="icon-btn">🌙</button>
-      <button id="logoutBtn" class="btn-ghost">Выйти</button>
+    <div class="topbar-right">
+      <span id="playerName"></span>
+      <button class="tbtn" id="themeBtn" title="Тема">🌙</button>
+      <button class="btn btn-secondary btn-sm" id="logoutBtn">Выйти</button>
     </div>
-  </header>
+  </div>
 
-  <!-- Тикер -->
-  <div id="ticker" class="ticker"></div>
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat"><div class="lbl">Итого</div><div id="sTotal" class="val">—</div></div>
+    <div class="stat"><div class="lbl">Монеты</div><div id="sPort" class="val">—</div></div>
+    <div class="stat"><div class="lbl">USD</div><div id="sCash" class="val">—</div></div>
+    <div class="stat"><div class="lbl">Долг</div><div id="sDebt" class="val">—</div></div>
+  </div>
 
-  <!-- Основная сетка -->
-  <div class="main-grid">
+  <!-- Ticker -->
+  <div class="ticker-wrap section-gap">
+    <h2>📊 Текущие цены</h2>
+    <div id="ticker" class="ticker"></div>
+  </div>
 
-    <!-- Левая колонка -->
-    <div class="col-left">
+  <!-- Chart + Leaderboard -->
+  <div class="g2b section-gap">
+    <div class="card">
+      <h2>📈 График цен</h2>
+      <div class="tabs" id="chartLegend"></div>
+      <div class="cw"><canvas id="priceChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>🏆 Рейтинг</h2>
+      <table class="leader-table">
+        <thead><tr><th>#</th><th>Игрок</th><th>Капитал</th><th></th></tr></thead>
+        <tbody id="leaderBody"></tbody>
+      </table>
+    </div>
+  </div>
 
-      <!-- Кошелёк -->
-      <section class="card">
-        <div class="card-title">💼 Портфель</div>
-        <div class="stats-row">
-          <div class="stat"><div class="stat-label">Итого</div><div id="sTotal" class="stat-val">—</div></div>
-          <div class="stat"><div class="stat-label">Монеты</div><div id="sPort" class="stat-val">—</div></div>
-          <div class="stat"><div class="stat-label">USD</div><div id="sCash" class="stat-val">—</div></div>
-          <div class="stat"><div class="stat-label">Долг</div><div id="sDebt" class="stat-val">—</div></div>
-        </div>
-        <table class="port-table">
+  <!-- Main grid -->
+  <div class="g2 section-gap">
+
+    <!-- Left -->
+    <div style="display:flex;flex-direction:column;gap:20px">
+
+      <!-- Portfolio -->
+      <div class="card">
+        <h2>💼 Портфель</h2>
+        <table>
           <thead><tr><th>Монета</th><th>Кол-во</th><th>Цена</th><th>Стоимость</th></tr></thead>
           <tbody id="portfolioBody"></tbody>
         </table>
-      </section>
+      </div>
 
-      <!-- Торговля -->
-      <section class="card">
-        <div class="card-title">📈 Торговля</div>
-        <form id="tradeForm">
-          <div class="trade-row">
-            <select id="tradeAsset"></select>
-            <select id="tradeType">
-              <option value="buy">Купить</option>
-              <option value="sell">Продать</option>
+      <!-- Trade -->
+      <div class="card">
+        <h2>↔️ Торговля</h2>
+        <form id="tradeForm" style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;gap:8px">
+            <select id="tradeAsset" style="flex:1"></select>
+            <select id="tradeType" style="flex:1">
+              <option value="buy">🟢 Купить</option>
+              <option value="sell">🔴 Продать</option>
             </select>
           </div>
-          <div class="trade-mode-row">
+          <div class="trade-mode-tabs">
             <button type="button" class="trade-mode-btn active" data-mode="qty">Кол-во</button>
             <button type="button" class="trade-mode-btn" data-mode="usd">USD</button>
           </div>
-          <div id="fieldQty" class="field">
+          <div id="fieldQty" class="fld">
             <input id="tradeAmount" type="number" step="any" min="0" placeholder="Количество монет">
           </div>
-          <div id="fieldUsd" class="field hidden">
+          <div id="fieldUsd" class="fld hidden">
             <input id="tradeUsd" type="number" step="any" min="0" placeholder="Сумма в USD">
           </div>
-          <div id="tradeHint" class="hint"></div>
-          <div id="tradeError" class="err"></div>
-          <div class="trade-btns">
-            <button type="submit" class="btn-primary">Торговать</button>
-            <button type="button" id="buyAllBtn" class="btn-ghost">Купить всё</button>
-            <button type="button" id="sellAllBtn" class="btn-ghost">Продать всё</button>
+          <div id="tradeHint" style="font-size:12px;color:var(--mu);min-height:18px"></div>
+          <div id="tradeError" class="err-msg"></div>
+          <div class="btn-row">
+            <button type="submit" class="btn btn-primary btn-sm">Торговать</button>
+            <button type="button" id="buyAllBtn" class="btn btn-secondary btn-sm">Всё USD</button>
+            <button type="button" id="sellAllBtn" class="btn btn-secondary btn-sm">Все монеты</button>
           </div>
         </form>
-      </section>
+      </div>
 
-      <!-- Перевод -->
-      <section class="card">
-        <div class="card-title">💸 Перевод</div>
-        <form id="transferForm">
-          <div class="field">
-            <label>Получатель</label>
-            <select id="transferTarget"></select>
-          </div>
-          <div class="field">
-            <label>Сумма USD</label>
-            <input id="transferAmount" type="number" step="any" min="0.01" placeholder="100">
-          </div>
-          <div id="transferError" class="err"></div>
-          <button type="submit" class="btn-primary">Перевести</button>
+      <!-- Transfer -->
+      <div class="card">
+        <h2>💸 Перевод</h2>
+        <form id="transferForm" style="display:flex;flex-direction:column;gap:10px">
+          <div class="fld"><label class="lbl">Получатель</label><select id="transferTarget"></select></div>
+          <div class="fld"><label class="lbl">Сумма USD</label><input id="transferAmount" type="number" step="any" min="0.01" placeholder="100"></div>
+          <div id="transferError" class="err-msg"></div>
+          <button type="submit" class="btn btn-primary btn-sm">Перевести</button>
         </form>
-      </section>
+      </div>
 
-      <!-- Кредит -->
-      <section class="card">
-        <div class="card-title">🏦 Кредит</div>
-        <div id="loanError" class="err"></div>
+      <!-- Loan -->
+      <div class="card">
+        <h2>🏦 Кредит</h2>
+        <div id="loanError" class="err-msg"></div>
 
         <!-- Активный кредит -->
-        <div id="loanActivePanel" style="display:none">
-          <div class="loan-info-row">
-            <span class="loan-info-label">Долг:</span>
-            <span id="loanDueDisplay" class="loan-info-val">—</span>
+        <div id="loanActivePanel" style="display:none;">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
+            <span style="color:var(--mu)">Долг</span>
+            <span id="loanDueDisplay" style="font-weight:700"></span>
           </div>
-          <div class="loan-info-row">
-            <span class="loan-info-label">Ставка:</span>
-            <span id="loanRateDisplay" class="loan-info-val">—</span>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:10px">
+            <span style="color:var(--mu)">Ставка</span>
+            <span id="loanRateDisplay" style="color:var(--warn)"></span>
           </div>
-          <div class="margin-bar-wrap">
-            <div id="marginBarFill" class="margin-bar-fill"></div>
+          <!-- Маржа-бар -->
+          <div style="height:8px;background:var(--sf2);border-radius:999px;overflow:hidden;margin-bottom:4px">
+            <div id="marginBarFill" style="height:100%;width:0%;background:var(--pri);border-radius:999px;transition:width .4s,background .3s"></div>
           </div>
-          <div id="marginLabel" class="hint"></div>
-          <div class="field" style="margin-top:8px">
-            <label>Погасить (оставь пустым — полностью)</label>
-            <input id="repayAmount" type="number" step="any" min="0.01" placeholder="Сумма или пусто">
+          <div id="marginLabel" style="font-size:12px;color:var(--mu);margin-bottom:12px"></div>
+          <div class="fld" style="margin-bottom:8px">
+            <label class="lbl">Частичное погашение (USD)</label>
+            <input id="repayAmount" type="number" step="any" min="0.01" placeholder="Оставь пустым — полностью">
           </div>
-          <button id="repayBtn" class="btn-primary">Погасить</button>
+          <button id="repayBtn" class="btn btn-primary btn-sm">Погасить</button>
         </div>
 
-        <!-- Форма нового кредита -->
+        <!-- Новый кредит -->
         <div id="loanNewPanel">
-          <p id="loanRateNote" class="hint" style="margin-bottom:6px"></p>
-          <form id="loanForm">
-            <div class="field">
-              <label>Сумма кредита</label>
+          <p id="loanRateNote" style="font-size:12px;color:var(--mu);margin-bottom:8px"></p>
+          <form id="loanForm" style="display:flex;flex-direction:column;gap:8px">
+            <div class="fld">
+              <label class="lbl">Сумма кредита</label>
               <input id="loanAmount" type="number" step="any" min="100" placeholder="до $0">
               <!-- Прогресс-бар лимита -->
-              <div id="loanLimitBar" class="loan-limit-bar" style="display:none">
-                <div id="loanLimitFill" class="loan-limit-fill"></div>
+              <div id="loanLimitBar" style="display:none;height:6px;background:var(--sf2);border-radius:999px;overflow:hidden;margin-top:6px">
+                <div id="loanLimitFill" style="height:100%;width:0%;background:var(--pri);border-radius:999px;transition:width .2s,background .2s"></div>
               </div>
-              <div id="loanLimitLabel" class="hint" style="margin-top:4px"></div>
+              <div id="loanLimitLabel" style="font-size:12px;margin-top:4px;color:var(--mu)"></div>
             </div>
-            <button type="submit" class="btn-primary">Взять кредит</button>
+            <button type="submit" class="btn btn-primary btn-sm">Взять кредит</button>
           </form>
         </div>
-      </section>
+      </div>
 
-    </div><!-- /col-left -->
+    </div>
 
-    <!-- Правая колонка -->
-    <div class="col-right">
+    <!-- Right -->
+    <div style="display:flex;flex-direction:column;gap:20px">
 
-      <!-- График -->
-      <section class="card">
-        <div class="card-title">📊 График цен</div>
-        <div class="chart-controls">
-          <div id="chartLegend" class="chart-legend"></div>
-        </div>
-        <canvas id="priceChart"></canvas>
-      </section>
-
-      <!-- Лидерборд -->
-      <section class="card">
-        <div class="card-title">🏆 Рейтинг</div>
-        <table class="leader-table">
-          <thead><tr><th>#</th><th>Игрок</th><th>Капитал</th><th></th></tr></thead>
-          <tbody id="leaderBody"></tbody>
-        </table>
-      </section>
-
-      <!-- Лента событий -->
-      <section class="card">
-        <div class="card-title">📋 Лента событий</div>
+      <!-- Feed -->
+      <div class="card">
+        <h2>📋 Лента событий</h2>
         <div id="activityFeed" class="feed"></div>
-      </section>
+      </div>
 
-    </div><!-- /col-right -->
+    </div>
 
-  </div><!-- /main-grid -->
+  </div><!-- /g2 -->
+
 </div><!-- /appScreen -->
 
 <script src="/socket.io/socket.io.js"></script>

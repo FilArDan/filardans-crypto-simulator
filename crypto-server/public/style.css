@@ -99,12 +99,11 @@ h1{font-size:clamp(20px,3vw,28px);font-weight:800;letter-spacing:-.5px;}
 .chart-range-btn{padding:4px 12px;min-height:26px;border:1px solid var(--bd);background:var(--sf2);border-radius:999px;font-size:12px;font-weight:600;color:var(--mu);transition:background .15s,color .15s;}
 .chart-range-btn:hover{background:var(--sf3);color:var(--txt);}
 .chart-range-btn.on{background:var(--pri);color:#fff;border-color:transparent;}
-/* Фиксированная высота Canvas-обёртки */
 .cw{position:relative;height:220px;}
 
 /* ===== GRID ===== */
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
-.g2b{display:grid;grid-template-columns:1.3fr 0.7fr;gap:20px;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;}
+.g2b{display:grid;grid-template-columns:1.3fr 0.7fr;gap:20px;align-items:start;}
 .card{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);padding:20px;}
 .card h2{font-size:16px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .section-gap{margin-top:20px;}

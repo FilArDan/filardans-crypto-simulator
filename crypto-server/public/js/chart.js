@@ -42,31 +42,31 @@ function addPricePoint(prices) {
   updateChartLive();
 }
 
-// ── Табы монет (id="chartLegend" в index.html) ────────────────────────────
+// ── Табы монет (выше графика) ──────────────────────────────────
 function renderChartTabs() {
-  const tabs = document.getElementById('chartLegend');
-  if (!tabs) return;
+  const legend = document.getElementById('chartLegend');
+  if (!legend) return;
 
-  // Кнопки монет
   const coinBtns = chartCoins.map(c =>
     `<button class="ctab${c === selectedCoin ? ' on' : ''}" data-coin="${c}" onclick="selectCoin('${c}')">${c}</button>`
   ).join('');
 
-  // Кнопки диапазона
+  legend.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px">${coinBtns}</div>`;
+}
+
+// ── Кнопки диапазона (ниже графика) ─────────────────────────────
+function renderChartRanges() {
+  const wrap = document.getElementById('chartRanges');
+  if (!wrap) return;
   const ranges = [[20,'20'],[40,'40'],[100,'100'],[0,'Всё']];
-  const rangeBtns = ranges.map(([n, label]) =>
+  wrap.innerHTML = ranges.map(([n, label]) =>
     `<button class="chart-range-btn${chartRange === n ? ' on' : ''}" data-range="${n}" onclick="setChartRange(${n})">${label}</button>`
   ).join('');
-
-  tabs.innerHTML = `
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">${coinBtns}</div>
-    <div style="display:flex;gap:6px;margin-bottom:8px">${rangeBtns}</div>
-    <div id="cinfo" style="font-size:12px;color:var(--mu);min-height:16px"></div>
-  `;
 }
 
 function initChart() {
   renderChartTabs();
+  renderChartRanges();
   renderChart();
 }
 
@@ -148,10 +148,7 @@ function renderChart() {
       scales: {
         x: { ticks: { color: tc, maxTicksLimit: 7 }, grid: { color: gc } },
         y: {
-          ticks: {
-            color: tc,
-            callback: v => '$' + Number(v).toLocaleString('ru',{maximumFractionDigits:2})
-          },
+          ticks: { color: tc, callback: v => '$' + Number(v).toLocaleString('ru',{maximumFractionDigits:2}) },
           grid: { color: gc }
         }
       }

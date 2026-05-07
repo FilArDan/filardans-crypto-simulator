@@ -74,8 +74,13 @@
   <div class="g2b section-gap">
     <div class="card">
       <h2>📈 График цен</h2>
-      <div class="tabs" id="chartLegend"></div>
+      <!-- Табы монет -->
+      <div id="chartLegend" class="tabs"></div>
+      <!-- Полотно: фиксированная высота -->
       <div class="cw"><canvas id="priceChart"></canvas></div>
+      <!-- Кнопки диапазона -->
+      <div id="chartRanges" class="chart-ranges" style="margin-top:8px"></div>
+      <div id="cinfo" style="font-size:12px;color:var(--mu);margin-top:4px;min-height:16px"></div>
     </div>
     <div class="card">
       <h2>🏆 Рейтинг</h2>
@@ -147,8 +152,6 @@
       <div class="card">
         <h2>🏦 Кредит</h2>
         <div id="loanError" class="err-msg"></div>
-
-        <!-- Активный кредит -->
         <div id="loanActivePanel" style="display:none;">
           <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
             <span style="color:var(--mu)">Долг</span>
@@ -158,7 +161,6 @@
             <span style="color:var(--mu)">Ставка</span>
             <span id="loanRateDisplay" style="color:var(--warn)"></span>
           </div>
-          <!-- Маржа-бар -->
           <div style="height:8px;background:var(--sf2);border-radius:999px;overflow:hidden;margin-bottom:4px">
             <div id="marginBarFill" style="height:100%;width:0%;background:var(--pri);border-radius:999px;transition:width .4s,background .3s"></div>
           </div>
@@ -169,15 +171,12 @@
           </div>
           <button id="repayBtn" class="btn btn-primary btn-sm">Погасить</button>
         </div>
-
-        <!-- Новый кредит -->
         <div id="loanNewPanel">
           <p id="loanRateNote" style="font-size:12px;color:var(--mu);margin-bottom:8px"></p>
           <form id="loanForm" style="display:flex;flex-direction:column;gap:8px">
             <div class="fld">
               <label class="lbl">Сумма кредита</label>
               <input id="loanAmount" type="number" step="any" min="100" placeholder="до $0">
-              <!-- Прогресс-бар лимита -->
               <div id="loanLimitBar" style="display:none;height:6px;background:var(--sf2);border-radius:999px;overflow:hidden;margin-top:6px">
                 <div id="loanLimitFill" style="height:100%;width:0%;background:var(--pri);border-radius:999px;transition:width .2s,background .2s"></div>
               </div>
@@ -192,13 +191,10 @@
 
     <!-- Right -->
     <div style="display:flex;flex-direction:column;gap:20px">
-
-      <!-- Feed -->
       <div class="card">
         <h2>📋 Лента событий</h2>
         <div id="activityFeed" class="feed"></div>
       </div>
-
     </div>
 
   </div><!-- /g2 -->

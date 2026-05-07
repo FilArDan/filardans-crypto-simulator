@@ -95,11 +95,12 @@ h1{font-size:clamp(20px,3vw,28px);font-weight:800;letter-spacing:-.5px;}
 .ctab{border:1px solid var(--bd);background:var(--sf2);border-radius:999px;padding:8px 14px;min-height:36px;font-size:13px;font-weight:600;transition:background .15s,color .15s;}
 .ctab.on{background:var(--pri);color:#fff;border-color:transparent;}
 .ctab:hover:not(.on){background:var(--sf3);}
-.chart-ranges{display:flex;gap:6px;margin-bottom:8px;}
+.chart-ranges{display:flex;gap:6px;}
 .chart-range-btn{padding:4px 12px;min-height:26px;border:1px solid var(--bd);background:var(--sf2);border-radius:999px;font-size:12px;font-weight:600;color:var(--mu);transition:background .15s,color .15s;}
 .chart-range-btn:hover{background:var(--sf3);color:var(--txt);}
 .chart-range-btn.on{background:var(--pri);color:#fff;border-color:transparent;}
-.cw{position:relative;height:280px;}
+/* Фиксированная высота Canvas-обёртки */
+.cw{position:relative;height:220px;}
 
 /* ===== GRID ===== */
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
@@ -110,32 +111,9 @@ h1{font-size:clamp(20px,3vw,28px);font-weight:800;letter-spacing:-.5px;}
 
 /* ===== TRADE FORM ===== */
 .fld{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:500;}
-
-/* === Переключатель режима торговли === */
-.trade-mode-tabs{
-  display:flex;
-  gap:6px;
-  background:var(--sf2);
-  border:1px solid var(--bd);
-  border-radius:10px;
-  padding:4px;
-}
-.trade-mode-btn{
-  flex:1;
-  padding:7px 10px;
-  border-radius:8px;
-  border:none;
-  font-size:13px;
-  font-weight:600;
-  color:var(--mu);
-  background:transparent;
-  transition:background .15s,color .15s;
-}
-.trade-mode-btn.active{
-  background:var(--sf);
-  color:var(--txt);
-  box-shadow:0 1px 4px rgba(0,0,0,.10);
-}
+.trade-mode-tabs{display:flex;gap:6px;background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:4px;}
+.trade-mode-btn{flex:1;padding:7px 10px;border-radius:8px;border:none;font-size:13px;font-weight:600;color:var(--mu);background:transparent;transition:background .15s,color .15s;}
+.trade-mode-btn.active{background:var(--sf);color:var(--txt);box-shadow:0 1px 4px rgba(0,0,0,.10);}
 .trade-mode-btn:hover:not(.active){color:var(--txt);}
 
 /* ===== TABLE ===== */

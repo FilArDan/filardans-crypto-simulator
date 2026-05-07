@@ -70,32 +70,20 @@
     <div id="ticker" class="ticker"></div>
   </div>
 
-  <!-- Chart + Leaderboard -->
-  <div class="g2b section-gap">
-    <div class="card">
-      <h2>📈 График цен</h2>
-      <!-- Табы монет -->
-      <div id="chartLegend" class="tabs"></div>
-      <!-- Полотно: фиксированная высота -->
-      <div class="cw"><canvas id="priceChart"></canvas></div>
-      <!-- Кнопки диапазона -->
-      <div id="chartRanges" class="chart-ranges" style="margin-top:8px"></div>
-      <div id="cinfo" style="font-size:12px;color:var(--mu);margin-top:4px;min-height:16px"></div>
-    </div>
-    <div class="card">
-      <h2>🏆 Рейтинг</h2>
-      <table class="leader-table">
-        <thead><tr><th>#</th><th>Игрок</th><th>Капитал</th><th></th></tr></thead>
-        <tbody id="leaderBody"></tbody>
-      </table>
-    </div>
+  <!-- Chart (full width) -->
+  <div class="card section-gap">
+    <h2>📈 График цен</h2>
+    <div id="chartLegend" class="tabs"></div>
+    <div class="cw"><canvas id="priceChart"></canvas></div>
+    <div id="chartRanges" class="chart-ranges" style="margin-top:8px"></div>
+    <div id="cinfo" style="font-size:12px;color:var(--mu);margin-top:4px;min-height:16px"></div>
   </div>
 
-  <!-- Main grid -->
-  <div class="g2 section-gap">
+  <!-- Main grid: 3 columns -->
+  <div class="g3 section-gap">
 
-    <!-- Left -->
-    <div style="display:flex;flex-direction:column;gap:20px">
+    <!-- Col 1: Portfolio + Trade -->
+    <div class="col-stack">
 
       <!-- Portfolio -->
       <div class="card">
@@ -109,38 +97,48 @@
       <!-- Trade -->
       <div class="card">
         <h2>↔️ Торговля</h2>
-        <form id="tradeForm" style="display:flex;flex-direction:column;gap:10px">
-          <div style="display:flex;gap:8px">
-            <select id="tradeAsset" style="flex:1"></select>
-            <select id="tradeType" style="flex:1">
+        <form id="tradeForm" class="trade-form">
+          <!-- Выбор монеты + типа операции -->
+          <div class="trade-selects">
+            <select id="tradeAsset"></select>
+            <select id="tradeType">
               <option value="buy">🟢 Купить</option>
               <option value="sell">🔴 Продать</option>
             </select>
           </div>
+          <!-- Режим: кол-во / USD -->
           <div class="trade-mode-tabs">
             <button type="button" class="trade-mode-btn active" data-mode="qty">Кол-во</button>
             <button type="button" class="trade-mode-btn" data-mode="usd">USD</button>
           </div>
+          <!-- Поле ввода -->
           <div id="fieldQty" class="fld">
             <input id="tradeAmount" type="number" step="any" min="0" placeholder="Количество монет">
           </div>
           <div id="fieldUsd" class="fld hidden">
             <input id="tradeUsd" type="number" step="any" min="0" placeholder="Сумма в USD">
           </div>
-          <div id="tradeHint" style="font-size:12px;color:var(--mu);min-height:18px"></div>
-          <div id="tradeError" class="err-msg"></div>
-          <div class="btn-row">
-            <button type="submit" class="btn btn-primary btn-sm">Торговать</button>
-            <button type="button" id="buyAllBtn" class="btn btn-secondary btn-sm">Всё USD</button>
-            <button type="button" id="sellAllBtn" class="btn btn-secondary btn-sm">Все монеты</button>
+          <div id="tradeHint" class="trade-hint"></div>
+          <!-- Кнопка подтверждения (большая) -->
+          <button type="submit" class="btn btn-primary trade-btn-main">Торговать</button>
+          <!-- Кнопки быстрых действий -->
+          <div class="trade-quick">
+            <button type="button" id="buyAllBtn" class="btn btn-secondary trade-btn-quick">Все USD → монеты</button>
+            <button type="button" id="sellAllBtn" class="btn btn-secondary trade-btn-quick">Все монеты → USD</button>
           </div>
+          <div id="tradeError" class="err-msg"></div>
         </form>
       </div>
+
+    </div>
+
+    <!-- Col 2: Transfer + Loan -->
+    <div class="col-stack">
 
       <!-- Transfer -->
       <div class="card">
         <h2>💸 Перевод</h2>
-        <form id="transferForm" style="display:flex;flex-direction:column;gap:10px">
+        <form id="transferForm" class="compact-form">
           <div class="fld"><label class="lbl">Получатель</label><select id="transferTarget"></select></div>
           <div class="fld"><label class="lbl">Сумма USD</label><input id="transferAmount" type="number" step="any" min="0.01" placeholder="100"></div>
           <div id="transferError" class="err-msg"></div>
@@ -152,30 +150,26 @@
       <div class="card">
         <h2>🏦 Кредит</h2>
         <div id="loanError" class="err-msg"></div>
-        <div id="loanActivePanel" style="display:none;">
-          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
-            <span style="color:var(--mu)">Долг</span>
-            <span id="loanDueDisplay" style="font-weight:700"></span>
-          </div>
-          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:10px">
-            <span style="color:var(--mu)">Ставка</span>
-            <span id="loanRateDisplay" style="color:var(--warn)"></span>
-          </div>
-          <div style="height:8px;background:var(--sf2);border-radius:999px;overflow:hidden;margin-bottom:4px">
+        <!-- Активный кредит -->
+        <div id="loanActivePanel" style="display:none">
+          <div class="loan-row"><span class="lbl-inline">Долг</span><span id="loanDueDisplay" style="font-weight:700"></span></div>
+          <div class="loan-row"><span class="lbl-inline">Ставка</span><span id="loanRateDisplay" style="color:var(--warn)"></span></div>
+          <div style="height:7px;background:var(--sf2);border-radius:999px;overflow:hidden;margin:8px 0 3px">
             <div id="marginBarFill" style="height:100%;width:0%;background:var(--pri);border-radius:999px;transition:width .4s,background .3s"></div>
           </div>
-          <div id="marginLabel" style="font-size:12px;color:var(--mu);margin-bottom:12px"></div>
+          <div id="marginLabel" style="font-size:12px;color:var(--mu);margin-bottom:10px"></div>
           <div class="fld" style="margin-bottom:8px">
             <label class="lbl">Частичное погашение (USD)</label>
-            <input id="repayAmount" type="number" step="any" min="0.01" placeholder="Оставь пустым — полностью">
+            <input id="repayAmount" type="number" step="any" min="0.01" placeholder="Пусто — полностью">
           </div>
           <button id="repayBtn" class="btn btn-primary btn-sm">Погасить</button>
         </div>
+        <!-- Новый кредит -->
         <div id="loanNewPanel">
           <p id="loanRateNote" style="font-size:12px;color:var(--mu);margin-bottom:8px"></p>
-          <form id="loanForm" style="display:flex;flex-direction:column;gap:8px">
+          <form id="loanForm" class="compact-form">
             <div class="fld">
-              <label class="lbl">Сумма кредита</label>
+              <label class="lbl">Сумма</label>
               <input id="loanAmount" type="number" step="any" min="100" placeholder="до $0">
               <div id="loanLimitBar" style="display:none;height:6px;background:var(--sf2);border-radius:999px;overflow:hidden;margin-top:6px">
                 <div id="loanLimitFill" style="height:100%;width:0%;background:var(--pri);border-radius:999px;transition:width .2s,background .2s"></div>
@@ -189,15 +183,27 @@
 
     </div>
 
-    <!-- Right -->
-    <div style="display:flex;flex-direction:column;gap:20px">
+    <!-- Col 3: Leaderboard + Feed -->
+    <div class="col-stack">
+
+      <!-- Leaderboard -->
       <div class="card">
-        <h2>📋 Лента событий</h2>
+        <h2>🏆 Рейтинг</h2>
+        <table>
+          <thead><tr><th>#</th><th>Игрок</th><th>Капитал</th><th></th></tr></thead>
+          <tbody id="leaderBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Feed -->
+      <div class="card">
+        <h2>📋 Лента</h2>
         <div id="activityFeed" class="feed"></div>
       </div>
+
     </div>
 
-  </div><!-- /g2 -->
+  </div><!-- /g3 -->
 
 </div><!-- /appScreen -->
 

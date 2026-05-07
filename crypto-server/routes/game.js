@@ -48,10 +48,16 @@ router.get('/state', auth, async (req, res) => {
 // ── ТОРГОВЛЯ ───────────────────────────────────────────────────────────────────────────────
 router.post('/trade', auth, async (req, res) => {
   try {
-    const { coin, amount, action } = req.body;
+    const { coin, action } = req.body;
+    // Защита: parseFloat отбрасывает объекты ({$gt:0} → NaN), строки-операторы и т.д.
+    // Number.isFinite блокирует NaN, Infinity, -Infinity
+    const amount = parseFloat(req.body.amount);
+    if (!Number.isFinite(amount) || amount <= 0)
+      return res.json({ error: 'Неверное количество' });
+
     const allCoins = await getAllCoins();
-    if (!allCoins.includes(coin))   return res.json({ error: 'Неизвестная монета' });
-    if (!amount || amount <= 0)     return res.json({ error: 'Неверное количество' });
+    if (!allCoins.includes(coin)) return res.json({ error: 'Неизвестная монета' });
+
     const priceDoc  = await db.prices.findOne({ coin });
     const wallet    = await db.wallets.findOne({ username: req.session.username });
     const baseValue = priceDoc.price * amount;
@@ -97,9 +103,11 @@ router.post('/trade', auth, async (req, res) => {
 // ── ПЕРЕВОД ────────────────────────────────────────────────────────────────────────────────
 router.post('/transfer', auth, async (req, res) => {
   try {
-    const { to, amount } = req.body;
-    const numAmount = parseFloat(amount);
-    if (!numAmount || numAmount <= 0) return res.json({ error: 'Неверная сумма' });
+    const { to } = req.body;
+    // Защита: блокируем объекты, NaN, Infinity, отрицательные значения
+    const numAmount = parseFloat(req.body.amount);
+    if (!Number.isFinite(numAmount) || numAmount <= 0)
+      return res.json({ error: 'Неверная сумма' });
     if (to === req.session.username) return res.json({ error: 'Нельзя переводить себе' });
     if (to === EXCHANGE_USERNAME)    return res.json({ error: 'Нельзя переводить на системный счёт' });
     const toUser = await db.wallets.findOne({ username: to });

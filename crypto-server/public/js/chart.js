@@ -7,7 +7,6 @@ const BASE_COIN_COLORS = {
   DOGE: '#c2a633'
 };
 
-// Цвета для кастомных монет — генерируются из тикера детерминированно
 function coinColor(ticker) {
   if (BASE_COIN_COLORS[ticker]) return BASE_COIN_COLORS[ticker];
   let hash = 0;
@@ -22,31 +21,17 @@ const priceHistory = {};
 let selectedCoin = 'BTC';
 let chartRange   = 40;
 let chrt         = null;
+let chartCoins   = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 
-// Текущий список монет (обновляется из app.js через updateChartCoins)
-let chartCoins = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
-
-// ── Вызывается из app.js при получении актуального списка монет ──────────
 function updateChartCoins(coins) {
   const prev = chartCoins;
   chartCoins = coins;
-
-  // Инициализируем историю для новых монет
-  coins.forEach(c => {
-    if (!priceHistory[c]) priceHistory[c] = [];
-  });
-
-  // Если выбранная монета удалена — переключаемся на первую
-  if (!coins.includes(selectedCoin)) {
-    selectedCoin = coins[0] || 'BTC';
-  }
-
-  // Перерисовываем табы только если список изменился
+  coins.forEach(c => { if (!priceHistory[c]) priceHistory[c] = []; });
+  if (!coins.includes(selectedCoin)) selectedCoin = coins[0] || 'BTC';
   const changed = prev.length !== coins.length || prev.some((c, i) => c !== coins[i]);
   if (changed) renderChartTabs();
 }
 
-// ── Добавить новую точку (вызывается из app.js при priceUpdate) ──────────
 function addPricePoint(prices) {
   chartCoins.forEach(c => {
     if (prices[c] != null) {
@@ -57,16 +42,29 @@ function addPricePoint(prices) {
   updateChartLive();
 }
 
-// ── Рисуем табы ──────────────────────────────────────────────────────────
+// ── Табы монет (id="chartLegend" в index.html) ────────────────────────────
 function renderChartTabs() {
-  const tabs = document.getElementById('chartTabs');
+  const tabs = document.getElementById('chartLegend');
   if (!tabs) return;
-  tabs.innerHTML = chartCoins.map(c =>
+
+  // Кнопки монет
+  const coinBtns = chartCoins.map(c =>
     `<button class="ctab${c === selectedCoin ? ' on' : ''}" data-coin="${c}" onclick="selectCoin('${c}')">${c}</button>`
   ).join('');
+
+  // Кнопки диапазона
+  const ranges = [[20,'20'],[40,'40'],[100,'100'],[0,'Всё']];
+  const rangeBtns = ranges.map(([n, label]) =>
+    `<button class="chart-range-btn${chartRange === n ? ' on' : ''}" data-range="${n}" onclick="setChartRange(${n})">${label}</button>`
+  ).join('');
+
+  tabs.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">${coinBtns}</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">${rangeBtns}</div>
+    <div id="cinfo" style="font-size:12px;color:var(--mu);min-height:16px"></div>
+  `;
 }
 
-// ── Инициализация: рисуем табы и первый чарт ─────────────────────────────
 function initChart() {
   renderChartTabs();
   renderChart();
@@ -95,19 +93,24 @@ function renderChart() {
   if (info) {
     const last = data.length ? data[data.length - 1] : null;
     info.textContent = last != null
-      ? `${selectedCoin} · текущая цена: $${Number(last).toLocaleString('ru', {minimumFractionDigits:2,maximumFractionDigits:2})} · ${data.length} тиков`
+      ? `${selectedCoin} · $${Number(last).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${data.length} тиков`
       : `${selectedCoin} · ожидание данных…`;
   }
 
+  const canvas = document.getElementById('priceChart');
+  if (!canvas) return;
   if (chrt) chrt.destroy();
-  chrt = new Chart(document.getElementById('chart'), {
+
+  chrt = new Chart(canvas, {
     type: 'line',
     data: {
       labels: data.map((_, i) => i + 1),
       datasets: [{
         data,
         borderColor: col,
-        backgroundColor: col.startsWith('hsl') ? col.replace(')', ', 0.15)').replace('hsl(', 'hsla(') : col + '28',
+        backgroundColor: col.startsWith('hsl')
+          ? col.replace(')', ', 0.15)').replace('hsl(', 'hsla(')
+          : col + '28',
         borderWidth: 2.5,
         tension: 0.35,
         fill: true,
@@ -131,7 +134,7 @@ function renderChart() {
           displayColors: false,
           callbacks: {
             title: items => `Тик ${items[0].label}`,
-            label: x => `Цена: $${Number(x.parsed.y).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})}`
+            label: x => `$${Number(x.parsed.y).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})}`
           },
           backgroundColor: dark ? '#23211f' : '#fff',
           titleColor: tc,
@@ -144,7 +147,13 @@ function renderChart() {
       },
       scales: {
         x: { ticks: { color: tc, maxTicksLimit: 7 }, grid: { color: gc } },
-        y: { ticks: { color: tc, callback: v => '$' + Number(v).toLocaleString('ru',{maximumFractionDigits:2}) }, grid: { color: gc } }
+        y: {
+          ticks: {
+            color: tc,
+            callback: v => '$' + Number(v).toLocaleString('ru',{maximumFractionDigits:2})
+          },
+          grid: { color: gc }
+        }
       }
     }
   });
@@ -157,13 +166,15 @@ function updateChartLive() {
   chrt.data.labels = data.map((_, i) => i + 1);
   chrt.data.datasets[0].data = data;
   chrt.data.datasets[0].borderColor = col;
-  chrt.data.datasets[0].backgroundColor = col.startsWith('hsl') ? col.replace(')', ', 0.15)').replace('hsl(', 'hsla(') : col + '28';
+  chrt.data.datasets[0].backgroundColor = col.startsWith('hsl')
+    ? col.replace(')', ', 0.15)').replace('hsl(', 'hsla(')
+    : col + '28';
   chrt.update('none');
 
   const info = document.getElementById('cinfo');
   if (info && data.length) {
     const last = data[data.length - 1];
-    info.textContent = `${selectedCoin} · текущая цена: $${Number(last).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${data.length} тиков`;
+    info.textContent = `${selectedCoin} · $${Number(last).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${data.length} тиков`;
   }
 }
 

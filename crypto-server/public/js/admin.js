@@ -47,6 +47,24 @@ function priceDec(c) {
   return 5;
 }
 
+// ── БАНК (WARDEN) ─────────────────────────────────────────────────────────────
+function renderBankCard() {
+  const warden = allWallets.find(w => w.username === 'WARDEN');
+  const bankUsd = warden ? (warden.usd || 0) : 0;
+
+  // Сумма всех выданных кредитов (principal) и сумма к возврату (due)
+  const totalIssued = allLoans.reduce((s, l) => s + (l.amount || 0), 0);
+  const totalDebt   = allLoans.reduce((s, l) => s + (l.due    || 0), 0);
+
+  const elBal    = document.getElementById('bankBalance');
+  const elIssued = document.getElementById('bankIssued');
+  const elDebt   = document.getElementById('bankDebt');
+
+  if (elBal)    elBal.textContent    = '$' + fmt(bankUsd);
+  if (elIssued) elIssued.textContent = '$' + fmt(totalIssued);
+  if (elDebt)   elDebt.textContent   = '$' + fmt(totalDebt);
+}
+
 // ── ПАУЗА ────────────────────────────────────────────────────────────────────
 function applyPauseState(paused) {
   const statusEl  = document.getElementById('pauseStatus');
@@ -166,7 +184,7 @@ function renderCoinParams() {
     const driftPct = +(((m.drift || 0)    * 100).toFixed(1));
     const supply   = m.supply    || '';
     const base     = m.basePrice || '';
-    const driftCol = driftPct > 0 ? 'var(--up)' : driftPct < 0 ? 'var(--dn)' : 'var(--mu)';
+    const driftCol = driftPct > 0 ? 'var(--ok)' : driftPct < 0 ? 'var(--dan)' : 'var(--mu)';
     const isCustom = m.isCustom || !BASE_COINS.includes(coin);
     const isBase   = BASE_COINS.includes(coin) && !m.isCustom;
     const emoji    = m.emoji || (isBase ? '' : '🪙');
@@ -195,7 +213,7 @@ function renderCoinParams() {
               const v=parseFloat(this.value);
               const lbl=document.getElementById('drift-lbl-${coin}');
               lbl.textContent=(v>0?'+':'')+v.toFixed(1)+'%';
-              lbl.style.color=v>0?'var(--up)':v<0?'var(--dn)':'var(--mu)';
+              lbl.style.color=v>0?'var(--ok)':v<0?'var(--dan)':'var(--mu)';
             ">
           <span class="drift-lbl" id="drift-lbl-${coin}" style="color:${driftCol}">${driftPct > 0 ? '+' : ''}${driftPct}%</span>
         </div>
@@ -521,6 +539,7 @@ async function loadAdminData() {
   renderLoans();
   renderCoinParams();
   fillPlayerSelect();
+  renderBankCard();
   await loadBotsData();
 }
 
@@ -532,8 +551,6 @@ document.getElementById('tickBtn').addEventListener('click', async () => {
   await loadAdminData();
   btn.disabled = false; btn.textContent = '🔄 Принудительно обновить цены';
 });
-
-
 
 document.getElementById('setCashForm').addEventListener('submit', async e => {
   e.preventDefault();

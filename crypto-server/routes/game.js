@@ -4,9 +4,7 @@ const { db, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME } = require('../db'
 const { tick, applyTradePressure } = require('../game/market');
 const { getBotStats, priceHistory, listBotsRaw, createBot, deleteBot, setBotCash, updateBotPreset } = require('../game/bots');
 
-const TRADE_FEE   = 0.001;            // 0.1% — общая комиссия
-const BANK_FEE_SHARE = 1.0;           // 100% комиссии → в банк (WARDEN); 0 = всё на биржу
-const BANK_USERNAME = 'WARDEN';
+const TRADE_FEE = 0.001; // 0.1% — комиссия с каждой сделки, идёт в резерв EXCHANGE
 
 function auth(req, res, next) {
   if (!req.session.username) return res.status(401).json({ error: 'Не авторизован' });
@@ -22,18 +20,6 @@ async function getAllPrices() {
   const obj  = {};
   docs.forEach(d => { obj[d.coin] = d.price; });
   return obj;
-}
-
-/**
- * Распределяет комиссию:
- *  - часть BANK_FEE_SHARE → WARDEN
- *  - остаток (1 - BANK_FEE_SHARE) → EXCHANGE
- */
-async function distributeFee(feeAmount) {
-  const toBank     = feeAmount * BANK_FEE_SHARE;
-  const toExchange = feeAmount * (1 - BANK_FEE_SHARE);
-  if (toBank     > 0) await db.wallets.update({ username: BANK_USERNAME },     { $inc: { usd: +toBank     } });
-  if (toExchange > 0) await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: +toExchange } });
 }
 
 // ── СОСТОЯНИЕ ─────────────────────────────────────────────────────────────────────────────
@@ -81,15 +67,13 @@ router.post('/trade', auth, async (req, res) => {
 
       // Игрок: -cost USD, +монеты
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: -cost, [coin]: amount } });
-      // Биржа: получает только baseValue (чистая цена без комиссии)
-      await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: +baseValue } });
-      // Комиссия → банк (+ остаток на биржу, если BANK_FEE_SHARE < 1)
-      await distributeFee(feeAmount);
+      // Биржа: получает baseValue + комиссию (единый резерв)
+      await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: +(baseValue + feeAmount) } });
 
       const newCoinPrice  = await applyTradePressure(coin, amount, action);
       const updatedPrices = await getAllPrices();
       const updated       = await db.wallets.findOne({ username: req.session.username });
-      const txt = `${req.session.username} купил ${amount} ${coin} за $${cost.toFixed(2)} (цена: $${newCoinPrice}, комиссия банку: $${feeAmount.toFixed(2)})`;
+      const txt = `${req.session.username} купил ${amount} ${coin} за $${cost.toFixed(2)} (цена: $${newCoinPrice}, комиссия: $${feeAmount.toFixed(2)})`;
       const ev  = { ts: Date.now(), text: txt };
       await db.events.insert(ev);
       const io = req.app.get('io');
@@ -102,16 +86,14 @@ router.post('/trade', auth, async (req, res) => {
       if ((wallet[coin] || 0) < amount) return res.json({ error: `Недостаточно ${coin}` });
 
       const proceeds = baseValue - feeAmount;       // игрок получает base − комиссия
-      // Биржа: отдаёт только baseValue игроку, не трогая комиссию
+      // Биржа: отдаёт baseValue игроку, комиссия остаётся в резерве
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: +proceeds, [coin]: -amount } });
-      await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: -baseValue } });
-      // Комиссия → банк
-      await distributeFee(feeAmount);
+      await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: -(baseValue - feeAmount) } });
 
       const newCoinPrice  = await applyTradePressure(coin, amount, action);
       const updatedPrices = await getAllPrices();
       const updated       = await db.wallets.findOne({ username: req.session.username });
-      const txt = `${req.session.username} продал ${amount} ${coin} за $${proceeds.toFixed(2)} (цена: $${newCoinPrice}, комиссия банку: $${feeAmount.toFixed(2)})`;
+      const txt = `${req.session.username} продал ${amount} ${coin} за $${proceeds.toFixed(2)} (цена: $${newCoinPrice}, комиссия: $${feeAmount.toFixed(2)})`;
       const ev  = { ts: Date.now(), text: txt };
       await db.events.insert(ev);
       const io = req.app.get('io');
@@ -180,7 +162,6 @@ router.post('/loan', auth, async (req, res) => {
     }
     const rate = computeLoanRate(priceHistory);
     await db.loans.insert({ username: req.session.username, principal: num, due: num, rate, ts: Date.now(), paid: false });
-    // Кредит выдаётся из резерва биржи
     await db.wallets.update({ username: req.session.username }, { $inc: { usd: +num } });
     await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: -num } });
     const updated = await db.wallets.findOne({ username: req.session.username });
@@ -201,7 +182,6 @@ router.post('/repay', auth, async (req, res) => {
       : loan.due;
     if (!wantPay || wantPay <= 0) return res.json({ error: 'Неверная сумма' });
     if (wallet.usd < wantPay) return res.json({ error: `Недостаточно USD. Нужно $${wantPay.toFixed(2)}, есть $${wallet.usd.toFixed(2)}` });
-    // Погашение возвращает USD в резерв биржи
     await db.wallets.update({ username: req.session.username }, { $inc: { usd: -wantPay } });
     await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: +wantPay } });
     const remaining = loan.due - wantPay;

@@ -156,7 +156,6 @@ function updateTradeHint() {
   const TRADE_FEE = 0.001;
 
   if (tradeMode === 'usd') {
-    // Показываем сколько монет получим
     const usdRaw = parseFloat(document.getElementById('tradeUsd')?.value) || 0;
     if (price > 0 && usdRaw > 0) {
       const coinQty = action === 'buy'
@@ -167,7 +166,6 @@ function updateTradeHint() {
       hint.textContent = '';
     }
   } else {
-    // Показываем стоимость в USD
     const qty = parseFloat(document.getElementById('tradeAmount')?.value) || 0;
     if (price > 0 && qty > 0) {
       const usdVal = action === 'buy'
@@ -180,7 +178,6 @@ function updateTradeHint() {
   }
 }
 
-// Переключение вкладок режима
 document.querySelectorAll('.trade-mode-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     tradeMode = btn.dataset.mode;
@@ -191,7 +188,6 @@ document.querySelectorAll('.trade-mode-btn').forEach(btn => {
   });
 });
 
-// Пересчёт подсказки при изменении полей
 ['tradeAsset','tradeType','tradeAmount','tradeUsd'].forEach(id => {
   document.getElementById(id)?.addEventListener('input', updateTradeHint);
   document.getElementById(id)?.addEventListener('change', updateTradeHint);
@@ -203,7 +199,6 @@ function renderLoanInfo(info) {
 
   const activePanel = document.getElementById('loanActivePanel');
   const newPanel    = document.getElementById('loanNewPanel');
-  const rateNote    = document.getElementById('loanRateNote');
   const elDebt      = document.getElementById('sDebt');
 
   const rateStr = `${(info.rate * 100).toFixed(3)}%/тик`;
@@ -237,9 +232,49 @@ function renderLoanInfo(info) {
   } else {
     if (activePanel) activePanel.style.display = 'none';
     if (newPanel)    newPanel.style.display    = 'block';
-    if (rateNote)    rateNote.textContent       = `Ставка: ${rateStr} · Максимум: $${fmt(info.maxLoan, 0)}`;
     if (elDebt)      elDebt.textContent         = '—';
     lastDebt = 0;
+
+    // ── Лимит кредита ───────────────────────────────────────────────────────
+    const rateNote  = document.getElementById('loanRateNote');
+    const limitBar  = document.getElementById('loanLimitBar');
+    const limitFill = document.getElementById('loanLimitFill');
+    const limitLbl  = document.getElementById('loanLimitLabel');
+    const loanInput = document.getElementById('loanAmount');
+
+    if (rateNote) rateNote.textContent = `Ставка: ${rateStr}`;
+
+    const maxLoan = info.maxLoan || 0;
+    const portVal = info.portVal || 0;
+
+    // Подпись под полем ввода
+    if (limitLbl) {
+      limitLbl.textContent = maxLoan > 0
+        ? `Доступно: $${fmt(maxLoan, 0)} (портфель $${fmt(portVal, 0)})`
+        : 'Нет активов для залога';
+      limitLbl.style.color = maxLoan > 0 ? 'var(--ac)' : 'var(--mu)';
+    }
+
+    // Прогресс-бар: показывает введённую сумму относительно лимита
+    if (limitBar) limitBar.style.display = maxLoan > 0 ? 'block' : 'none';
+
+    if (loanInput) {
+      loanInput.max = maxLoan;
+      loanInput.placeholder = maxLoan > 0 ? `до $${fmt(maxLoan, 0)}` : '0';
+
+      // Перерисовываем бар при каждом вводе
+      const updateBar = () => {
+        if (!limitFill) return;
+        const val = parseFloat(loanInput.value) || 0;
+        const pct = maxLoan > 0 ? Math.min(val / maxLoan * 100, 100) : 0;
+        limitFill.style.width = pct + '%';
+        limitFill.style.background = pct > 90 ? '#e05252' : pct > 60 ? '#f7931a' : '#4f98a3';
+      };
+      loanInput.removeEventListener('input', loanInput._barUpdate);
+      loanInput._barUpdate = updateBar;
+      loanInput.addEventListener('input', updateBar);
+      updateBar();
+    }
   }
 }
 
@@ -342,7 +377,6 @@ function resolveTradeAmount(coin, action) {
   if (tradeMode === 'usd') {
     const usd = parseFloat(document.getElementById('tradeUsd').value);
     if (!Number.isFinite(usd) || usd <= 0) return null;
-    // Сколько монет можно купить/продать на эту сумму
     return action === 'buy'
       ? usd / (price * (1 + TRADE_FEE))
       : usd / (price * (1 - TRADE_FEE));
@@ -383,7 +417,6 @@ document.getElementById('buyAllBtn').addEventListener('click', async () => {
   if (price <= 0) { err.textContent = 'Цена монеты неизвестна'; return; }
   if (usd < 0.01) { err.textContent = 'Недостаточно USD'; return; }
 
-  // Весь баланс → максимальное количество монет (с учётом комиссии)
   const amount = usd / (price * (1 + TRADE_FEE));
   const res = await api('POST', '/api/trade', { coin, amount, action: 'buy' });
   if (res.error) { err.textContent = res.error; return; }

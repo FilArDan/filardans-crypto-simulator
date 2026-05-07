@@ -86,11 +86,41 @@
   <div class="g2 section-gap">
     <form class="card stack" id="tradeForm">
       <h2>💱 Покупка / Продажа</h2>
-      <div class="fld"><label>Монета<select id="tradeAsset"><option>BTC</option><option>ETH</option><option>SOL</option><option>XRP</option><option>DOGE</option></select></label></div>
+
+      <div class="fld"><label>Монета<select id="tradeAsset"><option>BTC</option></select></label></div>
       <div class="fld"><label>Действие<select id="tradeType"><option value="buy">📈 Купить</option><option value="sell">📉 Продать</option></select></label></div>
-      <div class="fld"><label>Количество<input id="tradeAmount" type="number" min="0.00001" step="any" value="1"/></label></div>
+
+      <!-- Переключатель режима -->
+      <div class="trade-mode-tabs" id="tradeModeRow">
+        <button type="button" class="trade-mode-btn active" data-mode="qty">По количеству</button>
+        <button type="button" class="trade-mode-btn" data-mode="usd">На сумму ($)</button>
+      </div>
+
+      <!-- Поле: количество монет -->
+      <div class="fld" id="fieldQty">
+        <label>Количество монет
+          <input id="tradeAmount" type="number" min="0.00001" step="any" value="1"/>
+        </label>
+      </div>
+
+      <!-- Поле: сумма в долларах -->
+      <div class="fld hidden" id="fieldUsd">
+        <label>Сумма в USD
+          <input id="tradeUsd" type="number" min="0.01" step="any" value="10"/>
+        </label>
+      </div>
+
+      <!-- Подсказка: сколько монет выйдет -->
+      <div id="tradeHint" class="muted" style="font-size:12px;min-height:18px"></div>
+
       <div class="err-msg" id="tradeError"></div>
-      <button class="btn btn-primary" type="submit">Провести сделку</button>
+
+      <!-- Кнопки -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <button class="btn btn-primary" type="submit" style="grid-column:1/-1">Провести сделку</button>
+        <button class="btn btn-secondary btn-sm" type="button" id="buyAllBtn">💸 Купить всё</button>
+        <button class="btn btn-dan btn-sm" type="button" id="sellAllBtn" style="grid-column:2/-1">🔴 Продать всё</button>
+      </div>
     </form>
 
     <div style="display:grid;grid-template-columns:1fr;gap:16px;">

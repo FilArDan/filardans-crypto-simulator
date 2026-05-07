@@ -4,9 +4,9 @@ let prices = {};
 let currentCoins = [];
 
 // Кэш для пересчёта рейтинга / портфеля при обновлении цен без HTTP-запроса
-let lastPlayers = null; // сирые данные игроков из /api/state (usd + количество монет)
-let lastWallet  = null; // кошелёк текущего игрока
-let lastDebt    = 0;    // актуальный долг (обновляется через loanUpdate)
+let lastPlayers = null;
+let lastWallet  = null;
+let lastDebt    = 0;
 
 async function api(method, path, body) {
   const r = await fetch(path, {
@@ -44,14 +44,10 @@ function renderTicker(p, prev) {
   }).join('');
 }
 
-// renderLeaderboard принимает плейеров в формате { username, usd, coins?, isBot }
-// если есть поле coins — пересчитываем полный капитал по актуальным ценам
 function renderLeaderboard(players, currentPrices) {
   const tbody = document.getElementById('leaderBody');
   if (!tbody || !players) return;
   const p = currentPrices || prices;
-
-  // Считаем total для каждого: usd + стоимость монет по текущим ценам
   const withTotal = players.map(pl => {
     let coinsVal = 0;
     if (pl.coins) {
@@ -61,7 +57,6 @@ function renderLeaderboard(players, currentPrices) {
     }
     return { ...pl, total: (pl.usd || 0) + coinsVal };
   });
-
   const sorted = [...withTotal].sort((a, b) => b.total - a.total);
   const maxTotal = sorted[0] ? sorted[0].total : 1;
   tbody.innerHTML = '';
@@ -135,7 +130,6 @@ function renderTradeAssets(coins) {
   if (coins.includes(prev)) sel.value = prev;
 }
 
-// Пересчитываем портфель, статистику и рейтинг по новым ценам (без HTTP)
 function recalcByPrices(p) {
   if (lastWallet) {
     renderPortfolio(lastWallet, currentCoins);
@@ -146,7 +140,62 @@ function recalcByPrices(p) {
     if (elPort)  elPort.textContent  = '$' + fmt(coinsVal);
   }
   if (lastPlayers) renderLeaderboard(lastPlayers, p);
+  updateTradeHint();
 }
+
+// ── ТОРГОВАЯ ФОРМА: режим и подсказка ────────────────────────────────────────
+let tradeMode = 'qty'; // 'qty' | 'usd'
+
+function updateTradeHint() {
+  const hint   = document.getElementById('tradeHint');
+  const coin   = document.getElementById('tradeAsset')?.value;
+  const action = document.getElementById('tradeType')?.value;
+  if (!hint || !coin) return;
+
+  const price = prices[coin] || 0;
+  const TRADE_FEE = 0.001;
+
+  if (tradeMode === 'usd') {
+    // Показываем сколько монет получим
+    const usdRaw = parseFloat(document.getElementById('tradeUsd')?.value) || 0;
+    if (price > 0 && usdRaw > 0) {
+      const coinQty = action === 'buy'
+        ? usdRaw / (price * (1 + TRADE_FEE))
+        : usdRaw / (price * (1 - TRADE_FEE));
+      hint.textContent = `≈ ${fmt(coinQty, 6)} ${coin} по $${fmt(price, price < 1 ? 4 : 2)}`;
+    } else {
+      hint.textContent = '';
+    }
+  } else {
+    // Показываем стоимость в USD
+    const qty = parseFloat(document.getElementById('tradeAmount')?.value) || 0;
+    if (price > 0 && qty > 0) {
+      const usdVal = action === 'buy'
+        ? qty * price * (1 + TRADE_FEE)
+        : qty * price * (1 - TRADE_FEE);
+      hint.textContent = `≈ $${fmt(usdVal)} (с комиссией 0.1%)`;
+    } else {
+      hint.textContent = '';
+    }
+  }
+}
+
+// Переключение вкладок режима
+document.querySelectorAll('.trade-mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    tradeMode = btn.dataset.mode;
+    document.querySelectorAll('.trade-mode-btn').forEach(b => b.classList.toggle('active', b === btn));
+    document.getElementById('fieldQty').classList.toggle('hidden', tradeMode !== 'qty');
+    document.getElementById('fieldUsd').classList.toggle('hidden', tradeMode !== 'usd');
+    updateTradeHint();
+  });
+});
+
+// Пересчёт подсказки при изменении полей
+['tradeAsset','tradeType','tradeAmount','tradeUsd'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', updateTradeHint);
+  document.getElementById(id)?.addEventListener('change', updateTradeHint);
+});
 
 // ── КРЕДИТ UI ─────────────────────────────────────────────────────────────────
 function renderLoanInfo(info) {
@@ -172,7 +221,7 @@ function renderLoanInfo(info) {
     if (rate)   rate.textContent = rateStr;
     if (elDebt) elDebt.textContent = '$' + fmt(info.loan.due);
 
-    lastDebt = info.loan.due; // кэшируем долг
+    lastDebt = info.loan.due;
 
     const pct    = Math.min(Math.round(info.marginRatio * 100), 100);
     const danger = pct >= 70;
@@ -212,7 +261,7 @@ function applyLoanUpdate(data) {
   if (rateEl) rateEl.textContent = `${(data.rate * 100).toFixed(3)}%/тик`;
   if (elDebt) elDebt.textContent = '$' + fmt(data.due);
 
-  lastDebt = data.due; // обновляем кэш долга
+  lastDebt = data.due;
 
   const pct    = Math.min(Math.round((data.marginRatio || 0) * 100), 100);
   const danger = pct >= 70;
@@ -242,10 +291,7 @@ async function loadState() {
     updateChartCoins(data.coins);
   }
 
-  // Кэшируем плейеров с полными данными кошельков (wallet.*) для пересчёта
-  // Сервер присылает players с usd+total, но не с coins игроков —
-  // поэтому добавляем coins из wallets
-  lastPlayers = data.players; // { username, usd, isBot } — без coins, но достаточно для рейтинга
+  lastPlayers = data.players;
   lastWallet  = data.wallet;
 
   renderTicker(data.prices);
@@ -256,6 +302,7 @@ async function loadState() {
   renderTradeAssets(data.coins || currentCoins);
   renderLoanInfo(loanInfo);
   addPricePoint(data.prices);
+  updateTradeHint();
 
   const coinsVal = (data.coins || currentCoins)
     .reduce((s, c) => s + (data.wallet[c] || 0) * (data.prices[c] || 0), 0);
@@ -286,15 +333,75 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
   location.reload();
 });
 
-// ── ТОРГОВЛЯ ──────────────────────────────────────────────────────────────────
+// ── ТОРГОВЛЯ: вычислить amount по режиму ──────────────────────────────────────
+function resolveTradeAmount(coin, action) {
+  const TRADE_FEE = 0.001;
+  const price = prices[coin] || 0;
+  if (price <= 0) return null;
+
+  if (tradeMode === 'usd') {
+    const usd = parseFloat(document.getElementById('tradeUsd').value);
+    if (!Number.isFinite(usd) || usd <= 0) return null;
+    // Сколько монет можно купить/продать на эту сумму
+    return action === 'buy'
+      ? usd / (price * (1 + TRADE_FEE))
+      : usd / (price * (1 - TRADE_FEE));
+  } else {
+    const qty = parseFloat(document.getElementById('tradeAmount').value);
+    if (!Number.isFinite(qty) || qty <= 0) return null;
+    return qty;
+  }
+}
+
+// ── ТОРГОВЛЯ: основная форма ──────────────────────────────────────────────────
 document.getElementById('tradeForm').addEventListener('submit', async e => {
   e.preventDefault();
   const coin   = document.getElementById('tradeAsset').value;
   const action = document.getElementById('tradeType').value;
-  const amount = parseFloat(document.getElementById('tradeAmount').value);
-  const err = document.getElementById('tradeError');
+  const err    = document.getElementById('tradeError');
   err.textContent = '';
+
+  const amount = resolveTradeAmount(coin, action);
+  if (!amount) { err.textContent = 'Введите корректное значение'; return; }
+
   const res = await api('POST', '/api/trade', { coin, amount, action });
+  if (res.error) { err.textContent = res.error; return; }
+  renderPortfolio(res.wallet);
+  loadState();
+});
+
+// ── КУПИТЬ ВСЁ ────────────────────────────────────────────────────────────────
+document.getElementById('buyAllBtn').addEventListener('click', async () => {
+  const coin  = document.getElementById('tradeAsset').value;
+  const err   = document.getElementById('tradeError');
+  err.textContent = '';
+
+  if (!lastWallet) { err.textContent = 'Данные кошелька не загружены'; return; }
+  const usd   = lastWallet.usd || 0;
+  const price = prices[coin] || 0;
+  const TRADE_FEE = 0.001;
+  if (price <= 0) { err.textContent = 'Цена монеты неизвестна'; return; }
+  if (usd < 0.01) { err.textContent = 'Недостаточно USD'; return; }
+
+  // Весь баланс → максимальное количество монет (с учётом комиссии)
+  const amount = usd / (price * (1 + TRADE_FEE));
+  const res = await api('POST', '/api/trade', { coin, amount, action: 'buy' });
+  if (res.error) { err.textContent = res.error; return; }
+  renderPortfolio(res.wallet);
+  loadState();
+});
+
+// ── ПРОДАТЬ ВСЁ ───────────────────────────────────────────────────────────────
+document.getElementById('sellAllBtn').addEventListener('click', async () => {
+  const coin = document.getElementById('tradeAsset').value;
+  const err  = document.getElementById('tradeError');
+  err.textContent = '';
+
+  if (!lastWallet) { err.textContent = 'Данные кошелька не загружены'; return; }
+  const amount = lastWallet[coin] || 0;
+  if (amount <= 0) { err.textContent = `Нет ${coin} в кошельке`; return; }
+
+  const res = await api('POST', '/api/trade', { coin, amount, action: 'sell' });
   if (res.error) { err.textContent = res.error; return; }
   renderPortfolio(res.wallet);
   loadState();
@@ -342,7 +449,6 @@ socket.on('priceUpdate', p => {
   renderTicker(p, prevPrices);
   addPricePoint(p);
   prevPrices = { ...p };
-  // Без HTTP: пересчитываем портфель и рейтинг если есть кэш
   recalcByPrices(p);
 });
 
@@ -358,7 +464,7 @@ socket.on('newEvent', ev => {
 
 socket.on('walletUpdate', data => {
   if (data.username === myUsername) {
-    lastWallet = data.wallet; // сразу обновляем кэш
+    lastWallet = data.wallet;
     renderPortfolio(data.wallet);
     loadState();
   }

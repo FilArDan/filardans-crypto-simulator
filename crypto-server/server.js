@@ -12,9 +12,6 @@ const io = new Server(httpServer);
 app.set('io', io);
 
 // ── Разрешаем встраивание в iframe (нужно для Foundry-модуля) ─────────────────
-// Только frame-ancestors * — достаточно чтобы сайт работал в iframe Foundry.
-// Остальные директивы CSP НЕ указываем — не блокируем
-// cdn.jsdelivr.net (Chart.js), fonts.googleapis.com, socket.io.
 app.use((req, res, next) => {
   res.removeHeader('X-Frame-Options');
   res.setHeader('Content-Security-Policy', "frame-ancestors *;");
@@ -70,12 +67,20 @@ setInterval(() => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ── Сессия ────────────────────────────────────────────────────────────────────
+// sameSite:'none' + secure:true обязательны чтобы кука работала
+// когда сайт открыт в iframe (Foundry). Railway всегда HTTPS — secure работает.
+const isProduction = process.env.NODE_ENV === 'production' || !!process.env.RAILWAY_ENVIRONMENT;
 app.use(session({
   secret: process.env.SECRET || 'crypto-dev-secret-2025',
   resave: false,
   saveUninitialized: false,
-  // Стандартные настройки — sameSite:none не нужен, не ломаем вход админа
-  cookie: { maxAge: 8 * 60 * 60 * 1000 }
+  cookie: {
+    maxAge: 8 * 60 * 60 * 1000,
+    sameSite: isProduction ? 'none' : 'lax',  // 'none' нужен для iframe на prod
+    secure:   isProduction,                    // secure обязателен при sameSite:'none'
+  }
 }));
 
 app.use('/api',  rateLimiter);

@@ -11,17 +11,27 @@ const httpServer = http.createServer(app);
 const io = new Server(httpServer);
 app.set('io', io);
 
+// ── Разрешаем встраивание в iframe (нужно для Foundry-модуля) ────────────────
+// Убираем X-Frame-Options и прописываем CSP frame-ancestors *,
+// чтобы окно Foundry могло открыть сайт через <iframe>.
+app.use((req, res, next) => {
+  // Снимаем запрет на iframe
+  res.removeHeader('X-Frame-Options');
+  // Разрешаем встраивание с любого источника (в т.ч. localhost Foundry)
+  res.setHeader(
+    'Content-Security-Policy',
+    "frame-ancestors *; default-src 'self' 'unsafe-inline' 'unsafe-eval' ws: wss: data: blob:;"
+  );
+  // Для cross-origin cookie внутри iframe
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+});
+
 // ── Rate Limiter (без внешних зависимостей) ───────────────────────────────────
-// Хранит счётчики запросов по IP в памяти.
-// Окно: 10 секунд. Лимиты:
-//   - /api/trade, /api/loan, /api/repay, /api/transfer → 20 req/10s (торговые)
-//   - остальные /api/* и /auth/* → 60 req/10s (чтение/состояние)
-// При превышении: 429 Too Many Requests + сообщение.
-// Счётчики чистятся каждые 30с, чтобы не накапливались мёртвые IP.
-const WINDOW_MS   = 10_000;  // 10 секунд
-const LIMIT_WRITE = 20;      // торговые/финансовые операции
-const LIMIT_READ  = 60;      // чтение состояния
-const counters    = new Map(); // ip -> { count, resetAt }
+const WINDOW_MS   = 10_000;
+const LIMIT_WRITE = 20;
+const LIMIT_READ  = 60;
+const counters    = new Map();
 
 function getIp(req) {
   return (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
@@ -55,7 +65,6 @@ function rateLimiter(req, res, next) {
   next();
 }
 
-// Чистим устаревшие записи каждые 30 секунд
 setInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of counters) {
@@ -70,10 +79,14 @@ app.use(session({
   secret: process.env.SECRET || 'crypto-dev-secret-2025',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 8 * 60 * 60 * 1000 }
+  cookie: {
+    maxAge: 8 * 60 * 60 * 1000,
+    // sameSite: 'none' + secure нужны для cookie внутри cross-origin iframe
+    sameSite: 'none',
+    secure: process.env.NODE_ENV === 'production',
+  }
 }));
 
-// Применяем rate limiting только к API и auth роутам
 app.use('/api',  rateLimiter);
 app.use('/auth', rateLimiter);
 
@@ -91,7 +104,6 @@ app.set('setPaused',  (val) => {
 const marketTick = () => { if (!paused) tick(io); };
 app.set('marketTick', marketTick);
 
-// Динамическая скорость тика (по умолчанию 25 сек)
 let tickSpeedMs = 25000;
 let marketTimer = setInterval(marketTick, tickSpeedMs);
 

@@ -11,18 +11,13 @@ const httpServer = http.createServer(app);
 const io = new Server(httpServer);
 app.set('io', io);
 
-// ── Разрешаем встраивание в iframe (нужно для Foundry-модуля) ────────────────
-// Убираем X-Frame-Options и прописываем CSP frame-ancestors *,
-// чтобы окно Foundry могло открыть сайт через <iframe>.
+// ── Разрешаем встраивание в iframe (нужно для Foundry-модуля) ─────────────────
+// Только frame-ancestors * — достаточно чтобы сайт работал в iframe Foundry.
+// Остальные директивы CSP НЕ указываем — не блокируем
+// cdn.jsdelivr.net (Chart.js), fonts.googleapis.com, socket.io.
 app.use((req, res, next) => {
-  // Снимаем запрет на iframe
   res.removeHeader('X-Frame-Options');
-  // Разрешаем встраивание с любого источника (в т.ч. localhost Foundry)
-  res.setHeader(
-    'Content-Security-Policy',
-    "frame-ancestors *; default-src 'self' 'unsafe-inline' 'unsafe-eval' ws: wss: data: blob:;"
-  );
-  // Для cross-origin cookie внутри iframe
+  res.setHeader('Content-Security-Policy', "frame-ancestors *;");
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
 });
@@ -79,12 +74,8 @@ app.use(session({
   secret: process.env.SECRET || 'crypto-dev-secret-2025',
   resave: false,
   saveUninitialized: false,
-  cookie: {
-    maxAge: 8 * 60 * 60 * 1000,
-    // sameSite: 'none' + secure нужны для cookie внутри cross-origin iframe
-    sameSite: 'none',
-    secure: process.env.NODE_ENV === 'production',
-  }
+  // Стандартные настройки — sameSite:none не нужен, не ломаем вход админа
+  cookie: { maxAge: 8 * 60 * 60 * 1000 }
 }));
 
 app.use('/api',  rateLimiter);

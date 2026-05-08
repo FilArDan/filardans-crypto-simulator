@@ -95,7 +95,8 @@ router.post('/trade', auth, async (req, res) => {
       const cost = baseValue + feeAmount;
       if (wallet.usd < cost) return res.json({ error: `Недостаточно USD (нужно $${cost.toFixed(2)})` });
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: -cost, [coin]: amount } });
-      await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: +(baseValue + feeAmount) } });
+      // Биржа получает baseValue + fee (cost) — всё корректно
+      await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: +cost } });
       const newCoinPrice  = await applyTradePressure(coin, amount, action);
       const updatedPrices = await getAllPrices();
       const updated       = await db.wallets.findOne({ username: req.session.username });
@@ -111,7 +112,9 @@ router.post('/trade', auth, async (req, res) => {
       if ((wallet[coin] || 0) < amount) return res.json({ error: `Недостаточно ${coin}` });
       const proceeds = baseValue - feeAmount;
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: +proceeds, [coin]: -amount } });
-      await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: -(baseValue - feeAmount) } });
+      // fix: биржа отдаёт только baseValue (игрок получает proceeds = baseValue - fee,
+      // разница feeAmount остаётся у биржи — так сохраняется баланс системы)
+      await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: -baseValue } });
       const newCoinPrice  = await applyTradePressure(coin, amount, action);
       const updatedPrices = await getAllPrices();
       const updated       = await db.wallets.findOne({ username: req.session.username });

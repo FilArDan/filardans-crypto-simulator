@@ -1,12 +1,12 @@
 /* ===== БАНК — серверная кредитная механика ===== */
-const { db, getAllCoins } = require('../db');
+const { db, getAllCoins, EXCHANGE_USERNAME } = require('../db');
 
 const BASE_RATE        = 0.002;   // 0.2%/тик базовая
 const MIN_RATE         = 0.0005;  // 0.05%/тик
 const MAX_RATE         = 0.008;   // 0.8%/тик
 const MAX_LOAN_RATIO   = 2.0;
 const MARGIN_THRESHOLD = 0.80;
-const FEE              = 0.001;
+const FEE              = 0.004;   // синхронизировано с TRADE_FEE в game.js
 
 // ── Динамическая ставка ──────────────────────────────────────────────────────
 function computeLoanRate(priceHistory) {
@@ -38,10 +38,7 @@ function portfolioValue(wallet, prices, coins) {
   return (wallet.usd || 0) + coinValue(wallet, prices, coins);
 }
 
-// ── Расчёт маржи (единая формула для всего кода) ─────────────────────────────
-// Маржа = долг / (USD + монеты)
-// Если портфель пустой и долг есть — маржа = 1 (максимум, колл неизбежен)
-// Если долга нет — маржа = 0
+// ── Расчёт маржи ─────────────────────────────────────────────────────────────
 function computeMarginRatio(wallet, prices, coins, loanDue) {
   if (!loanDue || loanDue <= 0) return 0;
   const total = portfolioValue(wallet, prices, coins);
@@ -50,16 +47,20 @@ function computeMarginRatio(wallet, prices, coins, loanDue) {
 }
 
 // ── Начисление процентов (вызывается каждый тик из market.js) ────────────────
+// fix: начисленные проценты теперь физически зачисляются на счёт биржи
 async function accrueInterest(io, prices, priceHistory) {
   const coins = await getAllCoins();
   const loans = await db.loans.find({ paid: { $ne: true } });
   if (!loans.length) return;
 
   const rate = computeLoanRate(priceHistory || {});
+  let totalInterestEarned = 0;
 
   for (const loan of loans) {
-    const newDue = loan.due * (1 + rate);
+    const interest = loan.due * rate;          // сколько начислилось за тик
+    const newDue   = loan.due + interest;
     await db.loans.update({ _id: loan._id }, { $set: { due: newDue, rate } });
+    totalInterestEarned += interest;
 
     const wallet = await db.wallets.findOne({ username: loan.username });
     if (!wallet) continue;
@@ -74,11 +75,19 @@ async function accrueInterest(io, prices, priceHistory) {
       await executeMarginCall(loan.username, wallet, newDue, prices, coins, io);
     }
   }
+
+  // Зачисляем все начисленные проценты на счёт биржи
+  if (totalInterestEarned > 0) {
+    await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: +totalInterestEarned } });
+    if (io) {
+      const exchWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+      if (exchWallet) io.emit('bankUpdate', { usd: exchWallet.usd });
+    }
+  }
 }
 
 // ── Маржин-колл ───────────────────────────────────────────────────────────────
 async function executeMarginCall(username, wallet, loanDue, prices, coins, io) {
-  // Продаём все монеты
   let proceeds = 0;
   for (const coin of coins) {
     const amt = wallet[coin] || 0;
@@ -89,8 +98,6 @@ async function executeMarginCall(username, wallet, loanDue, prices, coins, io) {
   }
   await db.wallets.update({ username }, { $inc: { usd: proceeds } });
 
-  // Погашаем долг из USD (без Math.max — usd может быть отрицательным только
-  // если БД некорректна; Math.min гарантирует что платим не больше чем есть)
   const freshWallet = await db.wallets.findOne({ username });
   const pay = Math.min(freshWallet.usd || 0, loanDue);
   if (pay > 0) {

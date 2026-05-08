@@ -115,8 +115,8 @@ class NeDBSessionStore extends Store {
 
 // ── Сессия ────────────────────────────────────────────────────────────────────
 // sameSite:'none' + secure:true обязательны чтобы кука работала
-// когда сайт открыт в iframe (Foundry). Railway всегда HTTPS — secure работает.
-const isProduction = process.env.NODE_ENV === 'production' || !!process.env.RAILWAY_ENVIRONMENT;
+// когда сайт открыт в iframe (Foundry).
+const isProduction = process.env.NODE_ENV === 'production';
 app.use(session({
   secret: process.env.SECRET || 'crypto-dev-secret-2025',
   resave: false,

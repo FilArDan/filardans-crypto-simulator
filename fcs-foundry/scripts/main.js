@@ -1,15 +1,14 @@
 /**
  * FCS — Foundry Crypto Simulator bridge
- * Foundry VTT v13 / ApplicationV2
+ * Foundry VTT v13 / v14  (ApplicationV2)
  */
 
 const MODULE_ID   = 'fcs-foundry';
 const DEFAULT_URL = 'https://filardans-crypto-simulator-production.up.railway.app';
 
-// ── Настройки модуля ───────────────────────────────────────────────────────────────
+// ── Настройки модуля ─────────────────────────────────────────────────────────
 Hooks.once('init', () => {
 
-  // —— URL сайта (общая для всех игроков мира)
   game.settings.register(MODULE_ID, 'siteUrl', {
     name:    'Адрес сайта',
     hint:    'URL сервера Crypto Simulator. Можно поменять на свой хост.',
@@ -18,7 +17,6 @@ Hooks.once('init', () => {
     type:    String,
     default: DEFAULT_URL,
     onChange: () => {
-      // Переоткрыть окно с новым URL если оно уже было открыто
       if (_app && _app._state > 0) {
         _app.close();
         _app = null;
@@ -27,7 +25,6 @@ Hooks.once('init', () => {
     },
   });
 
-  // —— Ширина окна (локальная — у каждого своя)
   game.settings.register(MODULE_ID, 'windowWidth', {
     name:    'Ширина окна',
     hint:    'Ширина окна в пикселях.',
@@ -38,7 +35,6 @@ Hooks.once('init', () => {
     range:   { min: 600, max: 2560, step: 40 },
   });
 
-  // —— Высота окна (локальная)
   game.settings.register(MODULE_ID, 'windowHeight', {
     name:    'Высота окна',
     hint:    'Высота окна в пикселях.',
@@ -117,33 +113,38 @@ class CryptoSimApp extends foundry.applications.api.ApplicationV2 {
   }
 }
 
-// ── Синглтон ────────────────────────────────────────────────────────────────
+// ── Синглтон ─────────────────────────────────────────────────────────────────
 let _app = null;
 function openCryptoSim() {
   if (!_app || _app._state <= 0) _app = new CryptoSimApp();
   _app.render(true);
 }
 
-// ── Кнопка в Scene Controls ────────────────────────────────────────────────────
+// ── Кнопка в Scene Controls ──────────────────────────────────────────────────
+//
+// В Foundry v13+ аргумент хука getSceneControlButtons — это объект вида:
+//   { token: { tools: { ... } }, measure: { ... }, ... }
+// Поэтому controls.push() не работает — его здесь нет.
+// Правильный способ: добавить инструмент в уже существующую группу.
+// Мы добавляем кнопку-действие (button: true) в группу «token».
+//
 Hooks.on('getSceneControlButtons', (controls) => {
-  controls.push({
-    name:  MODULE_ID,
-    title: 'Crypto Simulator',
-    icon:  'fas fa-chart-line',
-    layer: 'controls',
-    tools: [
-      {
-        name:    'open',
-        title:   'Открыть симулятор',
-        icon:    'fas fa-chart-line',
-        button:  true,
-        onClick: openCryptoSim,
-      },
-    ],
-  });
+  // Работает и в v13, и в v14
+  const tokenGroup = controls.token ?? controls.tokens;
+  if (!tokenGroup?.tools) return;
+
+  tokenGroup.tools.fcsOpen = {
+    name:    'fcsOpen',
+    title:   'Открыть Crypto Simulator',
+    icon:    'fas fa-chart-line',
+    button:  true,
+    // visible всем игрокам (включая не-GM)
+    visible: true,
+    onChange: () => openCryptoSim(),
+  };
 });
 
-// ── Горячая клавиша ─────────────────────────────────────────────────────────
+// ── Горячая клавиша ───────────────────────────────────────────────────────────
 Hooks.once('ready', () => {
   game.keybindings.register(MODULE_ID, 'open', {
     name:     'Открыть Crypto Simulator',

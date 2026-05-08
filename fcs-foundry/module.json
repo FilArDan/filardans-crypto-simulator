@@ -2,10 +2,10 @@
   "id": "fcs-foundry",
   "title": "FCS — Crypto Simulator",
   "description": "Открывает Filardans Crypto Simulator прямо внутри Foundry VTT в отдельном окне.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "compatibility": {
     "minimum": "13",
-    "verified": "13"
+    "verified": "14"
   },
   "authors": [
     { "name": "FilArDan" }

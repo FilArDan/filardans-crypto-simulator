@@ -1,42 +1,84 @@
 /**
  * FCS — Foundry Crypto Simulator bridge
  * Foundry VTT v13 / ApplicationV2
- *
- * Открывает внешний сайт симулятора в окне Foundry через iframe.
- * Никакой глубокой интеграции — сайт живёт отдельно на Railway.
  */
 
-const MODULE_ID  = 'fcs-foundry';
-const SITE_URL   = 'https://filardans-crypto-simulator-production.up.railway.app';
+const MODULE_ID   = 'fcs-foundry';
+const DEFAULT_URL = 'https://filardans-crypto-simulator-production.up.railway.app';
+
+// ── Настройки модуля ───────────────────────────────────────────────────────────────
+Hooks.once('init', () => {
+
+  // —— URL сайта (общая для всех игроков мира)
+  game.settings.register(MODULE_ID, 'siteUrl', {
+    name:    'Адрес сайта',
+    hint:    'URL сервера Crypto Simulator. Можно поменять на свой хост.',
+    scope:   'world',
+    config:  true,
+    type:    String,
+    default: DEFAULT_URL,
+    onChange: () => {
+      // Переоткрыть окно с новым URL если оно уже было открыто
+      if (_app && _app._state > 0) {
+        _app.close();
+        _app = null;
+        openCryptoSim();
+      }
+    },
+  });
+
+  // —— Ширина окна (локальная — у каждого своя)
+  game.settings.register(MODULE_ID, 'windowWidth', {
+    name:    'Ширина окна',
+    hint:    'Ширина окна в пикселях.',
+    scope:   'client',
+    config:  true,
+    type:    Number,
+    default: 1280,
+    range:   { min: 600, max: 2560, step: 40 },
+  });
+
+  // —— Высота окна (локальная)
+  game.settings.register(MODULE_ID, 'windowHeight', {
+    name:    'Высота окна',
+    hint:    'Высота окна в пикселях.',
+    scope:   'client',
+    config:  true,
+    type:    Number,
+    default: 820,
+    range:   { min: 400, max: 1600, step: 40 },
+  });
+
+});
 
 // ── Окно ─────────────────────────────────────────────────────────────────────
 class CryptoSimApp extends foundry.applications.api.ApplicationV2 {
 
   static DEFAULT_OPTIONS = {
-    id: 'crypto-sim-viewer',
+    id:      'crypto-sim-viewer',
     classes: ['fcs-window'],
     window: {
-      title: '📈 Crypto Simulator',
-      resizable: true,
+      title:       '📈 Crypto Simulator',
+      resizable:   true,
       minimizable: true,
     },
-    position: {
-      width: 1280,
-      height: 820,
-      top: 40,
-      left: 60,
-    },
+    position: { width: 1280, height: 820, top: 40, left: 60 },
   };
 
-  /** Передаём имя и роль игрока через query-параметры */
+  _getInitialPosition(options) {
+    const w = game.settings.get(MODULE_ID, 'windowWidth');
+    const h = game.settings.get(MODULE_ID, 'windowHeight');
+    return { ...super._getInitialPosition(options), width: w, height: h };
+  }
+
   _buildUrl() {
-    const user = game.user;
+    const base = (game.settings.get(MODULE_ID, 'siteUrl') || DEFAULT_URL).replace(/\/$/, '');
     const params = new URLSearchParams({
       embedded: 'foundry',
-      user:  user?.name  ?? '',
-      role:  user?.role  ?? '',
+      user:     game.user?.name ?? '',
+      role:     game.user?.role ?? '',
     });
-    return `${SITE_URL}?${params.toString()}`;
+    return `${base}?${params.toString()}`;
   }
 
   async _renderHTML(context, options) {
@@ -57,35 +99,33 @@ class CryptoSimApp extends foundry.applications.api.ApplicationV2 {
     content.innerHTML = result;
   }
 
-  /** postMessage-канал: Foundry → сайт */
   _onRender(context, options) {
     super._onRender(context, options);
     const iframe = this.element.querySelector('#fcs-iframe');
     if (!iframe) return;
-
     iframe.addEventListener('load', () => {
+      const base = (game.settings.get(MODULE_ID, 'siteUrl') || DEFAULT_URL).replace(/\/$/, '');
       try {
         iframe.contentWindow.postMessage({
           type:     'fcs:init',
           userName: game.user?.name ?? '',
           userRole: game.user?.role ?? '',
           world:    game.world?.title ?? '',
-        }, SITE_URL);
+        }, base);
       } catch (_) {}
     });
   }
 }
 
-// ── Синглтон ─────────────────────────────────────────────────────────────────
+// ── Синглтон ────────────────────────────────────────────────────────────────
 let _app = null;
 function openCryptoSim() {
   if (!_app || _app._state <= 0) _app = new CryptoSimApp();
   _app.render(true);
 }
 
-// ── Кнопка в боковой панели (Scene Controls) ─────────────────────────────────
+// ── Кнопка в Scene Controls ────────────────────────────────────────────────────
 Hooks.on('getSceneControlButtons', (controls) => {
-  // Добавляем отдельную группу инструментов «FCS»
   controls.push({
     name:  MODULE_ID,
     title: 'Crypto Simulator',
@@ -103,14 +143,13 @@ Hooks.on('getSceneControlButtons', (controls) => {
   });
 });
 
-// ── Горячая клавиша ───────────────────────────────────────────────────────────
+// ── Горячая клавиша ─────────────────────────────────────────────────────────
 Hooks.once('ready', () => {
   game.keybindings.register(MODULE_ID, 'open', {
     name:     'Открыть Crypto Simulator',
-    hint:     'Открывает окно симулятора прямо в Foundry',
+    hint:     'Открывает окно симулятора в Foundry',
     editable: [{ key: 'KeyC', modifiers: ['Alt'] }],
     onDown:   openCryptoSim,
   });
-
   console.log(`[${MODULE_ID}] Готов. Alt+C — открыть симулятор.`);
 });

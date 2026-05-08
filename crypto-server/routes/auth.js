@@ -13,7 +13,12 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Неверный логин или пароль' });
     req.session.username = user.username;
     req.session.role = user.role;
-    res.json({ username: user.username, role: user.role });
+    // Ждём записи сессии в store перед ответом — иначе /auth/me может
+    // получить пустую сессию если store (NeDB) ещё не успел сохранить.
+    req.session.save(err => {
+      if (err) return res.status(500).json({ error: 'Ошибка сессии' });
+      res.json({ username: user.username, role: user.role });
+    });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

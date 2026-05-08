@@ -3,6 +3,7 @@ const session = require('express-session');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const NeDB = require('@seald-io/nedb');
 const { initDb } = require('./db');
 const { tick } = require('./game/market');
 
@@ -68,6 +69,50 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ── NeDB Session Store ────────────────────────────────────────────────────────
+// Хранит сессии в файле — переживают перезапуск сервера.
+// Не требует доп. зависимостей: используем тот же @seald-io/nedb что и везде.
+const Store = session.Store;
+
+class NeDBSessionStore extends Store {
+  constructor(opts = {}) {
+    super();
+    this.db = new NeDB({ filename: opts.filename, autoload: true });
+    // Чистим протухшие сессии каждые 10 минут
+    setInterval(() => {
+      this.db.remove({ expiresAt: { $lt: Date.now() } }, { multi: true });
+    }, 10 * 60 * 1000);
+  }
+
+  get(sid, cb) {
+    this.db.findOne({ _id: sid, expiresAt: { $gt: Date.now() } }, (err, doc) => {
+      if (err) return cb(err);
+      cb(null, doc ? doc.session : null);
+    });
+  }
+
+  set(sid, sess, cb) {
+    const maxAge  = (sess.cookie && sess.cookie.maxAge) ? sess.cookie.maxAge : 8 * 60 * 60 * 1000;
+    const expires = Date.now() + maxAge;
+    this.db.update(
+      { _id: sid },
+      { _id: sid, session: sess, expiresAt: expires },
+      { upsert: true },
+      cb || (() => {})
+    );
+  }
+
+  destroy(sid, cb) {
+    this.db.remove({ _id: sid }, {}, cb || (() => {}));
+  }
+
+  touch(sid, sess, cb) {
+    const maxAge  = (sess.cookie && sess.cookie.maxAge) ? sess.cookie.maxAge : 8 * 60 * 60 * 1000;
+    const expires = Date.now() + maxAge;
+    this.db.update({ _id: sid }, { $set: { expiresAt: expires, session: sess } }, {}, cb || (() => {}));
+  }
+}
+
 // ── Сессия ────────────────────────────────────────────────────────────────────
 // sameSite:'none' + secure:true обязательны чтобы кука работала
 // когда сайт открыт в iframe (Foundry). Railway всегда HTTPS — secure работает.
@@ -76,6 +121,9 @@ app.use(session({
   secret: process.env.SECRET || 'crypto-dev-secret-2025',
   resave: false,
   saveUninitialized: false,
+  store: new NeDBSessionStore({
+    filename: path.join(__dirname, 'data', 'sessions.db'),
+  }),
   cookie: {
     maxAge: 8 * 60 * 60 * 1000,
     sameSite: isProduction ? 'none' : 'lax',  // 'none' нужен для iframe на prod

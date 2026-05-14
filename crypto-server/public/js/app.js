@@ -85,7 +85,6 @@ function renderTransferSelect(players) {
   const sc = document.getElementById('transferTarget');
   if (!sc || !players) return;
 
-  // Запоминаем текущий выбор, чтобы восстановить его после перестройки
   const prevValue = sc.value;
 
   const others = players.filter(p => p.username !== myUsername);
@@ -108,7 +107,6 @@ function renderTransferSelect(players) {
       sc.appendChild(o);
     });
 
-  // Восстанавливаем выбор, если получатель всё ещё в списке
   if (prevValue && [...sc.options].some(o => o.value === prevValue)) {
     sc.value = prevValue;
   }
@@ -434,7 +432,6 @@ document.getElementById('buyAllBtn').addEventListener('click', async () => {
   if (price <= 0) { err.textContent = 'Цена монеты неизвестна'; return; }
   if (usd < 0.01) { err.textContent = 'Недостаточно USD'; return; }
 
-  // Вычисляем amount с теми же формулами что и сервер: ask = price*(1+SPREAD), cost = ask*amount*(1+FEE)
   const askPrice = price * (1 + SPREAD);
   const amount   = usd / (askPrice * (1 + TRADE_FEE));
 
@@ -452,7 +449,7 @@ document.getElementById('sellAllBtn').addEventListener('click', async () => {
 
   if (!lastWallet) { err.textContent = 'Данные кошелька не загружены'; return; }
   const amount = lastWallet[coin] || 0;
-  if (amount <= 0) { err.textContent = `Нет ${coin} в кошельке`; return; }\
+  if (amount <= 0) { err.textContent = `Нет ${coin} в кошельке`; return; }
 
   const res = await api('POST', '/api/trade', { coin, amount, action: 'sell' });
   if (res.error) { err.textContent = res.error; return; }
@@ -523,11 +520,10 @@ socket.on('walletUpdate', data => {
   }
 });
 
-// Динамическое обновление лидерборда — выбор в селекте перевода сохраняется
 socket.on('playersUpdate', players => {
   lastPlayers = players;
   renderLeaderboard(players, prices);
-  renderTransferSelect(players); // внутри сохраняет prevValue
+  renderTransferSelect(players);
 });
 
 socket.on('loanUpdate', applyLoanUpdate);

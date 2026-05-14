@@ -7,6 +7,10 @@ let lastPlayers = null;
 let lastWallet  = null;
 let lastDebt    = 0;
 
+// ── Константы торговли (должны совпадать с game.js на сервере) ────────────────
+const TRADE_FEE = 0.004;   // 0.4% комиссия
+const SPREAD    = 0.0015;  // ±0.15% спред
+
 async function api(method, path, body) {
   const r = await fetch(path, {
     method,
@@ -167,14 +171,15 @@ function updateTradeHint() {
   if (!hint || !coin) return;
 
   const price = prices[coin] || 0;
-  const TRADE_FEE = 0.001;
 
   if (tradeMode === 'usd') {
     const usdRaw = parseFloat(document.getElementById('tradeUsd')?.value) || 0;
     if (price > 0 && usdRaw > 0) {
+      const askPrice = price * (1 + SPREAD);
+      const bidPrice = price * (1 - SPREAD);
       const coinQty = action === 'buy'
-        ? usdRaw / (price * (1 + TRADE_FEE))
-        : usdRaw / (price * (1 - TRADE_FEE));
+        ? usdRaw / (askPrice * (1 + TRADE_FEE))
+        : usdRaw / (bidPrice * (1 - TRADE_FEE));
       hint.textContent = `≈ ${fmt(coinQty, 6)} ${coin} по $${fmt(price, price < 1 ? 4 : 2)}`;
     } else {
       hint.textContent = '';
@@ -182,10 +187,12 @@ function updateTradeHint() {
   } else {
     const qty = parseFloat(document.getElementById('tradeAmount')?.value) || 0;
     if (price > 0 && qty > 0) {
+      const askPrice = price * (1 + SPREAD);
+      const bidPrice = price * (1 - SPREAD);
       const usdVal = action === 'buy'
-        ? qty * price * (1 + TRADE_FEE)
-        : qty * price * (1 - TRADE_FEE);
-      hint.textContent = `≈ $${fmt(usdVal)} (с комиссией 0.1%)`;
+        ? qty * askPrice * (1 + TRADE_FEE)
+        : qty * bidPrice * (1 - TRADE_FEE);
+      hint.textContent = `≈ $${fmt(usdVal)} (комиссия ${(TRADE_FEE * 100).toFixed(1)}% + спред ${(SPREAD * 100).toFixed(2)}%)`;
     } else {
       hint.textContent = '';
     }
@@ -380,16 +387,17 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
 
 // ── ТОРГОВЛЯ: вычислить amount по режиму ──────────────────────────────────────
 function resolveTradeAmount(coin, action) {
-  const TRADE_FEE = 0.001;
   const price = prices[coin] || 0;
   if (price <= 0) return null;
 
   if (tradeMode === 'usd') {
     const usd = parseFloat(document.getElementById('tradeUsd').value);
     if (!Number.isFinite(usd) || usd <= 0) return null;
+    const askPrice = price * (1 + SPREAD);
+    const bidPrice = price * (1 - SPREAD);
     return action === 'buy'
-      ? usd / (price * (1 + TRADE_FEE))
-      : usd / (price * (1 - TRADE_FEE));
+      ? usd / (askPrice * (1 + TRADE_FEE))
+      : usd / (bidPrice * (1 - TRADE_FEE));
   } else {
     const qty = parseFloat(document.getElementById('tradeAmount').value);
     if (!Number.isFinite(qty) || qty <= 0) return null;
@@ -423,11 +431,13 @@ document.getElementById('buyAllBtn').addEventListener('click', async () => {
   if (!lastWallet) { err.textContent = 'Данные кошелька не загружены'; return; }
   const usd   = lastWallet.usd || 0;
   const price = prices[coin] || 0;
-  const TRADE_FEE = 0.001;
   if (price <= 0) { err.textContent = 'Цена монеты неизвестна'; return; }
   if (usd < 0.01) { err.textContent = 'Недостаточно USD'; return; }
 
-  const amount = usd / (price * (1 + TRADE_FEE));
+  // Вычисляем amount с теми же формулами что и сервер: ask = price*(1+SPREAD), cost = ask*amount*(1+FEE)
+  const askPrice = price * (1 + SPREAD);
+  const amount   = usd / (askPrice * (1 + TRADE_FEE));
+
   const res = await api('POST', '/api/trade', { coin, amount, action: 'buy' });
   if (res.error) { err.textContent = res.error; return; }
   renderPortfolio(res.wallet);
@@ -442,7 +452,7 @@ document.getElementById('sellAllBtn').addEventListener('click', async () => {
 
   if (!lastWallet) { err.textContent = 'Данные кошелька не загружены'; return; }
   const amount = lastWallet[coin] || 0;
-  if (amount <= 0) { err.textContent = `Нет ${coin} в кошельке`; return; }
+  if (amount <= 0) { err.textContent = `Нет ${coin} в кошельке`; return; }\
 
   const res = await api('POST', '/api/trade', { coin, amount, action: 'sell' });
   if (res.error) { err.textContent = res.error; return; }

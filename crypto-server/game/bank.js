@@ -1,14 +1,14 @@
-/* ===== БАНК — серверная кредитная механика ===== */
+/* ===== МИРОВОЙ БАНК — кредитная механика межгосударственного рынка ===== */
 const { db, getAllCoins, EXCHANGE_USERNAME } = require('../db');
 
-const BASE_RATE        = 0.002;   // 0.2%/тик базовая
-const MIN_RATE         = 0.0005;  // 0.05%/тик
-const MAX_RATE         = 0.008;   // 0.8%/тик
-const MAX_LOAN_RATIO   = 2.0;
-const MARGIN_THRESHOLD = 0.80;
+const BASE_RATE        = 0.002;   // 0.2%/цикл базовая ключевая ставка
+const MIN_RATE         = 0.0005;  // 0.05%/цикл минимум
+const MAX_RATE         = 0.008;   // 0.8%/цикл максимум
+const MAX_LOAN_RATIO   = 2.0;     // максимум займа = 2× национальные активы
+const MARGIN_THRESHOLD = 0.80;    // порог долговой нагрузки → дефолт
 const FEE              = 0.004;   // синхронизировано с TRADE_FEE в game.js
 
-// ── Динамическая ставка ──────────────────────────────────────────────────────
+// ── Динамическая ключевая ставка МВФ ────────────────────────────────────────
 function computeLoanRate(priceHistory) {
   const coins = Object.keys(priceHistory || {});
   if (!coins.length) return BASE_RATE;
@@ -24,7 +24,7 @@ function computeLoanRate(priceHistory) {
   return Math.max(MIN_RATE, Math.min(MAX_RATE, BASE_RATE * (1 + avgVol * 5)));
 }
 
-// ── Стоимость монет без USD ───────────────────────────────────────────────────
+// ── Стоимость активов без кредитов ───────────────────────────────────────────
 function coinValue(wallet, prices, coins) {
   if (!wallet) return 0;
   let total = 0;
@@ -32,13 +32,13 @@ function coinValue(wallet, prices, coins) {
   return total;
 }
 
-// ── Полная стоимость портфеля (USD + монеты) ─────────────────────────────────
+// ── Полный объём национальных активов (кредиты + ресурсы) ────────────────────
 function portfolioValue(wallet, prices, coins) {
   if (!wallet) return 0;
   return (wallet.usd || 0) + coinValue(wallet, prices, coins);
 }
 
-// ── Расчёт маржи ─────────────────────────────────────────────────────────────
+// ── Расчёт долговой нагрузки ─────────────────────────────────────────────────
 function computeMarginRatio(wallet, prices, coins, loanDue) {
   if (!loanDue || loanDue <= 0) return 0;
   const total = portfolioValue(wallet, prices, coins);
@@ -46,8 +46,8 @@ function computeMarginRatio(wallet, prices, coins, loanDue) {
   return loanDue / total;
 }
 
-// ── Начисление процентов (вызывается каждый тик из market.js) ────────────────
-// fix: начисленные проценты теперь физически зачисляются на счёт биржи
+// ── Начисление процентов (вызывается каждый торговый цикл из market.js) ──────
+// Начисленные проценты физически зачисляются в Резервный фонд МТП
 async function accrueInterest(io, prices, priceHistory) {
   const coins = await getAllCoins();
   const loans = await db.loans.find({ paid: { $ne: true } });
@@ -57,7 +57,7 @@ async function accrueInterest(io, prices, priceHistory) {
   let totalInterestEarned = 0;
 
   for (const loan of loans) {
-    const interest = loan.due * rate;          // сколько начислилось за тик
+    const interest = loan.due * rate;          // начислено за цикл
     const newDue   = loan.due + interest;
     await db.loans.update({ _id: loan._id }, { $set: { due: newDue, rate } });
     totalInterestEarned += interest;
@@ -72,11 +72,11 @@ async function accrueInterest(io, prices, priceHistory) {
     }
 
     if (marginRatio >= MARGIN_THRESHOLD) {
-      await executeMarginCall(loan.username, wallet, newDue, prices, coins, io);
+      await executeDefault(loan.username, wallet, newDue, prices, coins, io);
     }
   }
 
-  // Зачисляем все начисленные проценты на счёт биржи
+  // Зачисляем проценты в Резервный фонд МТП
   if (totalInterestEarned > 0) {
     await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: +totalInterestEarned } });
     if (io) {
@@ -86,8 +86,8 @@ async function accrueInterest(io, prices, priceHistory) {
   }
 }
 
-// ── Маржин-колл ───────────────────────────────────────────────────────────────
-async function executeMarginCall(username, wallet, loanDue, prices, coins, io) {
+// ── Государственный дефолт ────────────────────────────────────────────────────
+async function executeDefault(username, wallet, loanDue, prices, coins, io) {
   let proceeds = 0;
   for (const coin of coins) {
     const amt = wallet[coin] || 0;
@@ -113,7 +113,7 @@ async function executeMarginCall(username, wallet, loanDue, prices, coins, io) {
 
   const ev = {
     ts:   Date.now(),
-    text: `🚨 МАРЖИН-КОЛЛ! ${username} — активы принудительно проданы ($${proceeds.toFixed(2)}). Остаток долга: $${remaining.toFixed(2)}`
+    text: `⚠️ ГОСУДАРСТВЕННЫЙ ДЕФОЛТ! ${username} — национальные активы принудительно реализованы ($${proceeds.toFixed(2)}). Остаток задолженности: $${remaining.toFixed(2)}`
   };
   await db.events.insert(ev);
 

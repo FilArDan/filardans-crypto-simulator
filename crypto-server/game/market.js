@@ -27,7 +27,7 @@ async function emitPlayersUpdate(io, currentPrices) {
   } catch (_) {}
 }
 
-// Сохраняет новый тик цен в persistent DB без ограничений (бесконечная история)
+// Сохраняет историю торгового цикла (безограничная история котировок)
 async function savePriceHistoryTick(prices) {
   const ts = Date.now();
   for (const [coin, price] of Object.entries(prices)) {
@@ -36,7 +36,7 @@ async function savePriceHistoryTick(prices) {
   }
 }
 
-// Удаляет историю конкретной монеты (при удалении монеты или по запросу админа)
+// Удаляет историю актива (при удалении актива или по запросу ГМ)
 async function deleteCoinHistory(coin) {
   await db.priceHistory.remove({ coin }, { multi: true });
 }
@@ -48,9 +48,9 @@ async function tick(io) {
   for (const coin of coins) {
     const doc = await db.prices.findOne({ coin });
     if (!doc) continue;
-    const vol   = doc.vol       || 0.04;
-    const drift = doc.drift     || 0;
-    const base  = doc.basePrice || doc.price;
+    const vol   = doc.vol       || 0.04;  // нестабильность рынка
+    const drift = doc.drift     || 0;    // тренд развития
+    const base  = doc.basePrice || doc.price; // базовая стоимость
     const noise = (Math.random() - 0.5) * vol;
     const pull  = (base - doc.price) / base * 0.002;
     const newPrice = Math.max(0.0001, roundPrice(doc.price * (1 + noise + drift + pull)));
@@ -58,7 +58,7 @@ async function tick(io) {
     prices[coin] = newPrice;
   }
 
-  await db.events.insert({ ts: Date.now(), text: 'Рынок обновился 📈' });
+  await db.events.insert({ ts: Date.now(), text: 'Торговый цикл завершён 📈' });
   if (io) io.emit('priceUpdate', prices);
 
   updatePriceHistory(prices);
@@ -75,7 +75,7 @@ async function tick(io) {
 
   await accrueInterest(io, updatedPrices, priceHistory);
 
-  // Всегда отправляем актуальный баланс казны после каждого тика
+  // Заставляем резервный фонд МТП после каждого цикла
   if (io) {
     try {
       const exchWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });

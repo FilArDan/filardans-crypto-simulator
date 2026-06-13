@@ -302,6 +302,24 @@ function renderBots() {
   }).join('');
 }
 
+// ── ОБНОВЛЕНИЕ СЧЁТА БОТОВ ПО НОВЫМ ЦЕНАМ ────────────────────────────────────
+// Пересчитывает total локально (usd + held × prices) и точечно обновляет
+// только элемент .bot-total в карточке, не трогая inputs и кнопки.
+function updateBotTotals() {
+  allBots.forEach(bot => {
+    const coinValue = Object.entries(bot.held || {}).reduce(
+      (sum, [coin, amt]) => sum + (amt || 0) * (prices[coin] || 0), 0
+    );
+    bot.total = (bot.usd || 0) + coinValue;
+
+    const safeId  = bot.username.replace(/[^a-zA-Z0-9]/g, '_');
+    const card    = document.getElementById(`bot-card-${safeId}`);
+    if (!card) return;
+    const totalEl = card.querySelector('.bot-total');
+    if (totalEl) totalEl.textContent = '$' + fmt(bot.total);
+  });
+}
+
 async function setBotPreset(name, type) {
   const res = await api('POST', '/api/admin/bot/preset', { name, type });
   if (res.error) { alert(res.error); return; }
@@ -590,6 +608,7 @@ socket.on('priceUpdate', p => {
   prices = p;
   renderPrices();
   renderPlayers();
+  updateBotTotals();
   COINS.forEach(coin => {
     const row = document.getElementById(`coin-row-${coin}`);
     if (row && row.cells[1]) {

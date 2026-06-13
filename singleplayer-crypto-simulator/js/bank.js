@@ -52,7 +52,9 @@ function repayLoan(amount){
 /* --- Начисление процентов (вызывать в tick()) --- */
 function accrueInterest(){
   if(bank.loan <= 0) return;
-  bank.loan *= (1 + bank.loanRate);
+  const interest = bank.loan * bank.loanRate;
+  bank.loan += interest;   // долг игрока растёт
+  bank.cash += interest;   // банк получает эти проценты в казну
 
   if(bank.loan > totalV(st.cash, st.held) * 0.9){
     marginCall();

@@ -42,7 +42,32 @@ function addPricePoint(prices) {
   updateChartLive();
 }
 
-// ── Табы монет (выше графика) ──────────────────────────────────
+// ── Загрузка сохранённой истории с сервера ────────────────────────────────────
+async function loadSavedHistory() {
+  for (const coin of chartCoins) {
+    try {
+      const resp = await fetch(`/api/price-history?coin=${coin}&limit=500`);
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      if (Array.isArray(data) && data.length > 0) {
+        priceHistory[coin] = data;
+      }
+    } catch (_) { /* нет доступа — пропускаем */ }
+  }
+}
+
+// ── Обработка события очистки истории от сервера ─────────────────────────────
+function handlePriceHistoryCleared(coin) {
+  if (coin === null) {
+    // Очищена вся история
+    chartCoins.forEach(c => { priceHistory[c] = []; });
+  } else {
+    priceHistory[coin] = [];
+  }
+  updateChartLive();
+}
+
+// ── Табы монет (выше графика) ──────────────────────────────────────────────────
 function renderChartTabs() {
   const legend = document.getElementById('chartLegend');
   if (!legend) return;
@@ -54,7 +79,7 @@ function renderChartTabs() {
   legend.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px">${coinBtns}</div>`;
 }
 
-// ── Кнопки диапазона (ниже графика) ─────────────────────────────
+// ── Кнопки диапазона (ниже графика) ─────────────────────────────────────────
 function renderChartRanges() {
   const wrap = document.getElementById('chartRanges');
   if (!wrap) return;
@@ -64,7 +89,9 @@ function renderChartRanges() {
   ).join('');
 }
 
-function initChart() {
+async function initChart() {
+  // Загружаем сохранённую историю перед рендером
+  await loadSavedHistory();
   renderChartTabs();
   renderChartRanges();
   renderChart();

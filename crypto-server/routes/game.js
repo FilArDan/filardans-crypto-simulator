@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const { db, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME } = require('../db');
-const { tick, applyTradePressure } = require('../game/market');
+const { tick, applyTradePressure, deleteCoinHistory } = require('../game/market');
 const { getBotStats, priceHistory, listBotsRaw, createBot, deleteBot, setBotCash, updateBotPreset } = require('../game/bots');
 
 const TRADE_FEE = 0.004;   // 0.4% комиссия
@@ -49,6 +49,21 @@ async function emitPlayersUpdate(io) {
   } catch(_) {}
 }
 
+// ── ИСТОРИЯ ЦЕН ДЛЯ ЧАРТА ────────────────────────────────────────────────────
+// GET /api/price-history?coin=BTC&limit=500
+router.get('/price-history', auth, async (req, res) => {
+  try {
+    const coin  = (req.query.coin || '').toUpperCase();
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 500, 1), 500);
+    if (!coin) return res.json([]);
+    const docs = await db.priceHistory
+      .find({ coin })
+      .sort({ ts: 1 })
+      .limit(limit);
+    res.json(docs.map(d => d.price));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── СОСТОЯНИЕ ──────────────────────────────────────────────────────────────────
 router.get('/state', auth, async (req, res) => {
   try {
@@ -91,7 +106,6 @@ router.post('/trade', auth, async (req, res) => {
     const io         = req.app.get('io');
 
     if (action === 'buy') {
-      // Игрок покупает по цене чуть выше рынка (ask)
       const askPrice  = midPrice * (1 + SPREAD);
       const baseValue = askPrice * amount;
       const feeAmount = baseValue * TRADE_FEE;
@@ -100,7 +114,6 @@ router.post('/trade', auth, async (req, res) => {
       if (wallet.usd < cost) return res.json({ error: `Недостаточно USD (нужно $${cost.toFixed(2)})` });
 
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: -cost, [coin]: amount } });
-      // Биржа получает cost целиком (baseValue по ask + fee) — спред уже учтён в askPrice
       await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: +cost } });
 
       const newCoinPrice  = await applyTradePressure(coin, amount, action);
@@ -116,7 +129,6 @@ router.post('/trade', auth, async (req, res) => {
       res.json({ wallet: updated, prices: updatedPrices });
 
     } else {
-      // Игрок продаёт по цене чуть ниже рынка (bid)
       const bidPrice  = midPrice * (1 - SPREAD);
       const baseValue = bidPrice * amount;
       const feeAmount = baseValue * TRADE_FEE;
@@ -125,8 +137,6 @@ router.post('/trade', auth, async (req, res) => {
       if ((wallet[coin] || 0) < amount) return res.json({ error: `Недостаточно ${coin}` });
 
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: +proceeds, [coin]: -amount } });
-      // Биржа платит игроку proceeds, но получила монеты по midPrice —
-      // разница (midPrice - bidPrice)*amount + feeAmount остаётся у биржи
       await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: -proceeds } });
 
       const newCoinPrice  = await applyTradePressure(coin, amount, action);
@@ -476,6 +486,8 @@ router.delete('/admin/coin/:ticker', auth, adminOnly, async (req, res) => {
     }
     await db.prices.remove({ coin: ticker }, {});
     await db.customCoins.remove({ ticker }, {});
+    // Удаляем историю цен удалённой монеты
+    await deleteCoinHistory(ticker);
     const allCoinsNew   = await getAllCoins();
     const updatedPrices = await getAllPrices();
     const ev = { ts: Date.now(), text: `Админ удалил монету: ${ticker}` };
@@ -485,6 +497,33 @@ router.delete('/admin/coin/:ticker', auth, adminOnly, async (req, res) => {
     io.emit('priceUpdate', updatedPrices);
     io.emit('coinsUpdated', { coins: allCoinsNew });
     res.json({ ok: true, coins: allCoinsNew });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── АДМИН: очистка истории цен ─────────────────────────────────────────────────
+// DELETE /api/admin/price-history/:coin  — очистить историю конкретной монеты
+router.delete('/admin/price-history/:coin', auth, adminOnly, async (req, res) => {
+  try {
+    const coin = (req.params.coin || '').toUpperCase();
+    if (!coin) return res.status(400).json({ error: 'Укажи тикер монеты' });
+    await deleteCoinHistory(coin);
+    const ev = { ts: Date.now(), text: `Админ очистил историю цен: ${coin}` };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    req.app.get('io').emit('priceHistoryCleared', { coin });
+    res.json({ ok: true, coin });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/admin/price-history  — очистить историю всех монет
+router.delete('/admin/price-history', auth, adminOnly, async (req, res) => {
+  try {
+    await db.priceHistory.remove({}, { multi: true });
+    const ev = { ts: Date.now(), text: 'Админ очистил историю цен всех монет 🗑️' };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    req.app.get('io').emit('priceHistoryCleared', { coin: null });
+    res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

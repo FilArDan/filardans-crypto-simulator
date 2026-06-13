@@ -48,15 +48,12 @@ function priceDec(c) {
 }
 
 // ── БАНК (EXCHANGE) ───────────────────────────────────────────────────────────
-// exchangeUsd обновляется через socket 'bankUpdate' — не нужно ждать loadAdminData
 let exchangeUsd = 0;
 
 function renderBankCard() {
-  // Ищем EXCHANGE среди кошельков (приходит в adminData.wallets)
   const exchange = allWallets.find(w => w.username === 'EXCHANGE');
   if (exchange) exchangeUsd = exchange.usd || 0;
 
-  // Сумма всех выданных кредитов (principal) и сумма к возврату (due)
   const totalIssued = allLoans.reduce((s, l) => s + (l.amount || 0), 0);
   const totalDebt   = allLoans.reduce((s, l) => s + (l.due    || 0), 0);
 
@@ -177,6 +174,25 @@ async function deleteCoin(ticker) {
   await loadAdminData();
 }
 
+// ── ОЧИСТКА ИСТОРИИ ЦЕН ──────────────────────────────────────────────────────
+async function clearCoinHistory(ticker) {
+  const m = coinMeta[ticker] || {};
+  if (!confirm(`Очистить историю цен для ${m.emoji || '🪙'} ${ticker}?\nЧарт этой монеты обнулится у всех игроков.`)) return;
+  const r = await fetch(`/api/admin/price-history/${encodeURIComponent(ticker)}`, { method: 'DELETE' });
+  const data = await r.json();
+  if (data.error) { alert(data.error); return; }
+}
+
+async function clearAllHistory() {
+  if (!confirm('Очистить историю цен ВСЕХ монет?\n\nЧарты обнулятся у всех игроков. Это действие нельзя отменить.')) return;
+  const btn = document.getElementById('clearAllHistoryBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
+  const r = await fetch('/api/admin/price-history', { method: 'DELETE' });
+  const data = await r.json();
+  if (data.error) { alert(data.error); }
+  if (btn) { btn.disabled = false; btn.textContent = '🗑️ Очистить всю историю цен'; }
+}
+
 // ── ПАРАМЕТРЫ МОНЕТ ──────────────────────────────────────────────────────────
 function renderCoinParams() {
   const tbody = document.getElementById('coinParamsBody');
@@ -237,10 +253,20 @@ function renderCoinParams() {
         <button class="btn btn-secondary btn-sm" onclick="saveCoinParams('${coin}')">
           Сохранить
         </button>
+        <button class="btn btn-warn btn-sm" onclick="clearCoinHistory('${coin}')" title="Очистить историю цен">📉</button>
         <button class="btn btn-dan btn-sm" onclick="deleteCoin('${coin}')" title="Удалить монету">🗑️</button>
       </td>
     </tr>`;
   }).join('');
+
+  // Кнопка глобальной очистки (рендерим под таблицей если её ещё нет)
+  const wrap = document.getElementById('coinParamsWrap');
+  if (wrap && !document.getElementById('clearAllHistoryBtn')) {
+    const div = document.createElement('div');
+    div.style.cssText = 'margin-top:12px;display:flex;justify-content:flex-end';
+    div.innerHTML = `<button id="clearAllHistoryBtn" class="btn btn-dan" onclick="clearAllHistory()">🗑️ Очистить всю историю цен</button>`;
+    wrap.appendChild(div);
+  }
 }
 
 async function saveCoinParams(coin) {
@@ -302,9 +328,6 @@ function renderBots() {
   }).join('');
 }
 
-// ── ОБНОВЛЕНИЕ СЧЁТА БОТОВ ПО НОВЫМ ЦЕНАМ ────────────────────────────────────
-// Пересчитывает total локально (usd + held × prices) и точечно обновляет
-// только элемент .bot-total в карточке, не трогая inputs и кнопки.
 function updateBotTotals() {
   allBots.forEach(bot => {
     const coinValue = Object.entries(bot.held || {}).reduce(
@@ -617,7 +640,6 @@ socket.on('priceUpdate', p => {
   });
 });
 
-// bankUpdate: мгновенное обновление казны без полного loadAdminData
 socket.on('bankUpdate', ({ usd }) => {
   exchangeUsd = usd;
   const elBal = document.getElementById('bankBalance');

@@ -5,14 +5,18 @@ const bcrypt = require('bcryptjs');
 const dbDir = path.join(__dirname, 'data');
 
 const db = {
-  users:       new NeDB({ filename: path.join(dbDir, 'users.db'),       autoload: true }),
-  wallets:     new NeDB({ filename: path.join(dbDir, 'wallets.db'),     autoload: true }),
-  loans:       new NeDB({ filename: path.join(dbDir, 'loans.db'),       autoload: true }),
-  events:      new NeDB({ filename: path.join(dbDir, 'events.db'),      autoload: true }),
-  prices:      new NeDB({ filename: path.join(dbDir, 'prices.db'),      autoload: true }),
-  customCoins: new NeDB({ filename: path.join(dbDir, 'customCoins.db'), autoload: true }),
-  bots:        new NeDB({ filename: path.join(dbDir, 'bots.db'),        autoload: true }),
+  users:        new NeDB({ filename: path.join(dbDir, 'users.db'),        autoload: true }),
+  wallets:      new NeDB({ filename: path.join(dbDir, 'wallets.db'),      autoload: true }),
+  loans:        new NeDB({ filename: path.join(dbDir, 'loans.db'),        autoload: true }),
+  events:       new NeDB({ filename: path.join(dbDir, 'events.db'),       autoload: true }),
+  prices:       new NeDB({ filename: path.join(dbDir, 'prices.db'),       autoload: true }),
+  customCoins:  new NeDB({ filename: path.join(dbDir, 'customCoins.db'),  autoload: true }),
+  bots:         new NeDB({ filename: path.join(dbDir, 'bots.db'),         autoload: true }),
+  priceHistory: new NeDB({ filename: path.join(dbDir, 'priceHistory.db'), autoload: true }),
 };
+
+// Индекс для быстрой фильтрации по монете
+db.priceHistory.ensureIndex({ fieldName: 'coin' });
 
 const DEFAULT_BOTS = [
   { name: 'Агрессор-1', type: 'bull', usd: 15000, held: {}, avgP: {}, target: {} },
@@ -39,10 +43,8 @@ const INITIAL_USERS = [
   { username: 'Юра',       password: '8m8',    role: 'player', startUsd: 15000 },
 ];
 
-// Базовые монеты — список тикеров для инициализации и восстановления
 const COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 
-// Полные метаданные базовых монет (используются при создании/пересоздании)
 const COIN_META = {
   BTC:  { name: 'Bitcoin',  emoji: '₿',  basePrice: 45000, vol: 0.030, drift: 0, supply: 21000000     },
   ETH:  { name: 'Ethereum', emoji: 'Ξ',  basePrice: 2800,  vol: 0.045, drift: 0, supply: 120000000    },
@@ -51,16 +53,9 @@ const COIN_META = {
   DOGE: { name: 'Dogecoin', emoji: '🐕', basePrice: 0.08,  vol: 0.060, drift: 0, supply: 140000000000 },
 };
 
-// ── EXCHANGE ──────────────────────────────────────────────────────────────────
-// Системный кошелёк биржи — через него проходят все сделки buy/sell,
-// кредиты и стартовые балансы. Суммарный USD в системе = const.
-//
-// EXCHANGE_RESERVE = стартовый резерв биржи (не выданный игрокам/ботам).
-// Итого в системе: игроки ($105k) + боты ($135k) + биржа ($1.2M) = $1.44M
 const EXCHANGE_RESERVE = 1_200_000;
 const EXCHANGE_USERNAME = 'EXCHANGE';
 
-// Возвращает все монеты, активные в данный момент (те что есть в prices)
 async function getAllCoins() {
   const docs = await db.prices.find({});
   return docs.map(d => d.coin);
@@ -80,7 +75,6 @@ async function initDb() {
     }
   }
 
-  // Seed ботов (только если база пустая)
   const botCount = await db.bots.count({});
   if (botCount === 0) {
     for (const bot of DEFAULT_BOTS) {
@@ -88,14 +82,11 @@ async function initDb() {
     }
   }
 
-  // ── Инициализация биржевого резерва ──────────────────────────────────────
-  // Создаётся один раз. Если EXCHANGE уже есть — не трогаем (не сбрасываем баланс).
   const exchangeWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
   if (!exchangeWallet) {
     await db.wallets.insert({ username: EXCHANGE_USERNAME, usd: EXCHANGE_RESERVE });
   }
 
-  // Инициализация базовых монет (только если ещё не существуют)
   for (const coin of COINS) {
     const exists = await db.prices.findOne({ coin });
     if (!exists) {
@@ -109,7 +100,6 @@ async function initDb() {
         supply:    meta.supply,
       });
     } else {
-      // Добавить недостающие поля если нужно
       const meta = COIN_META[coin];
       const patch = {};
       if (exists.basePrice == null) patch.basePrice = meta.basePrice;

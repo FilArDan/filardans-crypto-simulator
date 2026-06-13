@@ -50,20 +50,28 @@ function priceDec(c) {
 // ── БАНК (EXCHANGE) ───────────────────────────────────────────────────────────
 let exchangeUsd = 0;
 
-function renderBankCard() {
-  const exchange = allWallets.find(w => w.username === 'EXCHANGE');
-  if (exchange) exchangeUsd = exchange.usd || 0;
+function renderBankCard(usd, totalIssued, totalDebt) {
+  if (usd !== undefined) exchangeUsd = usd;
 
-  const totalIssued = allLoans.reduce((s, l) => s + (l.amount || 0), 0);
-  const totalDebt   = allLoans.reduce((s, l) => s + (l.due    || 0), 0);
+  // Если значения не переданы явно — рассчитываем из allWallets/allLoans
+  if (usd === undefined) {
+    const exchange = allWallets.find(w => w.username === 'EXCHANGE');
+    if (exchange) exchangeUsd = exchange.usd || 0;
+  }
+  const issued = totalIssued !== undefined
+    ? totalIssued
+    : allLoans.reduce((s, l) => s + (l.amount || 0), 0);
+  const debt = totalDebt !== undefined
+    ? totalDebt
+    : allLoans.reduce((s, l) => s + (l.due || 0), 0);
 
   const elBal    = document.getElementById('bankBalance');
   const elIssued = document.getElementById('bankIssued');
   const elDebt   = document.getElementById('bankDebt');
 
   if (elBal)    elBal.textContent    = '$' + fmt(exchangeUsd);
-  if (elIssued) elIssued.textContent = '$' + fmt(totalIssued);
-  if (elDebt)   elDebt.textContent   = '$' + fmt(totalDebt);
+  if (elIssued) elIssued.textContent = '$' + fmt(issued);
+  if (elDebt)   elDebt.textContent   = '$' + fmt(debt);
 }
 
 // ── ПАУЗА ────────────────────────────────────────────────────────────────────
@@ -584,7 +592,7 @@ async function loadAdminData() {
   renderLoans();
   renderCoinParams();
   fillPlayerSelect();
-  renderBankCard();
+  renderBankCard();  // без аргументов — возьмёт из allWallets/allLoans
   await loadBotsData();
 }
 
@@ -640,10 +648,9 @@ socket.on('priceUpdate', p => {
   });
 });
 
-socket.on('bankUpdate', ({ usd }) => {
-  exchangeUsd = usd;
-  const elBal = document.getElementById('bankBalance');
-  if (elBal) elBal.textContent = '$' + fmt(usd);
+// Казна обновляется динамически на каждый тик и после любой операции с кредитами/торговлей
+socket.on('bankUpdate', ({ usd, totalIssued, totalDebt }) => {
+  renderBankCard(usd, totalIssued, totalDebt);
 });
 
 socket.on('coinsUpdated', ({ coins }) => {

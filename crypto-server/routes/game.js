@@ -26,7 +26,10 @@ async function getAllPrices() {
 async function emitBankUpdate(io) {
   try {
     const w = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
-    if (w) io.emit('bankUpdate', { usd: w.usd || 0 });
+    const loans = await db.loans.find({ paid: { $ne: true } });
+    const totalIssued = loans.reduce((s, l) => s + (l.amount || 0), 0);
+    const totalDebt   = loans.reduce((s, l) => s + (l.due    || 0), 0);
+    if (w) io.emit('bankUpdate', { usd: w.usd || 0, totalIssued, totalDebt });
   } catch(_) {}
 }
 
@@ -458,6 +461,10 @@ router.post('/admin/coin/create', auth, adminOnly, async (req, res) => {
     await db.prices.insert({ coin: ticker, price: startPrice, basePrice: startPrice, vol: startVol, drift: startDrift, supply: startSupply });
     await db.wallets.update({}, { $set: { [ticker]: 0 } }, { multi: true });
     if (!isBase) await db.customCoins.insert({ ticker, name: coinName, emoji: coinEmoji, createdAt: Date.now() });
+
+    // Записываем первую точку в историю цен, чтобы чарт не был пустым
+    await db.priceHistory.insert({ coin: ticker, price: startPrice, ts: Date.now() });
+
     const allCoinsNew   = await getAllCoins();
     const updatedPrices = await getAllPrices();
     const ev = { ts: Date.now(), text: `Админ создал монету: ${coinEmoji} ${ticker} (${coinName}), цена $${startPrice}` };

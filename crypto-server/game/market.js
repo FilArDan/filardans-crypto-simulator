@@ -75,6 +75,17 @@ async function tick(io) {
 
   await accrueInterest(io, updatedPrices, priceHistory);
 
+  // Всегда отправляем актуальный баланс казны после каждого тика
+  if (io) {
+    try {
+      const exchWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+      const loans = await db.loans.find({ paid: { $ne: true } });
+      const totalIssued = loans.reduce((s, l) => s + (l.amount || 0), 0);
+      const totalDebt   = loans.reduce((s, l) => s + (l.due    || 0), 0);
+      if (exchWallet) io.emit('bankUpdate', { usd: exchWallet.usd || 0, totalIssued, totalDebt });
+    } catch (_) {}
+  }
+
   if (io) await emitPlayersUpdate(io, updatedPrices);
 }
 

@@ -74,6 +74,46 @@ function renderBankCard(usd, totalIssued, totalDebt) {
   if (elDebt)   elDebt.textContent   = '$' + fmt(debt);
 }
 
+// ── АКТИВЫ БИРЖИ ─────────────────────────────────────────────────────────────
+async function loadExchangeAssets() {
+  const res = await api('GET', '/api/admin/exchange-assets');
+  if (res.error) return;
+
+  const elUsd       = document.getElementById('exchUsd');
+  const elCoinValue = document.getElementById('exchCoinValue');
+  const elTotal     = document.getElementById('exchTotal');
+  const tbody       = document.getElementById('exchangeAssetsBody');
+
+  if (elUsd)       elUsd.textContent       = '$' + fmt(res.usd);
+  if (elCoinValue) elCoinValue.textContent = '$' + fmt(res.totalCoinValue);
+  if (elTotal)     elTotal.textContent     = '$' + fmt(res.totalAssets);
+
+  if (!tbody) return;
+
+  if (!res.coinAssets || !res.coinAssets.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--mu);padding:16px">Нет монет</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = res.coinAssets.map(a => {
+    const dec      = priceDec(a.coin);
+    const qtyDec   = BASE_COINS.includes(a.coin) ? 4 : 2;
+    const qtyClass = a.qty <= 0 ? 'qty-zero' : '';
+    return `<tr>
+      <td>
+        <div class="coin-cell">
+          <span>${a.emoji}</span>
+          <strong>${a.coin}</strong>
+          <span style="color:var(--mu);font-size:11px">${a.name}</span>
+        </div>
+      </td>
+      <td style="text-align:right" class="${qtyClass}">${fmt(a.qty, qtyDec)}</td>
+      <td style="text-align:right">$${fmt(a.price, dec)}</td>
+      <td style="text-align:right">${a.usdValue > 0 ? '$' + fmt(a.usdValue) : '<span style="color:var(--fa)">—</span>'}</td>
+    </tr>`;
+  }).join('');
+}
+
 // ── ПАУЗА ────────────────────────────────────────────────────────────────────
 function applyPauseState(paused) {
   const statusEl  = document.getElementById('pauseStatus');
@@ -593,6 +633,7 @@ async function loadAdminData() {
   renderCoinParams();
   fillPlayerSelect();
   renderBankCard();  // без аргументов — возьмёт из allWallets/allLoans
+  await loadExchangeAssets();
   await loadBotsData();
 }
 
@@ -640,6 +681,7 @@ socket.on('priceUpdate', p => {
   renderPrices();
   renderPlayers();
   updateBotTotals();
+  loadExchangeAssets();
   COINS.forEach(coin => {
     const row = document.getElementById(`coin-row-${coin}`);
     if (row && row.cells[1]) {
@@ -651,6 +693,7 @@ socket.on('priceUpdate', p => {
 // Казна обновляется динамически на каждый тик и после любой операции с кредитами/торговлей
 socket.on('bankUpdate', ({ usd, totalIssued, totalDebt }) => {
   renderBankCard(usd, totalIssued, totalDebt);
+  loadExchangeAssets();
 });
 
 socket.on('coinsUpdated', ({ coins }) => {

@@ -69,7 +69,7 @@ function renderLeaderboard(players, currentPrices) {
     const rank = i + 1;
     const medal = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
     const barW = maxTotal > 0 ? Math.round(pl.total / maxTotal * 100) : 0;
-    const botBadge = pl.isBot ? ' <span style="font-size:11px;color:var(--mu);opacity:.7">[бот]</span>' : '';
+    const botBadge = pl.isBot ? ' <span style="font-size:11px;color:var(--mu);opacity:.7">[авт.]</span>' : '';
     const tr = document.createElement('tr');
     if (isMine) tr.className = 'me';
     tr.innerHTML = `
@@ -91,7 +91,7 @@ function renderTransferSelect(players) {
   sc.innerHTML = '';
   if (!others.length) {
     const o = document.createElement('option');
-    o.disabled = true; o.textContent = 'Нет других игроков';
+    o.disabled = true; o.textContent = 'Нет других государств';
     sc.appendChild(o);
     return;
   }
@@ -103,7 +103,7 @@ function renderTransferSelect(players) {
     .forEach(p => {
       const o = document.createElement('option');
       o.value = p.username;
-      o.textContent = p.isBot ? `${p.username} [бот]` : p.username;
+      o.textContent = p.isBot ? `${p.username} [авт.]` : p.username;
       sc.appendChild(o);
     });
 
@@ -123,7 +123,7 @@ function renderPortfolio(wallet, coins) {
   });
   body.innerHTML = rows.length
     ? rows.join('')
-    : '<tr><td colspan="4" style="color:var(--mu);text-align:center;padding:16px">Нет активов</td></tr>';
+    : '<tr><td colspan="4" style="color:var(--mu);text-align:center;padding:16px">Резервы пусты</td></tr>';
   const el = document.getElementById('sCash');
   if (el) el.textContent = '$' + fmt(wallet.usd);
 }
@@ -245,7 +245,7 @@ function renderLoanInfo(info) {
       bar.style.background = danger ? '#e05252' : warn ? '#f7931a' : '#4f98a3';
     }
     if (lbl) {
-      lbl.textContent = `Маржа: ${pct}% (маржин-колл при 80%)`;
+      lbl.textContent = `Долговая нагрузка: ${pct}% (дефолт при 80%)`;
       lbl.style.color = danger ? '#e05252' : warn ? '#f7931a' : '';
     }
   } else {
@@ -260,15 +260,15 @@ function renderLoanInfo(info) {
     const limitLbl  = document.getElementById('loanLimitLabel');
     const loanInput = document.getElementById('loanAmount');
 
-    if (rateNote) rateNote.textContent = `Ставка: ${rateStr}`;
+    if (rateNote) rateNote.textContent = `Ставка МВФ: ${rateStr}`;
 
     const maxLoan = info.maxLoan || 0;
     const portVal = info.portVal || 0;
 
     if (limitLbl) {
       limitLbl.textContent = maxLoan > 0
-        ? `Доступно: $${fmt(maxLoan, 0)} (портфель $${fmt(portVal, 0)})`
-        : 'Нет активов для залога';
+        ? `Лимит: $${fmt(maxLoan, 0)} (резервы $${fmt(portVal, 0)})`
+        : 'Нет резервов для залога';
       limitLbl.style.color = maxLoan > 0 ? 'var(--ac)' : 'var(--mu)';
     }
 
@@ -321,7 +321,7 @@ function applyLoanUpdate(data) {
     bar.style.background = danger ? '#e05252' : warn ? '#f7931a' : '#4f98a3';
   }
   if (lbl) {
-    lbl.textContent = `Маржа: ${pct}% (маржин-колл при 80%)`;
+    lbl.textContent = `Долговая нагрузка: ${pct}% (дефолт при 80%)`;
     lbl.style.color = danger ? '#e05252' : warn ? '#f7931a' : '';
   }
 
@@ -426,11 +426,11 @@ document.getElementById('buyAllBtn').addEventListener('click', async () => {
   const err   = document.getElementById('tradeError');
   err.textContent = '';
 
-  if (!lastWallet) { err.textContent = 'Данные кошелька не загружены'; return; }
+  if (!lastWallet) { err.textContent = 'Данные казны не загружены'; return; }
   const usd   = lastWallet.usd || 0;
   const price = prices[coin] || 0;
-  if (price <= 0) { err.textContent = 'Цена монеты неизвестна'; return; }
-  if (usd < 0.01) { err.textContent = 'Недостаточно USD'; return; }
+  if (price <= 0) { err.textContent = 'Курс актива неизвестен'; return; }
+  if (usd < 0.01) { err.textContent = 'Недостаточно резервов'; return; }
 
   const askPrice = price * (1 + SPREAD);
   const amount   = usd / (askPrice * (1 + TRADE_FEE));
@@ -447,9 +447,9 @@ document.getElementById('sellAllBtn').addEventListener('click', async () => {
   const err  = document.getElementById('tradeError');
   err.textContent = '';
 
-  if (!lastWallet) { err.textContent = 'Данные кошелька не загружены'; return; }
+  if (!lastWallet) { err.textContent = 'Данные казны не загружены'; return; }
   const amount = lastWallet[coin] || 0;
-  if (amount <= 0) { err.textContent = `Нет ${coin} в кошельке`; return; }
+  if (amount <= 0) { err.textContent = `Актив ${coin} отсутствует в резервах`; return; }
 
   const res = await api('POST', '/api/trade', { coin, amount, action: 'sell' });
   if (res.error) { err.textContent = res.error; return; }
@@ -464,7 +464,7 @@ document.getElementById('transferForm').addEventListener('submit', async e => {
   const amount = parseFloat(document.getElementById('transferAmount').value);
   const err = document.getElementById('transferError');
   err.textContent = '';
-  if (!to) { err.textContent = 'Выберите получателя'; return; }
+  if (!to) { err.textContent = 'Выберите государство-получателя'; return; }
   const res = await api('POST', '/api/transfer', { to, amount });
   if (res.error) { err.textContent = res.error; return; }
   loadState();
@@ -531,8 +531,8 @@ socket.on('loanUpdate', applyLoanUpdate);
 socket.on('marginCall', ({ username, remaining }) => {
   if (username !== myUsername) return;
   const msg = remaining > 0.01
-    ? `🚨 МАРЖИН-КОЛЛ!\nВсе активы принудительно проданы.\nОсталось долга: $${fmt(remaining)}`
-    : `🚨 МАРЖИН-КОЛЛ!\nВсе активы проданы — долг полностью погашен.`;
+    ? `🚨 ДЕФОЛТ!\nВсе резервы принудительно ликвидированы.\nОсталось госдолга: $${fmt(remaining)}`
+    : `🚨 ДЕФОЛТ!\nВсе резервы ликвидированы — долг полностью погашен.`;
   alert(msg);
   loadState();
 });

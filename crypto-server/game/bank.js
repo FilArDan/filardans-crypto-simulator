@@ -77,6 +77,7 @@ async function accrueInterest(io, prices, priceHistory) {
   }
 
   // Зачисляем проценты в Резервный фонд МТП
+  // Проценты — это плата за пользование деньгами биржи, поэтому USD создаётся здесь обоснованно
   if (totalInterestEarned > 0) {
     await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: +totalInterestEarned } });
     if (io) {
@@ -88,20 +89,27 @@ async function accrueInterest(io, prices, priceHistory) {
 
 // ── Государственный дефолт ────────────────────────────────────────────────────
 async function executeDefault(username, wallet, loanDue, prices, coins, io) {
+  // Принудительно продаём все монеты игрока — они физически переходят на счёт биржи
   let proceeds = 0;
   for (const coin of coins) {
-    const amt = wallet[coin] || 0;
-    if (amt > 0 && (prices[coin] || 0) > 0) {
-      proceeds += amt * prices[coin] * (1 - FEE);
-      await db.wallets.update({ username }, { $set: { [coin]: 0 } });
+    const amt   = wallet[coin] || 0;
+    const price = prices[coin] || 0;
+    if (amt > 0 && price > 0) {
+      const coinProceeds = amt * price * (1 - FEE);
+      proceeds += coinProceeds;
+      // Монеты переходят к бирже, биржа платит игроку USD (минус комиссия)
+      await db.wallets.update({ username },            { $set:  { [coin]: 0 } });
+      await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { [coin]: +amt, usd: -coinProceeds } });
     }
   }
+  // Зачисляем вырученное игроку
   await db.wallets.update({ username }, { $inc: { usd: proceeds } });
 
   const freshWallet = await db.wallets.findOne({ username });
   const pay = Math.min(freshWallet.usd || 0, loanDue);
   if (pay > 0) {
-    await db.wallets.update({ username }, { $inc: { usd: -pay } });
+    await db.wallets.update({ username },            { $inc: { usd: -pay } });
+    await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: +pay } });
   }
   const remaining = Math.max(0, loanDue - pay);
 

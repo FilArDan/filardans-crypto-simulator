@@ -135,6 +135,31 @@
       color: var(--mu);
       font-variant-numeric: tabular-nums;
     }
+
+    /* Активы биржи */
+    .exchange-assets-card {
+      background: color-mix(in oklch, var(--ok) 6%, var(--sf));
+      border: 1px solid color-mix(in oklch, var(--ok) 25%, var(--bd));
+      border-radius: var(--r);
+      box-shadow: var(--sh);
+      padding: 16px 18px;
+    }
+    .exchange-assets-card h2 { margin-bottom: 12px; }
+    .assets-summary {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--bd);
+    }
+    .assets-summary .a-item { display: flex; flex-direction: column; gap: 2px; }
+    .assets-summary .a-lbl { font-size: 11px; color: var(--mu); text-transform: uppercase; letter-spacing: .05em; }
+    .assets-summary .a-val { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ok); }
+    .assets-table th { font-size: 11px; }
+    .assets-table td { font-size: 13px; font-variant-numeric: tabular-nums; }
+    .assets-table .coin-cell { display: flex; align-items: center; gap: 6px; }
+    .qty-zero { color: var(--mu); }
   </style>
 </head>
 <body>
@@ -190,6 +215,39 @@
     <div class="lbl">🏦 Казна Банка (WARDEN)</div>
     <div class="val" id="bankBalance">$—</div>
     <div class="bank-issued">Выдано кредитов: <span id="bankIssued">$0.00</span> &nbsp;|&nbsp; Долг к возврату: <span id="bankDebt">$0.00</span></div>
+  </div>
+
+
+  <!-- АКТИВЫ БИРЖИ -->
+  <div class="exchange-assets-card section-gap">
+    <h2>📦 Активы биржи (EXCHANGE)</h2>
+    <div class="assets-summary">
+      <div class="a-item">
+        <span class="a-lbl">USD резерв</span>
+        <span class="a-val" id="exchUsd">$—</span>
+      </div>
+      <div class="a-item">
+        <span class="a-lbl">Монеты (≈USD)</span>
+        <span class="a-val" id="exchCoinValue">$—</span>
+      </div>
+      <div class="a-item">
+        <span class="a-lbl">Всего активов</span>
+        <span class="a-val" id="exchTotal">$—</span>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="assets-table">
+        <thead>
+          <tr>
+            <th>Монета</th>
+            <th style="text-align:right">Запас (qty)</th>
+            <th style="text-align:right">Цена</th>
+            <th style="text-align:right">≈ USD</th>
+          </tr>
+        </thead>
+        <tbody id="exchangeAssetsBody"></tbody>
+      </table>
+    </div>
   </div>
 
 

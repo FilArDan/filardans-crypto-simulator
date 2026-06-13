@@ -53,7 +53,17 @@ const COIN_META = {
   DOGE: { name: 'Dogecoin', emoji: '🐕', basePrice: 0.08,  vol: 0.060, drift: 0, supply: 140000000000 },
 };
 
-const EXCHANGE_RESERVE = 1_200_000;
+const EXCHANGE_RESERVE     = 1_200_000;
+// Начальный запас монет биржи: игроки смогут купить не более этого количества
+const EXCHANGE_COIN_SUPPLY = {
+  BTC:  500,
+  ETH:  5000,
+  SOL:  50000,
+  XRP:  10000000,
+  DOGE: 50000000,
+};
+const EXCHANGE_CUSTOM_COIN_SUPPLY = 1_000_000; // запас для кастомных монет по умолчанию
+
 const EXCHANGE_USERNAME = 'EXCHANGE';
 
 async function getAllCoins() {
@@ -82,9 +92,25 @@ async function initDb() {
     }
   }
 
+  // Инициализация кошелька биржи с запасами монет
   const exchangeWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
   if (!exchangeWallet) {
-    await db.wallets.insert({ username: EXCHANGE_USERNAME, usd: EXCHANGE_RESERVE });
+    const exchDoc = { username: EXCHANGE_USERNAME, usd: EXCHANGE_RESERVE };
+    for (const coin of COINS) {
+      exchDoc[coin] = EXCHANGE_COIN_SUPPLY[coin] || EXCHANGE_CUSTOM_COIN_SUPPLY;
+    }
+    await db.wallets.insert(exchDoc);
+  } else {
+    // Добавляем поля монет если их нет (миграция)
+    const patch = {};
+    for (const coin of COINS) {
+      if (exchangeWallet[coin] == null) {
+        patch[coin] = EXCHANGE_COIN_SUPPLY[coin] || EXCHANGE_CUSTOM_COIN_SUPPLY;
+      }
+    }
+    if (Object.keys(patch).length > 0) {
+      await db.wallets.update({ username: EXCHANGE_USERNAME }, { $set: patch });
+    }
   }
 
   for (const coin of COINS) {
@@ -113,4 +139,4 @@ async function initDb() {
   }
 }
 
-module.exports = { db, initDb, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME };
+module.exports = { db, initDb, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY };

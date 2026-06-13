@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { db, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME } = require('../db');
+const { db, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY } = require('../db');
 const { tick, applyTradePressure, deleteCoinHistory } = require('../game/market');
 const { getBotStats, priceHistory, listBotsRaw, createBot, deleteBot, setBotCash, updateBotPreset } = require('../game/bots');
 
@@ -53,7 +53,6 @@ async function emitPlayersUpdate(io) {
 }
 
 // ── ИСТОРИЯ ЦЕН ДЛЯ ЧАРТА ────────────────────────────────────────────────────
-// GET /api/price-history?coin=BTC&limit=500
 router.get('/price-history', auth, async (req, res) => {
   try {
     const coin  = (req.query.coin || '').toUpperCase();
@@ -103,10 +102,11 @@ router.post('/trade', auth, async (req, res) => {
     const allCoins = await getAllCoins();
     if (!allCoins.includes(coin)) return res.json({ error: 'Неизвестная монета' });
 
-    const priceDoc   = await db.prices.findOne({ coin });
-    const wallet     = await db.wallets.findOne({ username: req.session.username });
-    const midPrice   = priceDoc.price;
-    const io         = req.app.get('io');
+    const priceDoc       = await db.prices.findOne({ coin });
+    const wallet         = await db.wallets.findOne({ username: req.session.username });
+    const exchangeWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+    const midPrice       = priceDoc.price;
+    const io             = req.app.get('io');
 
     if (action === 'buy') {
       const askPrice  = midPrice * (1 + SPREAD);
@@ -116,8 +116,15 @@ router.post('/trade', auth, async (req, res) => {
 
       if (wallet.usd < cost) return res.json({ error: `Недостаточно USD (нужно $${cost.toFixed(2)})` });
 
-      await db.wallets.update({ username: req.session.username }, { $inc: { usd: -cost, [coin]: amount } });
-      await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: +cost } });
+      // Проверяем запас монет у биржи
+      const exchangeHas = exchangeWallet ? (exchangeWallet[coin] || 0) : 0;
+      if (exchangeHas < amount) {
+        return res.json({ error: `Биржа не располагает достаточным запасом ${coin} (доступно: ${exchangeHas.toFixed(4)})` });
+      }
+
+      // Игрок платит USD → биржа; биржа отдаёт монеты → игрок
+      await db.wallets.update({ username: req.session.username }, { $inc: { usd: -cost,   [coin]: +amount } });
+      await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: +cost,   [coin]: -amount } });
 
       const newCoinPrice  = await applyTradePressure(coin, amount, action);
       const updatedPrices = await getAllPrices();
@@ -139,8 +146,9 @@ router.post('/trade', auth, async (req, res) => {
 
       if ((wallet[coin] || 0) < amount) return res.json({ error: `Недостаточно ${coin}` });
 
+      // Игрок отдаёт монеты → биржа; биржа платит USD → игрок
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: +proceeds, [coin]: -amount } });
-      await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: -proceeds } });
+      await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: -proceeds, [coin]: +amount } });
 
       const newCoinPrice  = await applyTradePressure(coin, amount, action);
       const updatedPrices = await getAllPrices();
@@ -462,7 +470,11 @@ router.post('/admin/coin/create', auth, adminOnly, async (req, res) => {
     await db.wallets.update({}, { $set: { [ticker]: 0 } }, { multi: true });
     if (!isBase) await db.customCoins.insert({ ticker, name: coinName, emoji: coinEmoji, createdAt: Date.now() });
 
-    // Записываем первую точку в историю цен, чтобы чарт не был пустым
+    // Выдаём бирже начальный запас новой монеты
+    const exchangeReserve = EXCHANGE_CUSTOM_COIN_SUPPLY;
+    await db.wallets.update({ username: EXCHANGE_USERNAME }, { $set: { [ticker]: exchangeReserve } });
+
+    // Записываем первую точку в историю цен
     await db.priceHistory.insert({ coin: ticker, price: startPrice, ts: Date.now() });
 
     const allCoinsNew   = await getAllCoins();
@@ -487,13 +499,15 @@ router.delete('/admin/coin/:ticker', auth, adminOnly, async (req, res) => {
     for (const w of wallets) {
       const holding = w[ticker] || 0;
       if (holding > 0 && curPrice > 0) {
+        // Выкупаем монеты у игроков за USD биржи
         await db.wallets.update({ _id: w._id }, { $inc: { usd: holding * curPrice }, $set: { [ticker]: 0 } });
-        await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: -(holding * curPrice) } });
+        await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: -(holding * curPrice) }, $set: { [ticker]: 0 } });
       }
     }
+    // Обнуляем запас биржи по этой монете
+    await db.wallets.update({ username: EXCHANGE_USERNAME }, { $set: { [ticker]: 0 } });
     await db.prices.remove({ coin: ticker }, {});
     await db.customCoins.remove({ ticker }, {});
-    // Удаляем историю цен удалённой монеты
     await deleteCoinHistory(ticker);
     const allCoinsNew   = await getAllCoins();
     const updatedPrices = await getAllPrices();
@@ -508,7 +522,6 @@ router.delete('/admin/coin/:ticker', auth, adminOnly, async (req, res) => {
 });
 
 // ── АДМИН: очистка истории цен ─────────────────────────────────────────────────
-// DELETE /api/admin/price-history/:coin  — очистить историю конкретной монеты
 router.delete('/admin/price-history/:coin', auth, adminOnly, async (req, res) => {
   try {
     const coin = (req.params.coin || '').toUpperCase();
@@ -522,7 +535,6 @@ router.delete('/admin/price-history/:coin', auth, adminOnly, async (req, res) =>
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// DELETE /api/admin/price-history  — очистить историю всех монет
 router.delete('/admin/price-history', auth, adminOnly, async (req, res) => {
   try {
     await db.priceHistory.remove({}, { multi: true });
@@ -563,6 +575,33 @@ router.get('/admin/exchange', auth, adminOnly, async (req, res) => {
   try {
     const wallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
     res.json({ usd: wallet ? wallet.usd : 0 });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── АДМИН: все активы биржи (USD + монеты) ─────────────────────────────────────
+router.get('/admin/exchange-assets', auth, adminOnly, async (req, res) => {
+  try {
+    const wallet   = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+    const prices   = await getAllPrices();
+    const allCoins = await getAllCoins();
+    const custom   = await db.customCoins.find({});
+    const customMap = {};
+    custom.forEach(c => { customMap[c.ticker] = { name: c.name, emoji: c.emoji }; });
+
+    const coinAssets = allCoins.map(coin => {
+      const qty      = wallet ? (wallet[coin] || 0) : 0;
+      const price    = prices[coin] || 0;
+      const usdValue = qty * price;
+      const isBase   = COINS.includes(coin);
+      const name     = isBase ? (COIN_META[coin]?.name || coin) : (customMap[coin]?.name || coin);
+      const emoji    = isBase ? (COIN_META[coin]?.emoji || '🪙') : (customMap[coin]?.emoji || '🪙');
+      return { coin, name, emoji, qty, price, usdValue };
+    });
+
+    const totalCoinValue = coinAssets.reduce((s, a) => s + a.usdValue, 0);
+    const usd = wallet ? (wallet.usd || 0) : 0;
+
+    res.json({ usd, coinAssets, totalCoinValue, totalAssets: usd + totalCoinValue });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

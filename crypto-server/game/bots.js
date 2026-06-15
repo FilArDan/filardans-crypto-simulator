@@ -80,6 +80,76 @@ function botPortfolioValue(bot, prices) {
   return total;
 }
 
+// ── Кредиты ботов ─────────────────────────────────────────────────────────────
+// Константы: максимальный кредит и минимальный порог USD для запроса
+const BOT_LOAN_RATE      = 0.002;  // 0.2% долга в тик (выше, чем у игрока)
+const BOT_MIN_USD_THRESH = 50;     // ниже этого порога бот рассматривает кредит
+const BOT_LOAN_MULT      = 3;      // берёт до 3× текущего USD (но не более MAX)
+const BOT_LOAN_MAX       = 5000;   // максимальный размер кредита бота
+const BOT_LOAN_MIN       = 100;    // минимум — как у игрока
+
+/**
+ * Пытается выдать боту кредит из казны биржи.
+ * bull  берёт кредит при сильном падении (belowBase).
+ * croc  берёт кредит при глубокой просадке (belowBase).
+ * fox   никогда не берёт.
+ * Возвращает сумму выданного кредита (0 если отказано).
+ */
+async function tryBotLoan(botName, currentUsd, requestAmount) {
+  // Уже есть активный кредит — не выдаём второй
+  const existing = await db.loans.findOne({ username: botName, paid: { $ne: true } });
+  if (existing) return 0;
+
+  const amount = Math.min(Math.max(Math.floor(requestAmount), BOT_LOAN_MIN), BOT_LOAN_MAX);
+  if (amount < BOT_LOAN_MIN) return 0;
+
+  // Проверяем, есть ли деньги в казне
+  const exchWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+  if (!exchWallet || exchWallet.usd < amount) return 0;
+
+  // Выдаём кредит: биржа отдаёт USD боту
+  await db.loans.insert({
+    username:  botName,
+    principal: amount,
+    due:       amount,
+    rate:      BOT_LOAN_RATE,
+    ts:        Date.now(),
+    paid:      false,
+    isBot:     true,
+  });
+  await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: -amount } });
+  return amount;
+}
+
+/**
+ * Начисляет проценты по кредитам ботов и пополняет казну банка.
+ * Вызывается из botTick() после всех сделок.
+ */
+async function accrueBotsInterest() {
+  const botLoans = await db.loans.find({ isBot: true, paid: { $ne: true } });
+  for (const loan of botLoans) {
+    const interest = loan.due * (loan.rate || BOT_LOAN_RATE);
+    const newDue   = loan.due + interest;
+    await db.loans.update({ _id: loan._id }, { $set: { due: newDue } });
+    // Банк получает проценты в казну
+    await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: interest } });
+
+    // Авто-погашение: если у бота накопилось достаточно USD — гасим долг
+    const bot = await db.bots.findOne({ name: loan.username });
+    if (bot && (Number(bot.usd) || 0) >= newDue * 1.5) {
+      const repay = Math.min(Number(bot.usd) * 0.4, newDue);
+      await db.bots.update({ name: loan.username }, { $inc: { usd: -repay } });
+      await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: repay } });
+      const remaining = newDue - repay;
+      if (remaining < 0.01) {
+        await db.loans.update({ _id: loan._id }, { $set: { due: 0, paid: true } });
+      } else {
+        await db.loans.update({ _id: loan._id }, { $set: { due: remaining } });
+      }
+    }
+  }
+}
+
 // ── 🐂 Агрессор ────────────────────────────────────────────────────────────────────────────────────
 async function bullTick(bot, coins, prices) {
   const coin = coins[Math.floor(Math.random() * coins.length)];
@@ -91,6 +161,12 @@ async function bullTick(bot, coins, prices) {
 
   const belowAvg  = price < avgLong * 0.98;
   const belowBase = base && price < base * 0.85;
+
+  // Если USD почти кончился, а ситуация очень привлекательная — берём кредит
+  if (belowBase && bot.usd < BOT_MIN_USD_THRESH && roll < 0.60) {
+    const loanAmt = await tryBotLoan(bot.name, bot.usd, bot.usd * BOT_LOAN_MULT + BOT_LOAN_MIN);
+    bot.usd += loanAmt;
+  }
 
   if ((belowAvg || belowBase) && roll < 0.85) {
     const urgency = belowBase ? 1.5 : 1.0;
@@ -124,6 +200,7 @@ async function bullTick(bot, coins, prices) {
 
 // ── 🦊 Осторожный ──────────────────────────────────────────────────────────────────────────────────
 async function foxTick(bot, coins, prices) {
+  // fox никогда не берёт кредиты
   if (Math.random() > 0.40) return;
   const coin = coins[Math.floor(Math.random() * coins.length)];
   const price = prices[coin];
@@ -179,6 +256,12 @@ async function crocTick(bot, coins, prices) {
   const spendFraction = belowBase
     ? (0.03 + Math.random() * 0.05)
     : (0.01 + Math.random() * 0.03);
+
+  // croc берёт кредит при очень глубокой просадке и пустом кармане
+  if (belowBase && bot.usd < BOT_MIN_USD_THRESH && Math.random() < 0.50) {
+    const loanAmt = await tryBotLoan(bot.name, bot.usd, bot.usd * BOT_LOAN_MULT + BOT_LOAN_MIN);
+    bot.usd += loanAmt;
+  }
 
   if (Math.random() < buyChance) {
     const spend = bot.usd * spendFraction;
@@ -242,6 +325,9 @@ async function botTick(io, currentPrices) {
       await replaceBotState(b.name, b);
     } catch (_) {}
   }
+
+  // Начисляем проценты по кредитам ботов и возвращаем деньги в казну
+  try { await accrueBotsInterest(); } catch (_) {}
 }
 
 // ── Статистика ──────────────────────────────────────────────────────────────────────────────────────
@@ -274,6 +360,8 @@ async function createBot({ name, type, usd }) {
 }
 
 async function deleteBot(name) {
+  // При удалении бота гасим его кредиты (списываем)
+  await db.loans.remove({ username: String(name || '').trim(), isBot: true }, { multi: true });
   return db.bots.remove({ name: String(name || '').trim() }, {});
 }
 

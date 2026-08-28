@@ -5,16 +5,22 @@ let currentCoins = [];
 
 let lastPlayers = null;
 let lastWallet  = null;
-let lastDebt    = 0;
+
+// CSRF token, если сервер его отдаёт
+let csrfToken = null;
 
 // ── Константы торговли (должны совпадать с game.js на сервере) ────────────────
 const TRADE_FEE = 0.004;   // 0.4% комиссия
 const SPREAD    = 0.0015;  // ±0.15% спред
 
 async function api(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && csrfToken) {
+    headers['X-CSRF-Token'] = csrfToken;
+  }
   const r = await fetch(path, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: body ? JSON.stringify(body) : undefined
   });
   return r.json();
@@ -152,7 +158,7 @@ function recalcByPrices(p) {
     const coinsVal = currentCoins.reduce((s, c) => s + (lastWallet[c] || 0) * (p[c] || 0), 0);
     const elTotal = document.getElementById('sTotal');
     const elPort  = document.getElementById('sPort');
-    if (elTotal) elTotal.textContent = '$' + fmt(lastWallet.usd + coinsVal - lastDebt);
+    if (elTotal) elTotal.textContent = '$' + fmt(lastWallet.usd + coinsVal);
     if (elPort)  elPort.textContent  = '$' + fmt(coinsVal);
   }
   if (lastPlayers) renderLeaderboard(lastPlayers, p);
@@ -235,8 +241,6 @@ function renderLoanInfo(info) {
     if (rate)   rate.textContent = rateStr;
     if (elDebt) elDebt.textContent = '$' + fmt(info.loan.due);
 
-    lastDebt = info.loan.due;
-
     const pct    = Math.min(Math.round(info.marginRatio * 100), 100);
     const danger = pct >= 70;
     const warn   = pct >= 50;
@@ -252,7 +256,6 @@ function renderLoanInfo(info) {
     if (activePanel) activePanel.style.display = 'none';
     if (newPanel)    newPanel.style.display    = 'block';
     if (elDebt)      elDebt.textContent         = '—';
-    lastDebt = 0;
 
     const rateNote  = document.getElementById('loanRateNote');
     const limitBar  = document.getElementById('loanLimitBar');
@@ -311,8 +314,6 @@ function applyLoanUpdate(data) {
   if (rateEl) rateEl.textContent = `${(data.rate * 100).toFixed(3)}%/тик`;
   if (elDebt) elDebt.textContent = '$' + fmt(data.due);
 
-  lastDebt = data.due;
-
   const pct    = Math.min(Math.round((data.marginRatio || 0) * 100), 100);
   const danger = pct >= 70;
   const warn   = pct >= 50;
@@ -357,7 +358,6 @@ async function loadState() {
   const coinsVal = (data.coins || currentCoins)
     .reduce((s, c) => s + (data.wallet[c] || 0) * (data.prices[c] || 0), 0);
   const debt = loanInfo && loanInfo.loan ? loanInfo.loan.due : 0;
-  lastDebt = debt;
 
   const elTotal = document.getElementById('sTotal');
   const elPort  = document.getElementById('sPort');
@@ -563,7 +563,12 @@ socket.on('coinsUpdated', ({ coins }) => {
 // ── ПРОВЕРКА СЕССИИ ───────────────────────────────────────────────────────────
 api('GET', '/auth/me').then(res => {
   if (res.username) {
-    if (res.role === 'admin') { window.location.href = '/admin.html'; return; }
+    if (res.role === 'admin') {
+      window.location.href = '/admin.html';
+      return;
+    }
+    // Если сервер добавит csrfToken в ответ, запомним его
+    if (res.csrfToken) csrfToken = res.csrfToken;
     showApp(res.username);
   }
 });

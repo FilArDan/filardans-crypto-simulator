@@ -17,6 +17,7 @@ function coinColor(ticker) {
   return `hsl(${hue}, 65%, 58%)`;
 }
 
+// Храним полную историю: { price, ts }
 const priceHistory = {};
 let selectedCoin = 'BTC';
 let chartRange   = 40;
@@ -33,10 +34,11 @@ function updateChartCoins(coins) {
 }
 
 function addPricePoint(prices) {
+  const now = Date.now();
   chartCoins.forEach(c => {
     if (prices[c] != null) {
       if (!priceHistory[c]) priceHistory[c] = [];
-      priceHistory[c].push(prices[c]);
+      priceHistory[c].push({ price: prices[c], ts: now });
     }
   });
   updateChartLive();
@@ -50,7 +52,10 @@ async function loadSavedHistory() {
       if (!resp.ok) continue;
       const data = await resp.json();
       if (Array.isArray(data) && data.length > 0) {
-        priceHistory[coin] = data;
+        // Ожидаем массив объектов { price, ts }
+        priceHistory[coin] = data
+          .map(d => ({ price: Number(d.price), ts: Number(d.ts) }))
+          .filter(d => Number.isFinite(d.price) && Number.isFinite(d.ts));
       }
     } catch (_) { /* нет доступа — пропускаем */ }
   }
@@ -105,8 +110,18 @@ function selectCoin(coin) {
 }
 
 function getHistory(coin) {
-  const raw = (priceHistory[coin] || []).filter(v => typeof v === 'number' && isFinite(v));
+  const raw = (priceHistory[coin] || []).filter(d => typeof d.price === 'number' && isFinite(d.price));
   return chartRange === 0 ? raw : raw.slice(-chartRange);
+}
+
+function formatTickTime(ts) {
+  const d = new Date(ts);
+  // Локальное время, ЧЧ:ММ:СС
+  return d.toLocaleString('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 }
 
 function renderChart() {
@@ -114,13 +129,14 @@ function renderChart() {
   const gc   = dark ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.07)';
   const tc   = dark ? '#797876' : '#9a9790';
   const col  = coinColor(selectedCoin);
-  const data = getHistory(selectedCoin);
+  const hist = getHistory(selectedCoin);
+  const data = hist.map(d => d.price);
 
   const info = document.getElementById('cinfo');
   if (info) {
-    const last = data.length ? data[data.length - 1] : null;
+    const last = hist.length ? hist[hist.length - 1] : null;
     info.textContent = last != null
-      ? `${selectedCoin} · $${Number(last).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${data.length} тиков`
+      ? `${selectedCoin} · $${Number(last.price).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${hist.length} тиков`
       : `${selectedCoin} · ожидание данных…`;
   }
 
@@ -131,7 +147,7 @@ function renderChart() {
   chrt = new Chart(canvas, {
     type: 'line',
     data: {
-      labels: data.map((_, i) => i + 1),
+      labels: hist.map((_, i) => i + 1),
       datasets: [{
         data,
         borderColor: col,
@@ -160,8 +176,13 @@ function renderChart() {
           intersect: false,
           displayColors: false,
           callbacks: {
-            title: items => `Тик ${items[0].label}`,
-            label: x => `$${Number(x.parsed.y).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})}`
+            title: items => {
+              const idx  = items[0].dataIndex;
+              const tick = hist[idx];
+              const timeStr = tick ? formatTickTime(tick.ts) : `Тик ${items[0].label}`;
+              return `${selectedCoin} · $${Number(items[0].parsed.y).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${timeStr}`;
+            },
+            label: () => ''
           },
           backgroundColor: dark ? '#23211f' : '#fff',
           titleColor: tc,
@@ -185,9 +206,10 @@ function renderChart() {
 
 function updateChartLive() {
   if (!chrt) return;
-  const data = getHistory(selectedCoin);
+  const hist = getHistory(selectedCoin);
+  const data = hist.map(d => d.price);
   const col  = coinColor(selectedCoin);
-  chrt.data.labels = data.map((_, i) => i + 1);
+  chrt.data.labels = hist.map((_, i) => i + 1);
   chrt.data.datasets[0].data = data;
   chrt.data.datasets[0].borderColor = col;
   chrt.data.datasets[0].backgroundColor = col.startsWith('hsl')
@@ -196,9 +218,9 @@ function updateChartLive() {
   chrt.update('none');
 
   const info = document.getElementById('cinfo');
-  if (info && data.length) {
-    const last = data[data.length - 1];
-    info.textContent = `${selectedCoin} · $${Number(last).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${data.length} тиков`;
+  if (info && hist.length) {
+    const last = hist[hist.length - 1];
+    info.textContent = `${selectedCoin} · $${Number(last.price).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${hist.length} тиков`;
   }
 }
 

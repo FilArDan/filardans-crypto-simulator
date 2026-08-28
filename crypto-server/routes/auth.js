@@ -17,7 +17,11 @@ router.post('/login', async (req, res) => {
     // получить пустую сессию если store (NeDB) ещё не успел сохранить.
     req.session.save(err => {
       if (err) return res.status(500).json({ error: 'Ошибка сессии' });
-      res.json({ username: user.username, role: user.role });
+      res.json({
+        username: user.username,
+        role: user.role,
+        csrfToken: req.session.csrfToken,
+      });
     });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -29,7 +33,11 @@ router.post('/logout', (req, res) => {
 router.get('/me', (req, res) => {
   if (!req.session.username)
     return res.status(401).json({ error: 'Не авторизован' });
-  res.json({ username: req.session.username, role: req.session.role });
+  res.json({
+    username: req.session.username,
+    role: req.session.role,
+    csrfToken: req.session.csrfToken,
+  });
 });
 
 module.exports = router;

@@ -1,4 +1,5 @@
 require('dotenv').config();
+const crypto = require('crypto');
 const express = require('express');
 const session = require('express-session');
 const http = require('http');
@@ -114,6 +115,15 @@ class NeDBSessionStore extends Store {
   }
 }
 
+// ── CSRF токен ────────────────────────────────────────────────────────────────
+function ensureCsrfToken(req, res, next) {
+  if (!req.session) return next();
+  if (!req.session.csrfToken) {
+    req.session.csrfToken = crypto.randomBytes(32).toString('hex');
+  }
+  next();
+}
+
 // ── Сессия ────────────────────────────────────────────────────────────────────
 // sameSite:'none' + secure:true обязательны чтобы кука работала
 // когда сайт открыт в iframe (Foundry).
@@ -131,6 +141,33 @@ app.use(session({
     secure:   isProduction,                    // secure обязателен при sameSite:'none'
   }
 }));
+
+app.use(ensureCsrfToken);
+
+// ── CSRF guard ────────────────────────────────────────────────────────────────
+const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const CSRF_EXCEPT_PATHS = [
+  /^\/auth\/login$/,
+];
+
+function csrfGuard(req, res, next) {
+  if (CSRF_SAFE_METHODS.has(req.method)) return next();
+
+  const path = req.path || '';
+  if (CSRF_EXCEPT_PATHS.some(rx => rx.test(path))) return next();
+
+  const tokenHeader = req.headers['x-csrf-token'] || req.headers['X-CSRF-Token'];
+  const sessionToken = req.session && req.session.csrfToken;
+
+  if (!sessionToken || !tokenHeader || tokenHeader !== sessionToken) {
+    return res.status(403).json({ error: 'CSRF validation failed' });
+  }
+
+  next();
+}
+
+app.use('/api', csrfGuard);
+app.use('/auth', csrfGuard);
 
 app.use('/api',  rateLimiter);
 app.use('/auth', rateLimiter);

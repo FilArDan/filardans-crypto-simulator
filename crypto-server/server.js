@@ -148,6 +148,7 @@ app.use(ensureCsrfToken);
 const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const CSRF_EXCEPT_PATHS = [
   /^\/auth\/login$/,
+  /^\/auth\/logout$/,
 ];
 
 function csrfGuard(req, res, next) {

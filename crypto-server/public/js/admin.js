@@ -14,11 +14,18 @@ const PRESET_INFO = {
   croc: { label: '🐊 Накопитель',  desc: 'Накапливает, фиксирует по цели' },
 };
 
+// CSRF token для админки
+let csrfToken = null;
+
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 async function api(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && csrfToken) {
+    headers['X-CSRF-Token'] = csrfToken;
+  }
   const r = await fetch(path, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: body ? JSON.stringify(body) : undefined
   });
   return r.json();
@@ -152,7 +159,10 @@ socket.on('pauseChanged', ({ paused }) => applyPauseState(paused));
 // ── УДАЛЕНИЕ ИГРОКА ──────────────────────────────────────────────────────────
 async function deletePlayer(username) {
   if (!confirm(`Удалить аккаунт "${username}"?\nКошелёк и все кредиты будут удалены безвозвратно.`)) return;
-  const r = await fetch(`/api/admin/player/${encodeURIComponent(username)}`, { method: 'DELETE' });
+  const r = await fetch(`/api/admin/player/${encodeURIComponent(username)}`, {
+    method: 'DELETE',
+    headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined,
+  });
   const data = await r.json();
   if (data.error) { alert(data.error); return; }
   await loadAdminData();
@@ -207,7 +217,7 @@ document.getElementById('createCoinForm').addEventListener('submit', async e => 
   btn.disabled = false; btn.textContent = '🚀 Создать монету';
 });
 
-// ── УДАЛЕНИЕ МОНЕТЫ ──────────────────────────────────────────────────────────
+// ── УДАЛЕНИЕ МОНЕТы ──────────────────────────────────────────────────────────
 async function deleteCoin(ticker) {
   const m = coinMeta[ticker] || {};
   const isBase = BASE_COINS.includes(ticker);
@@ -215,7 +225,10 @@ async function deleteCoin(ticker) {
     ? `\n\n⚠️ Это базовая монета. После удаления её можно восстановить через форму создания (тикер ${ticker}).`
     : '';
   if (!confirm(`Удалить монету ${m.emoji || '🪙'} ${ticker}?\n\nИгрокам будут возвращены USD по текущей цене.${warn}`)) return;
-  const r = await fetch(`/api/admin/coin/${encodeURIComponent(ticker)}`, { method: 'DELETE' });
+  const r = await fetch(`/api/admin/coin/${encodeURIComponent(ticker)}`, {
+    method: 'DELETE',
+    headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined,
+  });
   const data = await r.json();
   if (data.error) { alert(data.error); return; }
   if (data.coins) COINS = data.coins;
@@ -226,7 +239,10 @@ async function deleteCoin(ticker) {
 async function clearCoinHistory(ticker) {
   const m = coinMeta[ticker] || {};
   if (!confirm(`Очистить историю цен для ${m.emoji || '🪙'} ${ticker}?\nЧарт этой монеты обнулится у всех игроков.`)) return;
-  const r = await fetch(`/api/admin/price-history/${encodeURIComponent(ticker)}`, { method: 'DELETE' });
+  const r = await fetch(`/api/admin/price-history/${encodeURIComponent(ticker)}`, {
+    method: 'DELETE',
+    headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined,
+  });
   const data = await r.json();
   if (data.error) { alert(data.error); return; }
 }
@@ -235,7 +251,10 @@ async function clearAllHistory() {
   if (!confirm('Очистить историю цен ВСЕХ монет?\n\nЧарты обнулятся у всех игроков. Это действие нельзя отменить.')) return;
   const btn = document.getElementById('clearAllHistoryBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
-  const r = await fetch('/api/admin/price-history', { method: 'DELETE' });
+  const r = await fetch('/api/admin/price-history', {
+    method: 'DELETE',
+    headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined,
+  });
   const data = await r.json();
   if (data.error) { alert(data.error); }
   if (btn) { btn.disabled = false; btn.textContent = '🗑️ Очистить всю историю цен'; }
@@ -409,7 +428,10 @@ async function setBotCashAdmin(name) {
 
 async function deleteBotAdmin(name) {
   if (!confirm(`Удалить бота "${name}"?`)) return;
-  const r   = await fetch(`/api/admin/bot/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  const r   = await fetch(`/api/admin/bot/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+    headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined,
+  });
   const res = await r.json();
   if (res.error) { alert(res.error); return; }
   await loadBotsData();
@@ -730,6 +752,8 @@ api('GET', '/auth/me').then(res => {
   }
   const el = document.getElementById('adminName');
   if (el) el.textContent = res.username;
+  // Если сервер начнёт отдавать csrfToken, сохраним
+  if (res.csrfToken) csrfToken = res.csrfToken;
   loadAdminData();
   loadTickSpeed();
 });

@@ -62,7 +62,7 @@ router.get('/price-history', auth, async (req, res) => {
       .find({ coin })
       .sort({ ts: 1 })
       .limit(limit);
-    res.json(docs.map(d => d.price));
+    res.json(docs.map(d => ({ price: d.price, ts: d.ts })));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

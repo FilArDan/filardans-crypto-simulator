@@ -16,7 +16,7 @@ npm-debug.log*
 Thumbs.db
 
 # Database files (NeDB)
-*.db
+.db
 
 # Build output
 dist/

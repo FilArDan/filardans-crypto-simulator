@@ -7,9 +7,8 @@ const BASE_COIN_COLORS = {
   DOGE: '#c2a633'
 };
 
-// Длительность одной свечи в миллисекундах (агрегация тиков в OHLC-бар)
 const CANDLE_INTERVAL_MS = 30_000;
-const MAX_HISTORY_POINTS = 3000; // ~хватает на много часов при обычной скорости тиков
+const MAX_HISTORY_POINTS = 3000;
 
 function coinColor(ticker) {
   if (BASE_COIN_COLORS[ticker]) return BASE_COIN_COLORS[ticker];
@@ -25,9 +24,10 @@ function coinColor(ticker) {
 const priceHistory = {};
 let selectedCoin = 'BTC';
 let chart        = null;
-let series       = null;
+let seriesMap     = {}; // coin -> ISeriesApi (одна серия на монету, живёт постоянно)
 let chartMode    = 'line'; // 'line' | 'candles'
 let chartCoins   = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
+let tooltipEl    = null;
 
 function updateChartCoins(coins) {
   const prev = chartCoins;
@@ -35,21 +35,24 @@ function updateChartCoins(coins) {
   coins.forEach(c => { if (!priceHistory[c]) priceHistory[c] = []; });
   if (!coins.includes(selectedCoin)) selectedCoin = coins[0] || 'BTC';
   const changed = prev.length !== coins.length || prev.some((c, i) => c !== coins[i]);
-  if (changed) renderChartTabs();
+  if (changed) {
+    renderChartTabs();
+    if (chart) ensureAllSeries(); // создать серии для новых монет, если появились
+  }
 }
 
 function addPricePoint(prices) {
   const now = Date.now();
   chartCoins.forEach(c => {
-    if (prices[c] != null) {
-      if (!priceHistory[c]) priceHistory[c] = [];
-      priceHistory[c].push({ price: prices[c], ts: now });
-      if (priceHistory[c].length > MAX_HISTORY_POINTS) {
-        priceHistory[c].splice(0, priceHistory[c].length - MAX_HISTORY_POINTS);
-      }
+    if (prices[c] == null) return;
+    if (!priceHistory[c]) priceHistory[c] = [];
+    priceHistory[c].push({ price: prices[c], ts: now });
+    if (priceHistory[c].length > MAX_HISTORY_POINTS) {
+      priceHistory[c].splice(0, priceHistory[c].length - MAX_HISTORY_POINTS);
     }
   });
-  updateChartLive();
+  // Обновляем ВСЕ серии (даже скрытые) — точечно, без setData, поэтому дёшево
+  updateLiveSeries();
 }
 
 // ── Загрузка сохранённой истории с сервера ────────────────────────────────────
@@ -71,25 +74,23 @@ async function loadSavedHistory() {
   }
 }
 
-// ── Обработка события очистки истории от сервера ─────────────────────────────
 function handlePriceHistoryCleared(coin) {
   if (coin === null) {
     chartCoins.forEach(c => { priceHistory[c] = []; });
   } else {
     priceHistory[coin] = [];
   }
-  updateChartLive();
+  // Полностью пересобрать серии — здесь setData ок, это редкое разовое действие
+  if (chart) rebuildAllSeriesData();
 }
 
 // ── Табы монет (выше графика) ──────────────────────────────────────────────────
 function renderChartTabs() {
   const legend = document.getElementById('chartLegend');
   if (!legend) return;
-
   const coinBtns = chartCoins.map(c =>
     `<button class="ctab${c === selectedCoin ? ' on' : ''}" data-coin="${c}" onclick="selectCoin('${c}')">${c}</button>`
   ).join('');
-
   legend.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px">${coinBtns}</div>`;
 }
 
@@ -107,8 +108,7 @@ function setChartMode(mode) {
   if (mode === chartMode) return;
   chartMode = mode;
   renderChartModeToggle();
-  createChartInstance();
-  renderChart();
+  createChartInstance(); // пересоздаём все серии, т.к. тип серии зависит от режима
 }
 
 async function initChart() {
@@ -116,14 +116,20 @@ async function initChart() {
   renderChartTabs();
   renderChartModeToggle();
   createChartInstance();
-  renderChart();
 }
 
+// ── Переключение монеты: ТОЛЬКО смена видимости, без setData ─────────────────
 function selectCoin(coin) {
   selectedCoin = coin;
   document.querySelectorAll('.ctab').forEach(b =>
     b.classList.toggle('on', b.dataset.coin === coin));
-  renderChart();
+
+  Object.entries(seriesMap).forEach(([c, s]) => {
+    s.applyOptions({ visible: c === coin });
+  });
+
+  if (chart) chart.timeScale().fitContent();
+  updateInfoLabel();
 }
 
 function getHistory(coin) {
@@ -139,11 +145,9 @@ function formatTickTime(ts) {
   return d.toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-// ── Агрегация тиков в OHLC-свечи ───────────────────────────────────────────────
 function aggregateCandles(history, bucketMs) {
   if (!history.length) return [];
   const buckets = new Map();
-
   history.forEach(d => {
     const bucketStart = Math.floor(d.ts / bucketMs) * bucketMs;
     let bar = buckets.get(bucketStart);
@@ -156,7 +160,6 @@ function aggregateCandles(history, bucketMs) {
       bar.close = d.price;
     }
   });
-
   return Array.from(buckets.values()).sort((a, b) => a.time - b.time);
 }
 
@@ -167,7 +170,19 @@ function getUpDownColors() {
   return { up, dn };
 }
 
-// ── Создание инстанса графика ──────────────────────────────────────────────────
+function dedupAscending(points) {
+  const out = [];
+  let lastTime = -Infinity;
+  points.forEach(p => {
+    const point = { ...p };
+    if (point.time <= lastTime) point.time = lastTime + 1;
+    out.push(point);
+    lastTime = point.time;
+  });
+  return out;
+}
+
+// ── Создание графика и ВСЕХ серий (вызывается редко: старт + смена режима) ───
 function createChartInstance() {
   const container = document.getElementById('priceChart');
   if (!container) return;
@@ -176,17 +191,12 @@ function createChartInstance() {
   const gc   = dark ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.07)';
   const tc   = dark ? '#797876' : '#9a9790';
 
-  if (chart) { chart.remove(); chart = null; series = null; }
+  if (chart) { chart.remove(); chart = null; }
+  seriesMap = {};
 
   chart = LightweightCharts.createChart(container, {
-    layout: {
-      background: { type: 'solid', color: 'transparent' },
-      textColor: tc,
-    },
-    grid: {
-      vertLines: { color: gc },
-      horzLines: { color: gc },
-    },
+    layout: { background: { type: 'solid', color: 'transparent' }, textColor: tc },
+    grid: { vertLines: { color: gc }, horzLines: { color: gc } },
     rightPriceScale: { borderColor: gc },
     timeScale: {
       borderColor: gc,
@@ -194,54 +204,125 @@ function createChartInstance() {
       secondsVisible: chartMode === 'line',
       tickMarkFormatter: (time) => {
         const d = new Date(time * 1000);
-        return d.getHours().toString().padStart(2,'0') + ':' +
-               d.getMinutes().toString().padStart(2,'0');
+        return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
       },
     },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
     autoSize: true,
   });
 
-  const col = coinColor(selectedCoin);
+  ensureAllSeries();
+  rebuildAllSeriesData();
+  setupTooltip(container, dark, gc);
+  updateInfoLabel();
+}
+
+// ── Гарантирует, что для каждой монеты есть своя серия ────────────────────────
+function ensureAllSeries() {
+  chartCoins.forEach(c => {
+    if (seriesMap[c]) return;
+    seriesMap[c] = createSeriesForCoin(c);
+  });
+  // Удаляем серии монет, которых больше нет в chartCoins (удалённые кастомные монеты)
+  Object.keys(seriesMap).forEach(c => {
+    if (!chartCoins.includes(c)) {
+      chart.removeSeries(seriesMap[c]);
+      delete seriesMap[c];
+    }
+  });
+}
+
+function createSeriesForCoin(c) {
+  const col = coinColor(c);
+  const visible = c === selectedCoin;
+  const priceFormat = {
+    type: 'custom',
+    formatter: (v) => '$' + Number(v).toLocaleString('ru', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  };
 
   if (chartMode === 'candles') {
     const { up, dn } = getUpDownColors();
-    series = chart.addSeries(LightweightCharts.CandlestickSeries, {
-      upColor: up,
-      downColor: dn,
-      borderUpColor: up,
-      borderDownColor: dn,
-      wickUpColor: up,
-      wickDownColor: dn,
-      priceFormat: {
-        type: 'custom',
-        formatter: (v) => '$' + Number(v).toLocaleString('ru', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      },
-    });
-  } else {
-    series = chart.addSeries(LightweightCharts.AreaSeries, {
-      lineColor: col,
-      topColor: col.startsWith('hsl') ? col.replace(')', ', 0.25)').replace('hsl(', 'hsla(') : col + '40',
-      bottomColor: col.startsWith('hsl') ? col.replace(')', ', 0.02)').replace('hsl(', 'hsla(') : col + '05',
-      lineWidth: 2,
-      priceLineVisible: false,
-      lastValueVisible: true,
-      priceFormat: {
-        type: 'custom',
-        formatter: (v) => '$' + Number(v).toLocaleString('ru', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      },
+    return chart.addSeries(LightweightCharts.CandlestickSeries, {
+      visible,
+      upColor: up, downColor: dn,
+      borderUpColor: up, borderDownColor: dn,
+      wickUpColor: up, wickDownColor: dn,
+      priceFormat,
     });
   }
+  return chart.addSeries(LightweightCharts.AreaSeries, {
+    visible,
+    lineColor: col,
+    topColor: col.startsWith('hsl') ? col.replace(')', ', 0.25)').replace('hsl(', 'hsla(') : col + '40',
+    bottomColor: col.startsWith('hsl') ? col.replace(')', ', 0.02)').replace('hsl(', 'hsla(') : col + '05',
+    lineWidth: 2,
+    priceLineVisible: false,
+    lastValueVisible: true,
+    priceFormat,
+  });
+}
 
-  // Свой тултип поверх canvas
-  let tooltip = container.querySelector('#lwcTooltip');
-  if (!tooltip) {
-    tooltip = document.createElement('div');
-    tooltip.id = 'lwcTooltip';
+// ── Полная перезаливка данных во все серии (редкая операция) ─────────────────
+function rebuildAllSeriesData() {
+  chartCoins.forEach(c => {
+    const s = seriesMap[c];
+    if (!s) return;
+    const hist = getHistory(c);
+    if (chartMode === 'candles') {
+      s.setData(aggregateCandles(hist, CANDLE_INTERVAL_MS));
+    } else {
+      s.setData(dedupAscending(hist.map(d => ({ time: toLwcTime(d.ts), value: d.price }))));
+    }
+  });
+  if (chart) chart.timeScale().fitContent();
+}
+
+// ── Точечное обновление всех серий на каждый тик (дёшево, без setData) ───────
+function updateLiveSeries() {
+  chartCoins.forEach(c => {
+    const s = seriesMap[c];
+    if (!s) return;
+    const hist = getHistory(c);
+    if (!hist.length) return;
+    const last = hist[hist.length - 1];
+
+    if (chartMode === 'candles') {
+      const bucketStart = Math.floor(last.ts / CANDLE_INTERVAL_MS) * CANDLE_INTERVAL_MS;
+      const time = toLwcTime(bucketStart);
+      const inBucket = hist.filter(d => Math.floor(d.ts / CANDLE_INTERVAL_MS) * CANDLE_INTERVAL_MS === bucketStart);
+      s.update({
+        time,
+        open: inBucket[0].price,
+        high: Math.max(...inBucket.map(d => d.price)),
+        low:  Math.min(...inBucket.map(d => d.price)),
+        close: inBucket[inBucket.length - 1].price,
+      });
+    } else {
+      s.update({ time: toLwcTime(last.ts), value: last.price });
+    }
+  });
+  updateInfoLabel();
+}
+
+function updateInfoLabel() {
+  const info = document.getElementById('cinfo');
+  if (!info) return;
+  const hist = getHistory(selectedCoin);
+  const last = hist.length ? hist[hist.length - 1] : null;
+  info.textContent = last != null
+    ? `${selectedCoin} · $${Number(last.price).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${hist.length} тиков`
+    : `${selectedCoin} · ожидание данных…`;
+}
+
+// ── Тултип поверх canvas ───────────────────────────────────────────────────────
+function setupTooltip(container, dark, gc) {
+  if (!tooltipEl || !container.contains(tooltipEl)) {
+    tooltipEl = document.createElement('div');
+    tooltipEl.id = 'lwcTooltip';
     container.style.position = 'relative';
-    container.appendChild(tooltip);
+    container.appendChild(tooltipEl);
   }
-  tooltip.style.cssText = `
+  tooltipEl.style.cssText = `
     position:absolute; display:none; pointer-events:none; z-index:20;
     padding:8px 10px; border-radius:8px; font-size:13px; font-weight:700;
     background:${dark ? '#23211f' : '#fff'}; color:${dark ? '#cdccca' : '#28251d'};
@@ -249,12 +330,13 @@ function createChartInstance() {
   `;
 
   chart.subscribeCrosshairMove(param => {
-    if (!param.point || !param.time || !series) {
-      tooltip.style.display = 'none';
+    const activeSeries = seriesMap[selectedCoin];
+    if (!param.point || !param.time || !activeSeries) {
+      tooltipEl.style.display = 'none';
       return;
     }
-    const data = param.seriesData.get(series);
-    if (!data) { tooltip.style.display = 'none'; return; }
+    const data = param.seriesData.get(activeSeries);
+    if (!data) { tooltipEl.style.display = 'none'; return; }
 
     const timeStr = formatTickTime(param.time * 1000);
     let text;
@@ -265,78 +347,12 @@ function createChartInstance() {
       const price = data.value !== undefined ? data.value : data.close;
       text = `${selectedCoin} · $${Number(price).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${timeStr}`;
     }
-    tooltip.innerHTML = text;
-    tooltip.style.display = 'block';
+    tooltipEl.innerHTML = text;
+    tooltipEl.style.display = 'block';
 
-    const x = Math.min(Math.max(param.point.x, 0), container.clientWidth - tooltip.offsetWidth - 10);
+    const x = Math.min(Math.max(param.point.x, 0), container.clientWidth - tooltipEl.offsetWidth - 10);
     const y = Math.max(param.point.y - 40, 0);
-    tooltip.style.left = x + 'px';
-    tooltip.style.top  = y + 'px';
+    tooltipEl.style.left = x + 'px';
+    tooltipEl.style.top  = y + 'px';
   });
-}
-
-function renderChart() {
-  if (!chart || !series) createChartInstance();
-
-  const hist = getHistory(selectedCoin);
-
-  if (chartMode === 'candles') {
-    const bars = aggregateCandles(hist, CANDLE_INTERVAL_MS);
-    series.setData(bars);
-  } else {
-    const col = coinColor(selectedCoin);
-    series.applyOptions({
-      lineColor: col,
-      topColor: col.startsWith('hsl') ? col.replace(')', ', 0.25)').replace('hsl(', 'hsla(') : col + '40',
-      bottomColor: col.startsWith('hsl') ? col.replace(')', ', 0.02)').replace('hsl(', 'hsla(') : col + '05',
-    });
-
-    const points = hist.map(d => ({ time: toLwcTime(d.ts), value: d.price }));
-    const dedup = [];
-    let lastTime = -Infinity;
-    points.forEach(p => {
-      if (p.time <= lastTime) p.time = lastTime + 1;
-      dedup.push(p);
-      lastTime = p.time;
-    });
-    series.setData(dedup);
-  }
-
-  chart.timeScale().fitContent();
-
-  const info = document.getElementById('cinfo');
-  if (info) {
-    const last = hist.length ? hist[hist.length - 1] : null;
-    info.textContent = last != null
-      ? `${selectedCoin} · $${Number(last.price).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${hist.length} тиков`
-      : `${selectedCoin} · ожидание данных…`;
-  }
-}
-
-function updateChartLive() {
-  if (!series || !chart) return;
-  const hist = getHistory(selectedCoin);
-  if (!hist.length) return;
-  const last = hist[hist.length - 1];
-
-  if (chartMode === 'candles') {
-    const bucketStart = Math.floor(last.ts / CANDLE_INTERVAL_MS) * CANDLE_INTERVAL_MS;
-    const time = toLwcTime(bucketStart);
-    const inBucket = hist.filter(d => Math.floor(d.ts / CANDLE_INTERVAL_MS) * CANDLE_INTERVAL_MS === bucketStart);
-    const bar = {
-      time,
-      open: inBucket[0].price,
-      high: Math.max(...inBucket.map(d => d.price)),
-      low:  Math.min(...inBucket.map(d => d.price)),
-      close: inBucket[inBucket.length - 1].price,
-    };
-    series.update(bar);
-  } else {
-    series.update({ time: toLwcTime(last.ts), value: last.price });
-  }
-
-  const info = document.getElementById('cinfo');
-  if (info) {
-    info.textContent = `${selectedCoin} · $${Number(last.price).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${hist.length} тиков`;
-  }
 }

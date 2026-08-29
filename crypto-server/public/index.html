@@ -74,8 +74,8 @@
   <div class="card section-gap">
     <h2>📈 Динамика рынка</h2>
     <div id="chartLegend" class="tabs"></div>
-    <div class="cw"><canvas id="priceChart"></canvas></div>
-    <div id="chartRanges" class="chart-ranges" style="margin-top:8px"></div>
+    <div class="cw"><div id="priceChart"></div></div>
+    <div id="chartModeToggle" class="chart-mode-toggle" style="margin-top:8px"></div>
     <div id="cinfo" style="font-size:12px;color:var(--mu);margin-top:4px;min-height:16px"></div>
   </div>
 
@@ -204,6 +204,7 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/lightweight-charts@5/dist/lightweight-charts.standalone.production.js"></script>
 <script src="/js/chart.js"></script>
 <script src="/js/app.js"></script>
 </body>

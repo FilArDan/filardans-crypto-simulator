@@ -148,3 +148,23 @@ tr:last-child td{border-bottom:none;}
 @media(max-width:960px){.g3{grid-template-columns:1fr 1fr;}.stats{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:600px){.g3{grid-template-columns:1fr;}.stats{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:400px){.stats{grid-template-columns:1fr;}.app{padding:10px;}}
+
+#priceChart {
+  width: 100%;
+  height: 200px;
+}
+
+.chart-mode-toggle { display: flex; gap: 8px; }
+.chart-mode-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--bd, rgba(0,0,0,.1));
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+}
+.chart-mode-btn.on {
+  background: var(--pri);
+  color: #fff;
+  border-color: var(--pri);
+}

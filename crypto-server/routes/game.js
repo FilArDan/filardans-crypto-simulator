@@ -232,4 +232,168 @@ router.get('/loan/info', auth, async (req, res) => {
 
 // ... остальной код из main должен быть ниже ...
 
+// ── ADMIN: coins meta ────────────────────────────────────────────────────────
+router.get('/admin/coins', (req, res) => {
+  if (!req.session || req.session.role !== 'admin')
+    return res.status(403).json({ error: 'Admin only' });
+  try {
+    const getCoinMeta = req.app.get('getCoinMeta');
+    const coinMeta = typeof getCoinMeta === 'function'
+      ? getCoinMeta()
+      : (req.app.get('coinMeta') || {});
+    res.json(coinMeta || {});
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── ADMIN: tick speed ────────────────────────────────────────────────────────
+router.get('/admin/tick-speed', (req, res) => {
+  if (!req.session || req.session.role !== 'admin')
+    return res.status(403).json({ error: 'Admin only' });
+  try {
+    const getTickSpeed = req.app.get('getTickSpeed');
+    const ms = typeof getTickSpeed === 'function' ? getTickSpeed() : null;
+    res.json({ ms });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/admin/set-tick-speed', (req, res) => {
+  if (!req.session || req.session.role !== 'admin')
+    return res.status(403).json({ error: 'Admin only' });
+  try {
+    const { ms } = req.body;
+    if (typeof ms !== 'number' || !isFinite(ms) || ms <= 0) {
+      return res.status(400).json({ error: 'Некорректная скорость' });
+    }
+    const setTickSpeed = req.app.get('setTickSpeed');
+    if (typeof setTickSpeed !== 'function') {
+      return res.status(500).json({ error: 'setTickSpeed недоступен' });
+    }
+    setTickSpeed(ms);
+    res.json({ ok: true, ms });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── ADMIN: exchange assets ───────────────────────────────────────────────────
+router.get('/admin/exchange-assets', async (req, res) => {
+  if (!req.session || req.session.role !== 'admin')
+    return res.status(403).json({ error: 'Admin only' });
+  try {
+    const getPrices = req.app.get('getPrices');
+    const getCoinMeta = req.app.get('getCoinMeta');
+    const prices = typeof getPrices === 'function'
+      ? (getPrices() || {})
+      : (req.app.get('prices') || {});
+    const coinMeta = typeof getCoinMeta === 'function'
+      ? (getCoinMeta() || {})
+      : (req.app.get('coinMeta') || {});
+
+    const exchange = await db.wallets.findOne({ username: 'EXCHANGE' });
+    if (!exchange) {
+      return res.json({ usd: 0, totalCoinValue: 0, totalAssets: 0, coinAssets: [] });
+    }
+
+    const usd = exchange.usd || 0;
+    const skipKeys = new Set(['username', '_id', 'usd', 'isBot', 'botType', 'botEmoji']);
+    let totalCoinValue = 0;
+    const coinAssets = [];
+
+    Object.keys(exchange).forEach(key => {
+      if (skipKeys.has(key)) return;
+      const qty = exchange[key] || 0;
+      const price = prices[key] || 0;
+      const usdValue = qty * price;
+      totalCoinValue += usdValue;
+      const m = coinMeta[key] || {};
+      coinAssets.push({
+        coin: key,
+        name: m.name || key,
+        emoji: m.emoji || '🪙',
+        qty,
+        price,
+        usdValue,
+      });
+    });
+
+    coinAssets.sort((a, b) => b.usdValue - a.usdValue);
+
+    res.json({
+      usd,
+      totalCoinValue,
+      totalAssets: usd + totalCoinValue,
+      coinAssets,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── ADMIN: bots list ─────────────────────────────────────────────────────────
+router.get('/admin/bots', async (req, res) => {
+  if (!req.session || req.session.role !== 'admin')
+    return res.status(403).json({ error: 'Admin only' });
+  try {
+    const getPrices = req.app.get('getPrices');
+    const prices = typeof getPrices === 'function'
+      ? (getPrices() || {})
+      : (req.app.get('prices') || {});
+
+    const bots = await db.wallets.find({ isBot: true });
+    const skipKeys = new Set(['username', '_id', 'usd', 'isBot', 'botType', 'botEmoji']);
+
+    const result = (bots || []).map(b => {
+      const held = {};
+      let coinValue = 0;
+      Object.keys(b).forEach(key => {
+        if (skipKeys.has(key)) return;
+        const qty = b[key] || 0;
+        held[key] = qty;
+        coinValue += qty * (prices[key] || 0);
+      });
+      return {
+        username: b.username,
+        botType: b.botType || 'unknown',
+        botEmoji: b.botEmoji || '🤖',
+        usd: b.usd || 0,
+        held,
+        total: (b.usd || 0) + coinValue,
+      };
+    });
+
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── ADMIN: set player cash ───────────────────────────────────────────────────
+router.post('/admin/set-cash', async (req, res) => {
+  if (!req.session || req.session.role !== 'admin')
+    return res.status(403).json({ error: 'Admin only' });
+  try {
+    const { username, usd } = req.body;
+    if (!username || typeof usd !== 'number' || !isFinite(usd) || usd < 0) {
+      return res.status(400).json({ error: 'Некорректные данные' });
+    }
+
+    const wallet = await db.wallets.findOne({ username });
+    if (!wallet) return res.status(404).json({ error: 'Игрок не найден' });
+
+    await db.wallets.update({ username }, { $set: { usd } }, {});
+    const updated = await db.wallets.findOne({ username });
+
+    const io = req.app.get('io');
+    if (io) io.emit('walletUpdate', { username, wallet: updated });
+
+    res.json({ ok: true, wallet: updated });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

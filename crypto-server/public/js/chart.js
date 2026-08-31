@@ -170,14 +170,26 @@ function getUpDownColors() {
   return { up, dn };
 }
 
+// Схлопывает точки в одну секунду в одну (берём последнюю цену в секунде).
+// Важно: НЕ сдвигаем время вперёд искусственно (как раньше), иначе время в
+// setData() расходится с реальным временем, которое шлёт updateLiveSeries()
+// через series.update() — а Lightweight Charts требует строго неубывающее
+// время и кидает исключение, если live-апдейт приходит с временем меньше
+// уже отрисованного. Именно это "ронял" линейный график после переключения
+// с свечей на линию.
 function dedupAscending(points) {
   const out = [];
-  let lastTime = -Infinity;
   points.forEach(p => {
     const point = { ...p };
-    if (point.time <= lastTime) point.time = lastTime + 1;
-    out.push(point);
-    lastTime = point.time;
+    const last = out[out.length - 1];
+    if (last && point.time === last.time) {
+      out[out.length - 1] = point; // та же секунда — просто обновляем значение
+    } else if (last && point.time < last.time) {
+      // время не может идти назад (ts монотонны), но на всякий случай не ломаем порядок
+      return;
+    } else {
+      out.push(point);
+    }
   });
   return out;
 }

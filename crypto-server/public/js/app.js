@@ -555,7 +555,7 @@ socket.on('coinsUpdated', ({ coins }) => {
       dark = !dark;
       html.setAttribute('data-theme', dark ? 'dark' : 'light');
       btn.textContent = dark ? '☀️' : '🌙';
-      renderChart();
+      if (typeof createChartInstance === 'function') createChartInstance();
     });
   }
 })();

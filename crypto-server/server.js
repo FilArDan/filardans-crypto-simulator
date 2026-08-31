@@ -31,13 +31,14 @@ function getIp(req) {
   return (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
 }
 
-function isWriteRoute(path) {
-  return /^\/api\/(trade|loan$|repay|transfer)/.test(path);
+// Пишущими считаем только не-GET запросы: GET /api/orders и /api/loan/info — чтение
+function isWriteRoute(req) {
+  return req.method !== 'GET' && /^\/api\/(trade|loan|repay|transfer|orders)/.test(req.path);
 }
 
 function rateLimiter(req, res, next) {
   const ip    = getIp(req);
-  const limit = isWriteRoute(req.path) ? LIMIT_WRITE : LIMIT_READ;
+  const limit = isWriteRoute(req) ? LIMIT_WRITE : LIMIT_READ;
   const now   = Date.now();
   let   entry = counters.get(ip);
 

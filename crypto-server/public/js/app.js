@@ -7,6 +7,10 @@ let lastPlayers = null;
 let lastWallet  = null;
 let lastDebt    = 0;
 
+// Средства, зарезервированные под лимитные ордера (в кошельке их уже нет)
+let lastLockedUsd   = 0;
+let lastLockedCoins = {};
+
 // ── Константы торговли (должны совпадать с game.js на сервере) ────────────────
 const TRADE_FEE = 0.004;   // 0.4% комиссия
 const SPREAD    = 0.0015;  // ±0.15% спред
@@ -30,7 +34,7 @@ function showApp(username) {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('appScreen').classList.remove('hidden');
   initChart();
-  loadState();
+  loadState().then(() => { loadOrders(); loadOrderBook(); });
 }
 
 // ── РЕНДЕР ────────────────────────────────────────────────────────────────────
@@ -116,16 +120,26 @@ function renderPortfolio(wallet, coins) {
   const activeCoinsList = coins || currentCoins;
   const body = document.getElementById('portfolioBody');
   if (!body) return;
-  const rows = activeCoinsList.filter(c => (wallet[c] || 0) > 0).map(c => {
-    const val = (wallet[c] || 0) * (prices[c] || 0);
-    const dec = (prices[c] || 0) < 1 ? 4 : 2;
-    return `<tr><td>${c}</td><td>${fmt(wallet[c], 5)}</td><td>$${fmt(prices[c] || 0, dec)}</td><td>$${fmt(val)}</td></tr>`;
-  });
+  const rows = activeCoinsList
+    .filter(c => (wallet[c] || 0) > 0 || (lastLockedCoins[c] || 0) > 0)
+    .map(c => {
+      const free   = wallet[c] || 0;
+      const locked = lastLockedCoins[c] || 0;
+      const val    = (free + locked) * (prices[c] || 0);
+      const dec    = (prices[c] || 0) < 1 ? 4 : 2;
+      const lockNote = locked > 0
+        ? ` <span class="muted" title="Зарезервировано под лимитные ордера">🔒${fmt(locked, 4)}</span>`
+        : '';
+      return `<tr><td>${c}</td><td>${fmt(free, 5)}${lockNote}</td><td>$${fmt(prices[c] || 0, dec)}</td><td>$${fmt(val)}</td></tr>`;
+    });
   body.innerHTML = rows.length
     ? rows.join('')
     : '<tr><td colspan="4" style="color:var(--mu);text-align:center;padding:16px">Резервы пусты</td></tr>';
   const el = document.getElementById('sCash');
-  if (el) el.textContent = '$' + fmt(wallet.usd);
+  if (el) {
+    el.textContent = '$' + fmt(wallet.usd);
+    el.title = lastLockedUsd > 0.005 ? `+ $${fmt(lastLockedUsd)} в резерве под ордера` : '';
+  }
 }
 
 function renderFeed(events) {
@@ -146,13 +160,21 @@ function renderTradeAssets(coins) {
   if (coins.includes(prev)) sel.value = prev;
 }
 
+// Крипторезервы = свободные монеты + зарезервированные под ордера
+function portfolioCoinValue(wallet, p, coins) {
+  return coins.reduce(
+    (s, c) => s + ((wallet[c] || 0) + (lastLockedCoins[c] || 0)) * (p[c] || 0),
+    0
+  );
+}
+
 function recalcByPrices(p) {
   if (lastWallet) {
     renderPortfolio(lastWallet, currentCoins);
-    const coinsVal = currentCoins.reduce((s, c) => s + (lastWallet[c] || 0) * (p[c] || 0), 0);
+    const coinsVal = portfolioCoinValue(lastWallet, p, currentCoins);
     const elTotal = document.getElementById('sTotal');
     const elPort  = document.getElementById('sPort');
-    if (elTotal) elTotal.textContent = '$' + fmt(lastWallet.usd + coinsVal - lastDebt);
+    if (elTotal) elTotal.textContent = '$' + fmt(lastWallet.usd + lastLockedUsd + coinsVal - lastDebt);
     if (elPort)  elPort.textContent  = '$' + fmt(coinsVal);
   }
   if (lastPlayers) renderLeaderboard(lastPlayers, p);
@@ -210,6 +232,232 @@ document.querySelectorAll('.trade-mode-btn').forEach(btn => {
 ['tradeAsset','tradeType','tradeAmount','tradeUsd'].forEach(id => {
   document.getElementById(id)?.addEventListener('input', updateTradeHint);
   document.getElementById(id)?.addEventListener('change', updateTradeHint);
+});
+
+// ── ЛИМИТНЫЕ ОРДЕРА ───────────────────────────────────────────────────────────
+let lastBook   = null;
+let maxOpenOrders = 20;
+
+// Троттлинг сетевых обновлений: не чаще раза в 1.2с, с «хвостовым» вызовом
+function throttled(fn, ms) {
+  let last = 0, timer = null;
+  return () => {
+    const now = Date.now();
+    if (now - last >= ms) { last = now; fn(); return; }
+    if (timer) return;
+    timer = setTimeout(() => { timer = null; last = Date.now(); fn(); }, ms - (now - last));
+  };
+}
+
+function renderOrderAssets(coins) {
+  for (const id of ['orderAsset', 'obAsset']) {
+    const sel = document.getElementById(id);
+    if (!sel) continue;
+    const prev = sel.value;
+    sel.innerHTML = coins.map(c => `<option value="${c}">${c}</option>`).join('');
+    if (coins.includes(prev)) sel.value = prev;
+  }
+}
+
+function currentBookCoin() {
+  return document.getElementById('obAsset')?.value || currentCoins[0] || '';
+}
+
+function updateOrderHint() {
+  const hint   = document.getElementById('orderHint');
+  const coin   = document.getElementById('orderAsset')?.value;
+  const side   = document.getElementById('orderSide')?.value;
+  if (!hint || !coin) return;
+
+  const price  = parseFloat(document.getElementById('orderPrice')?.value) || 0;
+  const amount = parseFloat(document.getElementById('orderAmount')?.value) || 0;
+  const market = prices[coin] || 0;
+
+  if (price <= 0 || amount <= 0) {
+    hint.textContent = market > 0
+      ? `Рынок: $${fmt(market, market < 1 ? 4 : 2)} — ордер сработает, когда курс дойдёт до лимита`
+      : '';
+    return;
+  }
+
+  if (side === 'buy') {
+    const need = price * amount * (1 + TRADE_FEE);
+    hint.textContent = `Резерв: $${fmt(need)} (с комиссией ${(TRADE_FEE * 100).toFixed(1)}%)` +
+      (market > 0 && price >= market * (1 + SPREAD) ? ' · исполнится сразу' : '');
+  } else {
+    const get = price * amount * (1 - TRADE_FEE);
+    hint.textContent = `Резерв: ${fmt(amount, 6)} ${coin} → ≈ $${fmt(get)}` +
+      (market > 0 && price <= market * (1 - SPREAD) ? ' · исполнится сразу' : '');
+  }
+}
+
+function renderOrders(data) {
+  const body = document.getElementById('ordersBody');
+  const cnt  = document.getElementById('ordersCount');
+  const lock = document.getElementById('ordersLocked');
+  if (!body || !data || data.error) return;
+
+  if (data.maxOpen) maxOpenOrders = data.maxOpen;
+
+  const open   = data.open   || [];
+  const closed = data.closed || [];
+
+  if (cnt) cnt.textContent = `${open.length} / ${maxOpenOrders}`;
+
+  if (lock) {
+    const parts = [];
+    if ((data.lockedUsd || 0) > 0.005) parts.push(`$${fmt(data.lockedUsd)}`);
+    for (const [coin, amt] of Object.entries(data.lockedCoins || {})) {
+      if (amt > 0) parts.push(`${fmt(amt, 6)} ${coin}`);
+    }
+    lock.textContent = parts.length ? `🔒 В резерве под ордера: ${parts.join(' · ')}` : '';
+  }
+
+  const rows = [];
+  for (const o of open) {
+    const dec  = o.price < 1 ? 5 : 2;
+    const pct  = o.amount > 0 ? Math.min(100, Math.round(o.filled / o.amount * 100)) : 0;
+    rows.push(`<tr>
+      <td>${o.coin}</td>
+      <td><span class="${o.side === 'buy' ? 'ord-side-buy' : 'ord-side-sell'}">${o.side === 'buy' ? 'Покупка' : 'Продажа'}</span></td>
+      <td>$${fmt(o.price, dec)}</td>
+      <td>${fmt(o.filled, 4)} / ${fmt(o.amount, 4)}<span class="ord-fill"><span style="width:${pct}%"></span></span></td>
+      <td><button class="ord-cancel" data-cancel="${o._id}">✕</button></td>
+    </tr>`);
+  }
+  for (const o of closed.slice(0, 5)) {
+    const dec = o.price < 1 ? 5 : 2;
+    const st  = o.status === 'filled' ? 'исполнен ✅' : 'отменён';
+    rows.push(`<tr class="ord-done">
+      <td>${o.coin}</td>
+      <td>${o.side === 'buy' ? 'Покупка' : 'Продажа'}</td>
+      <td>$${fmt(o.price, dec)}</td>
+      <td>${fmt(o.filled, 4)} / ${fmt(o.amount, 4)}</td>
+      <td>${st}</td>
+    </tr>`);
+  }
+
+  body.innerHTML = rows.length
+    ? rows.join('')
+    : '<tr><td colspan="5" style="color:var(--mu);text-align:center;padding:14px">Активных ордеров нет</td></tr>';
+}
+
+function renderOrderBook(book) {
+  const asksEl = document.getElementById('obAsks');
+  const bidsEl = document.getElementById('obBids');
+  const midEl  = document.getElementById('obMid');
+  if (!asksEl || !bidsEl || !midEl || !book || book.error) return;
+
+  lastBook = book;
+  const dec = book.price < 1 ? 5 : 2;
+  const maxAmt = Math.max(
+    ...(book.bids || []).map(l => l.amount),
+    ...(book.asks || []).map(l => l.amount),
+    0.000001
+  );
+
+  const row = (lvl, cls) => {
+    const w = Math.min(100, Math.round(lvl.amount / maxAmt * 100));
+    return `<div class="ob-row ${cls}${lvl.mine ? ' mine' : ''}" data-price="${lvl.price}">
+      <span class="ob-depth" style="width:${w}%"></span>
+      <span class="ob-price">$${fmt(lvl.price, dec)}</span>
+      <span>${fmt(lvl.amount, 4)}${lvl.count > 1 ? ` <span class="muted">×${lvl.count}</span>` : ''}</span>
+    </div>`;
+  };
+
+  asksEl.innerHTML = (book.asks || []).length
+    ? [...book.asks].reverse().map(l => row(l, 'ask')).join('')
+    : '<div class="ob-empty">Нет заявок на продажу</div>';
+  bidsEl.innerHTML = (book.bids || []).length
+    ? book.bids.map(l => row(l, 'bid')).join('')
+    : '<div class="ob-empty">Нет заявок на покупку</div>';
+
+  midEl.innerHTML =
+    `<span class="ob-last">$${fmt(book.price, dec)}</span>` +
+    `<span class="muted">биржа: $${fmt(book.bidPrice, dec)} / $${fmt(book.askPrice, dec)}</span>`;
+}
+
+async function loadOrders() {
+  const data = await api('GET', '/api/orders');
+  renderOrders(data);
+}
+
+async function loadOrderBook() {
+  const coin = currentBookCoin();
+  if (!coin) return;
+  const book = await api('GET', '/api/orderbook?coin=' + encodeURIComponent(coin));
+  if (book && !book.error) renderOrderBook(book);
+}
+
+const refreshOrders   = throttled(loadOrders,   1200);
+const refreshOrderBook = throttled(loadOrderBook, 1200);
+
+// Обновляем только строку рыночной цены при тике — без лишнего запроса
+function updateBookMid(p) {
+  const midEl = document.getElementById('obMid');
+  const coin  = currentBookCoin();
+  if (!midEl || !lastBook || !coin || p[coin] == null) return;
+  lastBook.price    = p[coin];
+  lastBook.bidPrice = p[coin] * (1 - SPREAD);
+  lastBook.askPrice = p[coin] * (1 + SPREAD);
+  const dec = lastBook.price < 1 ? 5 : 2;
+  midEl.innerHTML =
+    `<span class="ob-last">$${fmt(lastBook.price, dec)}</span>` +
+    `<span class="muted">биржа: $${fmt(lastBook.bidPrice, dec)} / $${fmt(lastBook.askPrice, dec)}</span>`;
+}
+
+document.getElementById('orderForm')?.addEventListener('submit', async e => {
+  e.preventDefault();
+  const err = document.getElementById('orderError');
+  err.textContent = '';
+  const coin   = document.getElementById('orderAsset').value;
+  const side   = document.getElementById('orderSide').value;
+  const price  = parseFloat(document.getElementById('orderPrice').value);
+  const amount = parseFloat(document.getElementById('orderAmount').value);
+  if (!Number.isFinite(price) || price <= 0)   { err.textContent = 'Укажи цену исполнения'; return; }
+  if (!Number.isFinite(amount) || amount <= 0) { err.textContent = 'Укажи объём'; return; }
+
+  const res = await api('POST', '/api/orders', { coin, side, price, amount });
+  if (res.error) { err.textContent = res.error; return; }
+  document.getElementById('orderAmount').value = '';
+  updateOrderHint();
+  await Promise.all([loadOrders(), loadOrderBook()]);
+  loadState();
+});
+
+document.getElementById('ordersBody')?.addEventListener('click', async e => {
+  const btn = e.target.closest('[data-cancel]');
+  if (!btn) return;
+  const err = document.getElementById('orderError');
+  err.textContent = '';
+  btn.disabled = true;
+  const res = await api('DELETE', '/api/orders/' + encodeURIComponent(btn.dataset.cancel));
+  if (res.error) { err.textContent = res.error; btn.disabled = false; return; }
+  await Promise.all([loadOrders(), loadOrderBook()]);
+  loadState();
+});
+
+document.getElementById('obAsset')?.addEventListener('change', loadOrderBook);
+
+document.getElementById('obAsks')?.addEventListener('click', e => pickBookPrice(e));
+document.getElementById('obBids')?.addEventListener('click', e => pickBookPrice(e));
+
+function pickBookPrice(e) {
+  const row = e.target.closest('[data-price]');
+  if (!row) return;
+  const priceInput = document.getElementById('orderPrice');
+  const assetSel   = document.getElementById('orderAsset');
+  const coin       = currentBookCoin();
+  if (assetSel && [...assetSel.options].some(o => o.value === coin)) assetSel.value = coin;
+  if (priceInput) priceInput.value = row.dataset.price;
+  const sideSel = document.getElementById('orderSide');
+  if (sideSel) sideSel.value = row.classList.contains('ask') ? 'buy' : 'sell';
+  updateOrderHint();
+}
+
+['orderAsset','orderSide','orderPrice','orderAmount'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', updateOrderHint);
+  document.getElementById(id)?.addEventListener('change', updateOrderHint);
 });
 
 // ── КРЕДИТ UI ─────────────────────────────────────────────────────────────────
@@ -341,8 +589,10 @@ async function loadState() {
     updateChartCoins(data.coins);
   }
 
-  lastPlayers = data.players;
-  lastWallet  = data.wallet;
+  lastPlayers     = data.players;
+  lastWallet      = data.wallet;
+  lastLockedUsd   = data.lockedUsd   || 0;
+  lastLockedCoins = data.lockedCoins || {};
 
   renderTicker(data.prices);
   renderPortfolio(data.wallet, data.coins);
@@ -350,18 +600,21 @@ async function loadState() {
   renderLeaderboard(data.players, data.prices);
   renderTransferSelect(data.players);
   renderTradeAssets(data.coins || currentCoins);
+  renderOrderAssets(data.coins || currentCoins);
   renderLoanInfo(loanInfo);
   addPricePoint(data.prices);
   updateTradeHint();
+  updateOrderHint();
 
-  const coinsVal = (data.coins || currentCoins)
-    .reduce((s, c) => s + (data.wallet[c] || 0) * (data.prices[c] || 0), 0);
+  if (data.maxOpenOrders) maxOpenOrders = data.maxOpenOrders;
+
+  const coinsVal = portfolioCoinValue(data.wallet, data.prices, data.coins || currentCoins);
   const debt = loanInfo && loanInfo.loan ? loanInfo.loan.due : 0;
   lastDebt = debt;
 
   const elTotal = document.getElementById('sTotal');
   const elPort  = document.getElementById('sPort');
-  if (elTotal) elTotal.textContent = '$' + fmt(data.wallet.usd + coinsVal - debt);
+  if (elTotal) elTotal.textContent = '$' + fmt(data.wallet.usd + lastLockedUsd + coinsVal - debt);
   if (elPort)  elPort.textContent  = '$' + fmt(coinsVal);
 }
 
@@ -500,6 +753,18 @@ socket.on('priceUpdate', p => {
   addPricePoint(p);
   prevPrices = { ...p };
   recalcByPrices(p);
+  updateBookMid(p);
+  updateOrderHint();
+});
+
+socket.on('orderUpdate', ({ username }) => {
+  if (username !== myUsername) return;
+  refreshOrders();
+  loadState();
+});
+
+socket.on('orderbookUpdate', ({ coin }) => {
+  if (coin === currentBookCoin()) refreshOrderBook();
 });
 
 socket.on('newEvent', ev => {
@@ -541,7 +806,10 @@ socket.on('coinsUpdated', ({ coins }) => {
   currentCoins = coins;
   updateChartCoins(coins);
   renderTradeAssets(coins);
+  renderOrderAssets(coins);
   loadState();
+  loadOrders();
+  loadOrderBook();
 });
 
 // ── ТЕМА ──────────────────────────────────────────────────────────────────────

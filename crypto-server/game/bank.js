@@ -89,6 +89,13 @@ async function accrueInterest(io, prices, priceHistory) {
 
 // ── Государственный дефолт ────────────────────────────────────────────────────
 async function executeDefault(username, wallet, loanDue, prices, coins, io) {
+  // Снимаем лимитные ордера: активы в резерве тоже подлежат реализации,
+  // иначе долг можно было бы «спрятать» в стакане
+  const { cancelOrdersForUser } = require('./orders');
+  await cancelOrdersForUser(username, io);
+  const freed = await db.wallets.findOne({ username });
+  if (freed) wallet = freed;
+
   // Принудительно продаём все монеты игрока — они физически переходят на счёт биржи
   let proceeds = 0;
   for (const coin of coins) {

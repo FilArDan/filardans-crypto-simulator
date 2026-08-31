@@ -13,10 +13,16 @@ const db = {
   customCoins:  new NeDB({ filename: path.join(dbDir, 'customCoins.db'),  autoload: true }),
   bots:         new NeDB({ filename: path.join(dbDir, 'bots.db'),         autoload: true }),
   priceHistory: new NeDB({ filename: path.join(dbDir, 'priceHistory.db'), autoload: true }),
+  orders:       new NeDB({ filename: path.join(dbDir, 'orders.db'),       autoload: true }),
 };
 
 // Индекс для быстрой фильтрации по монете
 db.priceHistory.ensureIndex({ fieldName: 'coin' });
+
+// Индексы стакана лимитных ордеров
+db.orders.ensureIndex({ fieldName: 'username' });
+db.orders.ensureIndex({ fieldName: 'coin' });
+db.orders.ensureIndex({ fieldName: 'status' });
 
 const DEFAULT_BOTS = [
   { name: 'Агрессор-1', type: 'bull', usd: 15000, held: {}, avgP: {}, target: {} },

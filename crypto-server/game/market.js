@@ -68,9 +68,19 @@ async function tick(io) {
 
   await botTick(io, prices);
 
-  const updatedDocs = await db.prices.find({});
-  const updatedPrices = {};
+  let updatedDocs = await db.prices.find({});
+  let updatedPrices = {};
   updatedDocs.forEach(d => { updatedPrices[d.coin] = d.price; });
+
+  // Исполняем лимитные ордера по новым котировкам
+  const { runMatching } = require('./orders');
+  const matched = await runMatching(io, updatedPrices);
+  if (matched.fills > 0) {
+    updatedDocs   = await db.prices.find({});
+    updatedPrices = {};
+    updatedDocs.forEach(d => { updatedPrices[d.coin] = d.price; });
+  }
+
   if (io) io.emit('priceUpdate', updatedPrices);
 
   await accrueInterest(io, updatedPrices, priceHistory);

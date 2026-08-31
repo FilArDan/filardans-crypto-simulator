@@ -3,6 +3,10 @@ const router  = express.Router();
 const { db, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY } = require('../db');
 const { tick, applyTradePressure, deleteCoinHistory } = require('../game/market');
 const { getBotStats, priceHistory, listBotsRaw, createBot, deleteBot, setBotCash, updateBotPreset } = require('../game/bots');
+const {
+  placeOrder, cancelOrder, listUserOrders, getOrderBook,
+  cancelOrdersForCoin, cancelOrdersForUser, MAX_OPEN_ORDERS,
+} = require('../game/orders');
 
 const TRADE_FEE = 0.004;   // 0.4% комиссия
 const SPREAD    = 0.0015;  // ±0.15% спред (итого 0.3% между buy/sell ценой)
@@ -87,7 +91,15 @@ router.get('/state', auth, async (req, res) => {
     }));
     players.push(...bots);
     const paused = req.app.get('isPaused')();
-    res.json({ prices, wallet, loans, events, players, coins: allCoins, paused, spread: SPREAD, tradeFee: TRADE_FEE });
+    const orders = await listUserOrders(req.session.username, false);
+    res.json({
+      prices, wallet, loans, events, players, coins: allCoins, paused,
+      spread: SPREAD, tradeFee: TRADE_FEE,
+      openOrders:  orders.open.length,
+      lockedUsd:   orders.lockedUsd,
+      lockedCoins: orders.lockedCoins,
+      maxOpenOrders: MAX_OPEN_ORDERS,
+    });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -162,6 +174,46 @@ router.post('/trade', auth, async (req, res) => {
       await emitBankUpdate(io);
       res.json({ wallet: updated, prices: updatedPrices });
     }
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ЛИМИТНЫЕ ОРДЕРА ────────────────────────────────────────────────────────────
+router.post('/orders', auth, async (req, res) => {
+  try {
+    const result = await placeOrder({
+      username: req.session.username,
+      coin:     (req.body.coin || '').toUpperCase(),
+      side:     req.body.side,
+      price:    req.body.price,
+      amount:   req.body.amount,
+    }, req.app.get('io'));
+    if (result.error) return res.json({ error: result.error });
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/orders', auth, async (req, res) => {
+  try {
+    const includeClosed = req.query.status !== 'open';
+    res.json(await listUserOrders(req.session.username, includeClosed));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/orders/:id', auth, async (req, res) => {
+  try {
+    const result = await cancelOrder(req.session.username, req.params.id, req.app.get('io'));
+    if (result.error) return res.json({ error: result.error });
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/orderbook', auth, async (req, res) => {
+  try {
+    const coin = (req.query.coin || '').toUpperCase();
+    if (!coin) return res.json({ error: 'Укажи монету' });
+    const book = await getOrderBook(coin, req.session.username);
+    if (book.error) return res.json(book);
+    res.json(book);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -303,6 +355,9 @@ router.delete('/admin/player/:username', auth, adminOnly, async (req, res) => {
       return res.status(403).json({ error: 'Системные аккаунты нельзя удалять' });
     const user = await db.users.findOne({ username });
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+    // Сначала снимаем ордера — резервы вернутся в кошелёк, который удаляется следом
+    await cancelOrdersForUser(username, req.app.get('io'));
+    await db.orders.remove({ username }, { multi: true });
     await db.users.remove({ username }, {});
     await db.wallets.remove({ username }, {});
     await db.loans.remove({ username }, { multi: true });
@@ -495,6 +550,8 @@ router.delete('/admin/coin/:ticker', auth, adminOnly, async (req, res) => {
     const priceDoc = await db.prices.findOne({ coin: ticker });
     if (!priceDoc) return res.status(404).json({ error: 'Монета не найдена' });
     const curPrice = priceDoc.price || 0;
+    // Снимаем лимитные ордера по монете — резервы возвращаются игрокам до выкупа
+    await cancelOrdersForCoin(ticker, req.app.get('io'));
     const wallets  = await db.wallets.find({ username: { $ne: EXCHANGE_USERNAME } });
     for (const w of wallets) {
       const holding = w[ticker] || 0;

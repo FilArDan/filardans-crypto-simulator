@@ -125,10 +125,47 @@
         </form>
       </div>
 
+      <!-- Limit orders -->
+      <div class="card">
+        <h2>🎯 Лимитные ордера <span id="ordersCount" class="lbl-inline"></span></h2>
+        <form id="orderForm" class="compact-form">
+          <div class="trade-selects">
+            <select id="orderAsset"></select>
+            <select id="orderSide">
+              <option value="buy">🟢 Купить по цене</option>
+              <option value="sell">🔴 Продать по цене</option>
+            </select>
+          </div>
+          <div class="order-grid">
+            <div class="fld"><label class="lbl">Цена (USD)</label><input id="orderPrice" type="number" step="any" min="0" placeholder="0.00"></div>
+            <div class="fld"><label class="lbl">Объём</label><input id="orderAmount" type="number" step="any" min="0" placeholder="0.0"></div>
+          </div>
+          <div id="orderHint" class="trade-hint"></div>
+          <button type="submit" class="btn btn-primary btn-sm">Разместить ордер</button>
+          <div id="orderError" class="err-msg"></div>
+        </form>
+        <div id="ordersLocked" class="orders-locked"></div>
+        <table class="orders-table">
+          <thead><tr><th>Актив</th><th>Тип</th><th>Цена</th><th>Исполнено</th><th></th></tr></thead>
+          <tbody id="ordersBody"></tbody>
+        </table>
+      </div>
+
     </div>
 
-    <!-- Col 2: Transfer + Loan -->
+    <!-- Col 2: Order book + Transfer + Loan -->
     <div class="col-stack">
+
+      <!-- Order book -->
+      <div class="card">
+        <h2>📖 Биржевой стакан</h2>
+        <select id="obAsset" style="margin-bottom:10px"></select>
+        <div class="ob-head"><span>Цена</span><span>Объём</span></div>
+        <div id="obAsks" class="ob-side"></div>
+        <div id="obMid" class="ob-mid"></div>
+        <div id="obBids" class="ob-side"></div>
+        <div class="ob-note">Клик по уровню — подставить цену в форму ордера</div>
+      </div>
 
       <!-- Transfer -->
       <div class="card">

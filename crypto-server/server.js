@@ -65,7 +65,7 @@ setInterval(() => {
   for (const [ip, entry] of counters) {
     if (now > entry.resetAt) counters.delete(ip);
   }
-}, 30_000);
+}, 30_000).unref();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -83,7 +83,7 @@ class NeDBSessionStore extends Store {
     // Чистим протухшие сессии каждые 10 минут
     setInterval(() => {
       this.db.remove({ expiresAt: { $lt: Date.now() } }, { multi: true });
-    }, 10 * 60 * 1000);
+    }, 10 * 60 * 1000).unref();
   }
 
   get(sid, cb) {
@@ -173,7 +173,32 @@ initDb().then(() => {
     console.log('\n✅ Сервер запущен: http://localhost:' + PORT);
     console.log('   Игроки: http://localhost:' + PORT + '/');
     console.log('   Админ:  http://localhost:' + PORT + '/admin.html\n');
+    console.log('   Для остановки: Ctrl+C в этом окне (дождись "данные сохранены")\n');
   });
 }).catch(err => {
   console.error('Ошибка запуска:', err);
 });
+
+// ── Корректная остановка ────────────────────────────────────────────────────
+// Останавливаем тик и дожидаемся, пока текущие операции NeDB допишутся на
+// диск, вместо мгновенного убийства процесса (которое может оборвать запись
+// файла БД посередине).
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`\n⏹️  ${signal} получен — останавливаю тик и завершаю текущие операции...`);
+  clearInterval(marketTimer);
+  io.close();
+  httpServer.close(() => {
+    console.log('✅ Сервер остановлен, данные сохранены на диск.');
+  });
+  // Подстраховка на случай, если что-то держит процесс живым дольше нормы
+  setTimeout(() => {
+    console.log('⌛ Таймаут остановки истёк — завершаю принудительно.');
+    process.exit(0);
+  }, 5000).unref();
+}
+process.on('SIGINT',  () => shutdown('SIGINT (Ctrl+C)'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGHUP',  () => shutdown('SIGHUP (закрытие терминала)'));

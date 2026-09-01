@@ -63,6 +63,12 @@ function fmtTime(ts) {
          t.getMinutes().toString().padStart(2,'0');
 }
 
+// Юникод-безопасный id для DOM: сохраняет буквы/цифры любого алфавита (кириллица
+// в том числе), вырезает только реально проблемные для id/селекторов символы —
+// иначе разные игроки/боты с именами одной длины (напр. "Игорь" и "Артур")
+// схлопываются в один и тот же id, и элементы начинают путаться местами.
+function safeIdFor(str) { return String(str || '').replace(/[^\p{L}\p{N}]/gu, '_'); }
+
 function coinDec(c)  { return BASE_COINS.includes(c) ? 5 : 3; }
 function priceDec(c) {
   const p = prices[c] || 0;
@@ -404,7 +410,7 @@ function renderBots() {
     const presetBtns = Object.entries(PRESET_INFO).map(([key, info]) =>
       `<button class="preset-btn ${bot.botType === key ? 'active' : ''}" onclick="setBotPreset('${bot.username}','${key}')">${info.label}</button>`
     ).join('');
-    const safeId = bot.username.replace(/[^a-zA-Z0-9]/g,'_');
+    const safeId = safeIdFor(bot.username);
 
     return `
     <div class="bot-card" id="bot-card-${safeId}">
@@ -457,7 +463,7 @@ function updateBotTotals() {
     );
     bot.total = (bot.usd || 0) + coinValue;
 
-    const safeId  = bot.username.replace(/[^a-zA-Z0-9]/g, '_');
+    const safeId  = safeIdFor(bot.username);
     const card    = document.getElementById(`bot-card-${safeId}`);
     if (!card) return;
     const totalEl = card.querySelector('.bot-total');
@@ -472,7 +478,7 @@ async function setBotPreset(name, type) {
 }
 
 async function setBotCashAdmin(name) {
-  const safeId = name.replace(/[^a-zA-Z0-9]/g,'_');
+  const safeId = safeIdFor(name);
   const input  = document.getElementById(`bot-cash-${safeId}`);
   const usd    = parseFloat(input?.value);
   if (isNaN(usd) || usd < 0) return;
@@ -588,7 +594,7 @@ function renderPlayers() {
   tbody.innerHTML = sorted.map(w => {
     const debt     = allLoans.filter(l => l.username === w.username).reduce((s,l) => s + l.due, 0);
     const isSystem = w.username === 'admin';
-    const safeId   = w.username.replace(/[^a-zA-Z0-9]/g, '_');
+    const safeId   = safeIdFor(w.username);
     const cur      = allCurrencies.find(c => c.nation === w.username) || { code: 'USD', name: 'Доллар', symbol: '$', rate: 1 };
     return `<tr>
       <td><strong>${w.username}</strong></td>
@@ -607,7 +613,7 @@ function renderPlayers() {
       `}</td>
     </tr>
     ${isSystem ? '' : `
-    <tr id="wallet-edit-${safeId}" hidden>
+    <tr id="wallet-edit-${safeId}" ${expandedPlayer === safeId ? '' : 'hidden'}>
       <td colspan="${COINS.length + 5}">
         <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;padding:8px 0">
           <label class="fld" style="margin:0">USD
@@ -653,7 +659,12 @@ function renderPlayers() {
   }).join('');
 }
 
+// Какая строка "Активы" сейчас развёрнута — переживает перерисовку таблицы
+// (сокет-события могут дёргать renderPlayers() в фоне, пока админ её редактирует)
+let expandedPlayer = null;
+
 function togglePlayerWallet(safeId) {
+  expandedPlayer = expandedPlayer === safeId ? null : safeId;
   const row = document.getElementById(`wallet-edit-${safeId}`);
   if (row) row.hidden = !row.hidden;
 }
@@ -1027,6 +1038,16 @@ async function loadUnionsData() {
 }
 
 // ── ЗАГРУЗКА ВСЕХ ДАННЫХ ─────────────────────────────────────────────────────
+// Сокет-события (walletUpdate/coinsUpdated) прилетают часто и пачками —
+// особенно от торговли ботов. Без дебаунса каждое из них по отдельности
+// дёргает полный набор GET-запросов ниже, что и забивает rate limiter,
+// и постоянно перерисовывает таблицу игроков (схлопывая открытые панели).
+let reloadDebounce = null;
+function debouncedReload() {
+  clearTimeout(reloadDebounce);
+  reloadDebounce = setTimeout(loadAdminData, 800);
+}
+
 async function loadAdminData() {
   const [adminData, stateData, coinsData, currenciesData] = await Promise.all([
     api('GET', '/api/admin/players'),
@@ -1135,7 +1156,7 @@ socket.on('bankUpdate', ({ usd, totalIssued, totalDebt }) => {
 
 socket.on('coinsUpdated', ({ coins }) => {
   COINS = coins;
-  loadAdminData();
+  debouncedReload();
 });
 
 socket.on('newEvent', ev => {
@@ -1154,10 +1175,11 @@ socket.on('newEvent', ev => {
     const el = document.getElementById('dealCount');
     if (el) el.textContent = dealCount;
   }
-  loadAdminData();
+  // Полную перезагрузку не дёргаем здесь — за реальные изменения баланса/цен
+  // уже отвечают свои события (walletUpdate/priceUpdate); лента и так обновилась выше.
 });
 
-socket.on('walletUpdate', () => loadAdminData());
+socket.on('walletUpdate', () => debouncedReload());
 
 // ── ИНИЦИАЛИЗАЦИЯ ─────────────────────────────────────────────────────────────
 api('GET', '/auth/me').then(res => {

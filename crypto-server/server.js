@@ -37,6 +37,11 @@ function isWriteRoute(req) {
 }
 
 function rateLimiter(req, res, next) {
+  // Админка (одна доверенная учётная запись ГМа за сессией) не подлежит
+  // IP-лимиту, придуманному против злоупотреблений игровыми эндпоинтами —
+  // её дашборд легитимно шлёт пачки GET-запросов при каждом обновлении.
+  if (req.session && req.session.role === 'admin') return next();
+
   const ip    = getIp(req);
   const limit = isWriteRoute(req) ? LIMIT_WRITE : LIMIT_READ;
   const now   = Date.now();

@@ -9,6 +9,12 @@ const {
   cancelOrdersForCoin, cancelOrdersForUser, MAX_OPEN_ORDERS,
 } = require('../game/orders');
 const { createCompany, updateCompany, deleteCompany, listCompanies } = require('../game/companies');
+const {
+  createUnion, addMember, removeMember, deleteUnion,
+  addCompanyUnionListing, removeCompanyUnionListing,
+  banAsset, unbanAsset, listRestrictions,
+  listUnions, listUnionsAdmin,
+} = require('../game/unions');
 
 const TRADE_FEE = 0.004;   // 0.4% комиссия
 const SPREAD    = 0.0015;  // ±0.15% спред (итого 0.3% между buy/sell ценой)
@@ -54,7 +60,7 @@ async function emitPlayersUpdate(io) {
     const prices     = await getAllPrices();
     const allWallets = await db.wallets.find({ username: { $ne: 'admin' } });
     const players = allWallets
-      .filter(w => w.username !== EXCHANGE_USERNAME)
+      .filter(w => w.username !== EXCHANGE_USERNAME && !w.username.startsWith('UNION_'))
       .map(w => ({ username: w.username, usd: w.usd, coins: w, isBot: false }));
     const bots = (await getBotStats(prices)).map(b => ({
       username: b.username,
@@ -92,7 +98,7 @@ router.get('/state', auth, async (req, res) => {
     const allWallets = await db.wallets.find({ username: { $ne: 'admin' } });
     const allCoins   = await getAllCoins();
     const players = allWallets
-      .filter(w => w.username !== EXCHANGE_USERNAME)
+      .filter(w => w.username !== EXCHANGE_USERNAME && !w.username.startsWith('UNION_'))
       .map(w => ({ username: w.username, usd: w.usd, coins: w, isBot: false }));
     const bots = (await getBotStats(prices)).map(b => ({
       username: b.username,
@@ -126,9 +132,14 @@ router.post('/trade', auth, async (req, res) => {
     const allCoins = await getAllCoins();
     if (!allCoins.includes(coin)) return res.json({ error: 'Неизвестная монета' });
 
+    const { canTrade, resolveReserveAccount } = require('../game/unions');
+    const access = await canTrade(req.session.username, coin);
+    if (!access.ok) return res.json({ error: access.reason });
+    const reserveAccount = await resolveReserveAccount(coin);
+
     const priceDoc       = await db.prices.findOne({ coin });
     const wallet         = await db.wallets.findOne({ username: req.session.username });
-    const exchangeWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+    const exchangeWallet = await db.wallets.findOne({ username: reserveAccount });
     const midPrice       = priceDoc.price;
     const io             = req.app.get('io');
 
@@ -148,7 +159,7 @@ router.post('/trade', auth, async (req, res) => {
 
       // Игрок платит USD → биржа; биржа отдаёт монеты → игрок
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: -cost,   [coin]: +amount } });
-      await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: +cost,   [coin]: -amount } });
+      await db.wallets.update({ username: reserveAccount },       { $inc: { usd: +cost,   [coin]: -amount } });
 
       const newCoinPrice  = await applyTradePressure(coin, amount, action);
       const updatedPrices = await getAllPrices();
@@ -172,7 +183,7 @@ router.post('/trade', auth, async (req, res) => {
 
       // Игрок отдаёт монеты → биржа; биржа платит USD → игрок
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: +proceeds, [coin]: -amount } });
-      await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: -proceeds, [coin]: +amount } });
+      await db.wallets.update({ username: reserveAccount },       { $inc: { usd: -proceeds, [coin]: +amount } });
 
       const newCoinPrice  = await applyTradePressure(coin, amount, action);
       const updatedPrices = await getAllPrices();
@@ -743,25 +754,27 @@ router.post('/admin/coin/create', auth, adminOnly, async (req, res) => {
 });
 
 // Снимает ордера, выкупает актив у всех держателей по рыночной цене и удаляет
-// его из db.prices/db.priceHistory. Общий шаг для удаления монеты и компании —
-// с точки зрения рынка это один и тот же тикер.
-async function buybackAndRemoveAsset(ticker, io) {
+// его из db.prices/db.priceHistory. Общий шаг для удаления монеты, компании и
+// союзного токена — с точки зрения рынка это один и тот же тикер.
+// fundingAccount — чей кошелёк финансирует выкуп (обычно EXCHANGE, но для
+// союзного токена это резерв самого союза).
+async function buybackAndRemoveAsset(ticker, io, fundingAccount = EXCHANGE_USERNAME) {
   const priceDoc = await db.prices.findOne({ coin: ticker });
   if (!priceDoc) return false;
   const curPrice = priceDoc.price || 0;
   // Снимаем лимитные ордера по монете — резервы возвращаются игрокам до выкупа
   await cancelOrdersForCoin(ticker, io);
-  const wallets = await db.wallets.find({ username: { $ne: EXCHANGE_USERNAME } });
+  const wallets = await db.wallets.find({ username: { $ne: fundingAccount } });
   for (const w of wallets) {
     const holding = w[ticker] || 0;
     if (holding > 0 && curPrice > 0) {
-      // Выкупаем монеты у игроков за USD биржи
+      // Выкупаем монеты у игроков за USD биржи/резерва
       await db.wallets.update({ _id: w._id }, { $inc: { usd: holding * curPrice }, $set: { [ticker]: 0 } });
-      await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: -(holding * curPrice) }, $set: { [ticker]: 0 } });
+      await db.wallets.update({ username: fundingAccount }, { $inc: { usd: -(holding * curPrice) }, $set: { [ticker]: 0 } });
     }
   }
-  // Обнуляем запас биржи по этой монете
-  await db.wallets.update({ username: EXCHANGE_USERNAME }, { $set: { [ticker]: 0 } });
+  // Обнуляем запас биржи/резерва по этой монете
+  await db.wallets.update({ username: fundingAccount }, { $set: { [ticker]: 0 } });
   await db.prices.remove({ coin: ticker }, {});
   await db.customCoins.remove({ ticker }, {});
   await deleteCoinHistory(ticker);
@@ -843,6 +856,121 @@ router.get('/companies', auth, async (req, res) => {
   try {
     const prices = await getAllPrices();
     res.json(await listCompanies(prices, req.session.username));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/company/listing', auth, adminOnly, async (req, res) => {
+  try {
+    const { ticker, unionCode, unionFloat, remove } = req.body;
+    const company = remove
+      ? await removeCompanyUnionListing(ticker, unionCode)
+      : await addCompanyUnionListing(ticker, unionCode, unionFloat);
+    const ev = {
+      ts: Date.now(),
+      text: remove
+        ? `Админ снял компанию ${ticker} с биржи союза ${unionCode}`
+        : `Админ вынес компанию ${ticker} на биржу союза ${unionCode}`,
+    };
+    await db.events.insert(ev);
+    const io = req.app.get('io');
+    io.emit('newEvent', ev);
+    await emitPlayersUpdate(io);
+    res.json({ ok: true, company });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+// ── АДМИН: союзы ───────────────────────────────────────────────────────────────
+router.get('/admin/unions', auth, adminOnly, async (req, res) => {
+  try {
+    const prices = await getAllPrices();
+    res.json(await listUnionsAdmin(prices));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/union/create', auth, adminOnly, async (req, res) => {
+  try {
+    const union = await createUnion(req.body);
+    const allCoinsNew   = await getAllCoins();
+    const updatedPrices = await getAllPrices();
+    const ev = { ts: Date.now(), text: `Админ создал союз: ${union.name} (${union.code}), участники: ${union.members.join(', ')}` };
+    await db.events.insert(ev);
+    const io = req.app.get('io');
+    io.emit('newEvent', ev);
+    io.emit('priceUpdate', updatedPrices);
+    io.emit('coinsUpdated', { coins: allCoinsNew });
+    res.json({ ok: true, union, coins: allCoinsNew, prices: updatedPrices });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+router.post('/admin/union/member', auth, adminOnly, async (req, res) => {
+  try {
+    const { code, username, action } = req.body;
+    const union = action === 'remove' ? await removeMember(code, username) : await addMember(code, username);
+    const ev = {
+      ts: Date.now(),
+      text: `Админ ${action === 'remove' ? 'исключил' : 'добавил'} ${username} ${action === 'remove' ? 'из' : 'в'} союз ${code}`,
+    };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ ok: true, union });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+router.delete('/admin/union/:code', auth, adminOnly, async (req, res) => {
+  try {
+    const code = (req.params.code || '').toUpperCase();
+    const io = req.app.get('io');
+    const union = await db.unions.findOne({ code });
+    if (!union) return res.status(404).json({ error: 'Союз не найден' });
+    // Выкуп токена финансируется резервом самого союза, не глобальной биржей
+    await buybackAndRemoveAsset(union.tokenTicker, io, union.reserveUsername);
+    // Остаток резерва союза (после выкупа) возвращаем в общий резерв биржи
+    const reserveWallet = await db.wallets.findOne({ username: union.reserveUsername });
+    if (reserveWallet && reserveWallet.usd > 0) {
+      await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: reserveWallet.usd } });
+    }
+    await db.wallets.remove({ username: union.reserveUsername }, {});
+    await deleteUnion(code);
+    const allCoinsNew   = await getAllCoins();
+    const updatedPrices = await getAllPrices();
+    const ev = { ts: Date.now(), text: `Админ распустил союз: ${code}` };
+    await db.events.insert(ev);
+    io.emit('newEvent', ev);
+    io.emit('priceUpdate', updatedPrices);
+    io.emit('coinsUpdated', { coins: allCoinsNew });
+    res.json({ ok: true, coins: allCoinsNew });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/unions', auth, async (req, res) => {
+  try {
+    const prices = await getAllPrices();
+    res.json(await listUnions(prices, req.session.username));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── АДМИН: точечные торговые запреты ─────────────────────────────────────────
+router.get('/admin/restrictions', auth, adminOnly, async (req, res) => {
+  try {
+    res.json(await listRestrictions());
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/restriction', auth, adminOnly, async (req, res) => {
+  try {
+    const { username, ticker, reason } = req.body;
+    const restriction = await banAsset(username, ticker, reason);
+    const ev = { ts: Date.now(), text: `Админ запретил ${username} торговать ${(ticker || '').toUpperCase()}${reason ? ` (${reason})` : ''}` };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ ok: true, restriction });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+router.delete('/admin/restriction/:id', auth, adminOnly, async (req, res) => {
+  try {
+    await unbanAsset(req.params.id);
+    res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

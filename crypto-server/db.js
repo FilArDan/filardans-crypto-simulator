@@ -16,6 +16,8 @@ const db = {
   orders:       new NeDB({ filename: path.join(dbDir, 'orders.db'),       autoload: true }),
   companies:    new NeDB({ filename: path.join(dbDir, 'companies.db'),    autoload: true }),
   currencies:   new NeDB({ filename: path.join(dbDir, 'currencies.db'),   autoload: true }),
+  unions:       new NeDB({ filename: path.join(dbDir, 'unions.db'),       autoload: true }),
+  tradeRestrictions: new NeDB({ filename: path.join(dbDir, 'tradeRestrictions.db'), autoload: true }),
 };
 
 // Индекс для быстрой фильтрации по монете
@@ -31,6 +33,11 @@ db.companies.ensureIndex({ fieldName: 'ticker', unique: true });
 
 // Индекс локальных валют (курс отображения на игрока/государство)
 db.currencies.ensureIndex({ fieldName: 'nation', unique: true });
+
+// Индексы союзов и точечных торговых запретов
+db.unions.ensureIndex({ fieldName: 'code', unique: true });
+db.tradeRestrictions.ensureIndex({ fieldName: 'username' });
+db.tradeRestrictions.ensureIndex({ fieldName: 'ticker' });
 
 const DEFAULT_BOTS = [
   { name: 'Агрессор-1', type: 'bull', usd: 15000, held: {}, avgP: {}, target: {} },

@@ -13,7 +13,7 @@ async function emitPlayersUpdate(io, currentPrices) {
   try {
     const allWallets = await db.wallets.find({ username: { $ne: 'admin' } });
     const players = allWallets
-      .filter(w => w.username !== EXCHANGE_USERNAME)
+      .filter(w => w.username !== EXCHANGE_USERNAME && !w.username.startsWith('UNION_'))
       .map(w => ({ username: w.username, usd: w.usd, coins: w, isBot: false }));
     const bots = (await getBotStats(currentPrices)).map(b => ({
       username: b.username,

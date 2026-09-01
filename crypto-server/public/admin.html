@@ -192,6 +192,7 @@
     <button class="side-link" data-section="players"><span class="ic">👥</span> Игроки</button>
     <button class="side-link" data-section="bots"><span class="ic">🤖</span> Боты</button>
     <button class="side-link" data-section="companies"><span class="ic">🏢</span> Компании</button>
+    <button class="side-link" data-section="unions"><span class="ic">🤝</span> Союзы</button>
     <button class="side-link" data-section="market"><span class="ic">🎛️</span> Контроль рынка</button>
   </nav>
 
@@ -413,7 +414,7 @@
         <table>
           <thead>
             <tr>
-              <th>Тикер</th><th>Название</th><th>Владелец</th><th>Цена</th><th>Маркеткап</th>
+              <th>Тикер</th><th>Название</th><th>Владелец</th><th>Доступ</th><th>Цена</th><th>Маркеткап</th>
               <th>Доход/тик</th><th></th>
             </tr>
           </thead>
@@ -453,6 +454,62 @@
             </label>
           </div>
           <button class="btn btn-secondary" type="submit" id="createCompanyBtn">🏢 Основать компанию</button>
+        </form>
+      </div>
+    </div>
+
+  </section>
+
+
+  <!-- ═══════════════════ СОЮЗЫ ═══════════════════ -->
+  <section class="admin-section" id="section-unions" hidden>
+
+    <div class="card">
+      <h2>🤝 Союзы</h2>
+      <div class="lbl" style="margin-bottom:14px">
+        У союза свой токен и свой резерв (как EXCHANGE, только для этого союза) — участники покупают токен за свою валюту через обычную сделку. Доступ к бирже союза — только у его участников.
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr><th>Код</th><th>Название</th><th>Участники</th><th>Токен</th><th>Цена</th><th>Резерв ($)</th><th></th></tr>
+          </thead>
+          <tbody id="unionsBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Создать союз -->
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--bd)">
+        <div style="font-weight:600;font-size:13px;margin-bottom:10px">➕ Создать союз</div>
+        <form id="createUnionForm">
+          <div class="create-grid">
+            <label class="fld">Код *
+              <input id="newUnionCode" type="text" maxlength="12" placeholder="NORTHPACT" required
+                style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+            </label>
+            <label class="fld">Название *
+              <input id="newUnionName" type="text" maxlength="40" placeholder="Северный пакт" required>
+            </label>
+            <label class="fld">Название токена
+              <input id="newUnionTokenName" type="text" maxlength="32" placeholder="Северный кредит">
+            </label>
+            <label class="fld">Символ токена
+              <input id="newUnionTokenSymbol" type="text" maxlength="6" placeholder="NPC">
+            </label>
+            <label class="fld">Эмиссия токена
+              <input id="newUnionTokenSupply" type="number" min="1" step="1" value="100000">
+            </label>
+            <label class="fld">Стартовая цена токена ($)
+              <input id="newUnionTokenPrice" type="number" min="0.0001" step="any" value="1">
+            </label>
+            <label class="fld">Начальный резерв союза ($)
+              <input id="newUnionReserve" type="number" min="0" step="any" value="5000">
+            </label>
+          </div>
+          <label class="fld" style="margin-bottom:12px">Участники (государства) *
+            <select id="newUnionMembers" multiple style="min-height:90px"></select>
+          </label>
+          <button class="btn btn-secondary" type="submit" id="createUnionBtn">🤝 Создать союз</button>
         </form>
       </div>
     </div>

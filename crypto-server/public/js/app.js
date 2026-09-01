@@ -66,7 +66,8 @@ function renderLeaderboard(players, currentPrices) {
     const coinData = pl.coins || {};
     for (const [coin, amt] of Object.entries(coinData)) {
       if (coin === 'username' || coin === '_id' || coin === 'usd') continue;
-      coinsVal += (amt || 0) * (p[coin] || 0);
+      if (typeof amt !== 'number') continue; // защита от нечисловых/вложенных полей кошелька
+      coinsVal += amt * (p[coin] || 0);
     }
     const total = pl.total != null ? pl.total : (pl.usd || 0) + coinsVal;
     return { ...pl, total };
@@ -163,6 +164,23 @@ function renderCompanies(companies) {
       <td>${isOwner ? `<span class="inv-name me">${c.ownerNation}</span>` : c.ownerNation}</td>
       <td>$${fmt(c.price, dec)}</td>
       <td>${c.myShares > 0 ? fmt(c.myShares, 2) : '<span class="muted">—</span>'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderUnions(unions) {
+  const card = document.getElementById('unionsCard');
+  const body = document.getElementById('unionsBody');
+  if (!card || !body) return;
+  card.style.display = unions.length ? '' : 'none';
+  if (!unions.length) return;
+  body.innerHTML = unions.map(u => {
+    const dec = (u.price || 0) < 1 ? 4 : 2;
+    return `<tr>
+      <td><strong>${u.code}</strong><div class="muted" style="font-size:11px">${u.name}</div></td>
+      <td>${u.tokenSymbol} <span class="muted" style="font-size:11px">(${u.tokenTicker})</span></td>
+      <td>$${fmt(u.price, dec)}</td>
+      <td>${u.myTokens > 0 ? fmt(u.myTokens, 2) : '<span class="muted">—</span>'}</td>
     </tr>`;
   }).join('');
 }
@@ -614,15 +632,17 @@ function applyLoanUpdate(data) {
 
 // ── ЗАГРУЗКА СОСТОЯНИЯ ────────────────────────────────────────────────────────
 async function loadState() {
-  const [data, loanInfo, companies, currency] = await Promise.all([
+  const [data, loanInfo, companies, currency, unions] = await Promise.all([
     api('GET', '/api/state'),
     api('GET', '/api/loan/info'),
     api('GET', '/api/companies'),
     api('GET', '/api/currency'),
+    api('GET', '/api/unions'),
   ]);
   if (data.error) return;
 
   if (Array.isArray(companies)) renderCompanies(companies);
+  if (Array.isArray(unions)) renderUnions(unions);
   if (currency && !currency.error) {
     myCurrency = currency;
     const lbl = document.getElementById('sCashLbl');

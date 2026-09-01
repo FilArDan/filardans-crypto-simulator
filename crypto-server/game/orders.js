@@ -11,7 +11,7 @@
  *         если лимит игрока это позволяет и у биржи хватает запаса.
  *  • Исполнение всегда по цене не хуже лимита: разница возвращается игроку.
  */
-const { db, getAllCoins, EXCHANGE_USERNAME } = require('../db');
+const { db, getAllCoins } = require('../db');
 
 const TRADE_FEE       = 0.004;   // 0.4% комиссия (синхронизировано с routes/game.js)
 const SPREAD          = 0.0015;  // ±0.15% спред биржи
@@ -58,7 +58,7 @@ async function persistOrder(order) {
 }
 
 // ── Сделка между двумя игроками ──────────────────────────────────────────────
-async function settleP2P(bid, ask, qty, execPrice, coin) {
+async function settleP2P(bid, ask, qty, execPrice, coin, reserveAccount) {
   const gross   = execPrice * qty;
   const feeBuy  = gross * TRADE_FEE;
   const feeSell = gross * TRADE_FEE;
@@ -75,25 +75,25 @@ async function settleP2P(bid, ask, qty, execPrice, coin) {
   ask.execUsd    = (ask.execUsd || 0) + gross;
   await db.wallets.update({ username: ask.username }, { $inc: { usd: +(gross - feeSell) } });
 
-  // Комиссии обеих сторон — бирже
-  await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: +(feeBuy + feeSell) } });
+  // Комиссии обеих сторон — маркет-мейкеру этого тикера (бирже или резерву союза)
+  await db.wallets.update({ username: reserveAccount }, { $inc: { usd: +(feeBuy + feeSell) } });
 
   return gross;
 }
 
 // ── Сделка об биржу (маркет-мейкер) ──────────────────────────────────────────
-async function settleWithExchange(order, qty, execPrice, coin) {
+async function settleWithExchange(order, qty, execPrice, coin, reserveAccount) {
   const gross = execPrice * qty;
   const fee   = gross * TRADE_FEE;
 
   if (order.side === 'buy') {
     order.lockedUsd = Math.max(0, order.lockedUsd - (gross + fee));
-    await db.wallets.update({ username: order.username },     { $inc: { [coin]: +qty } });
-    await db.wallets.update({ username: EXCHANGE_USERNAME },  { $inc: { usd: +(gross + fee), [coin]: -qty } });
+    await db.wallets.update({ username: order.username },   { $inc: { [coin]: +qty } });
+    await db.wallets.update({ username: reserveAccount },   { $inc: { usd: +(gross + fee), [coin]: -qty } });
   } else {
     order.lockedCoin = Math.max(0, order.lockedCoin - qty);
-    await db.wallets.update({ username: order.username },     { $inc: { usd: +(gross - fee) } });
-    await db.wallets.update({ username: EXCHANGE_USERNAME },  { $inc: { usd: -(gross - fee), [coin]: +qty } });
+    await db.wallets.update({ username: order.username },   { $inc: { usd: +(gross - fee) } });
+    await db.wallets.update({ username: reserveAccount },   { $inc: { usd: -(gross - fee), [coin]: +qty } });
   }
 
   order.filled += qty;
@@ -117,6 +117,9 @@ function trackFill(fills, order, qty, gross) {
 async function matchCoin(coin, marketPrice, fills) {
   const openOrders = await db.orders.find({ coin, status: 'open' });
   if (!openOrders.length) return marketPrice;
+
+  const { resolveReserveAccount } = require('./unions');
+  const reserveAccount = await resolveReserveAccount(coin);
 
   const bids = openOrders.filter(o => o.side === 'buy' ).sort((a, b) => b.price - a.price || a.ts - b.ts);
   const asks = openOrders.filter(o => o.side === 'sell').sort((a, b) => a.price - b.price || a.ts - b.ts);
@@ -143,7 +146,7 @@ async function matchCoin(coin, marketPrice, fills) {
     // Цена «стоявшего в стакане» ордера — приоритет по времени
     const execPrice = bid.ts <= ask.ts ? bid.price : ask.price;
 
-    const gross = await settleP2P(bid, ask, qty, execPrice, coin);
+    const gross = await settleP2P(bid, ask, qty, execPrice, coin, reserveAccount);
     trackFill(fills, bid, qty, gross);
     trackFill(fills, ask, qty, gross);
     touched.add(bid).add(ask);
@@ -154,7 +157,7 @@ async function matchCoin(coin, marketPrice, fills) {
   if (Number.isFinite(price) && price > 0) {
     const rest = [...bids, ...asks].filter(o => remaining(o) > QTY_EPS);
     for (const order of rest) {
-      const exch = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+      const exch = await db.wallets.findOne({ username: reserveAccount });
       if (!exch) break;
 
       let qty = 0, execPrice = 0;
@@ -172,7 +175,7 @@ async function matchCoin(coin, marketPrice, fills) {
       }
       if (qty <= QTY_EPS) continue;
 
-      const gross = await settleWithExchange(order, qty, execPrice, coin);
+      const gross = await settleWithExchange(order, qty, execPrice, coin, reserveAccount);
       trackFill(fills, order, qty, gross);
       touched.add(order);
 
@@ -244,6 +247,10 @@ async function placeOrder({ username, coin, side, price, amount }, io) {
   const allCoins = await getAllCoins();
   if (!allCoins.includes(coin)) return { error: 'Неизвестная монета' };
   if (side !== 'buy' && side !== 'sell') return { error: 'Неверный тип ордера' };
+
+  const { canTrade } = require('./unions');
+  const access = await canTrade(username, coin);
+  if (!access.ok) return { error: access.reason };
 
   const limitPrice = parseFloat(price);
   const qty        = parseFloat(amount);

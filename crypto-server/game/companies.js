@@ -49,6 +49,8 @@ async function createCompany({ ticker, name, ownerNation, totalShares, startPric
     ownerNation: owner,
     statePct: pct,
     revenuePerTick: rev,
+    visibility: 'private',   // по умолчанию доступна только государству-владельцу
+    unionCodes: [],          // публикуется на союзные биржи отдельным действием ГМа
     createdAt: Date.now(),
   });
 
@@ -83,16 +85,29 @@ async function deleteCompany(ticker) {
 }
 
 // ── Список компаний с рыночными данными ──────────────────────────────────────
+// Игроку (username передан) возвращаются только доступные ему компании —
+// приватные видны лишь государству-владельцу, союзные — владельцу и
+// участникам перечисленных союзов. Админ (username не передан) видит все.
 async function listCompanies(prices, username) {
   const companies = await db.companies.find({});
   const wallet = username ? await db.wallets.findOne({ username }) : null;
-  return companies.map(c => {
+
+  let visible = companies;
+  if (username) {
+    const { canTrade } = require('./unions');
+    const checks = await Promise.all(companies.map(c => canTrade(username, c.ticker)));
+    visible = companies.filter((c, i) => checks[i].ok);
+  }
+
+  return visible.map(c => {
     const price = (prices && prices[c.ticker]) || 0;
     return {
       ticker:         c.ticker,
       name:           c.name,
       ownerNation:    c.ownerNation,
       revenuePerTick: c.revenuePerTick,
+      visibility:     c.visibility || 'public',
+      unionCodes:     c.unionCodes || [],
       price,
       myShares:       wallet ? (wallet[c.ticker] || 0) : 0,
     };
@@ -113,10 +128,12 @@ async function payDividends(io) {
     const totalShares = await getCompanySupply(company.ticker);
     if (!totalShares) continue;
 
-    const [wallets, bots] = await Promise.all([
+    const [walletsRaw, bots] = await Promise.all([
       db.wallets.find({ [company.ticker]: { $gt: 0 }, username: { $ne: EXCHANGE_USERNAME } }),
       db.bots.find({ [`held.${company.ticker}`]: { $gt: 0 } }),
     ]);
+    // Резервы союзов (маркет-мейкер по вынесенным на биржу акциям) дивидендов не получают
+    const wallets = walletsRaw.filter(w => !w.username.startsWith('UNION_'));
     if (!wallets.length && !bots.length) continue;
 
     let totalHeld = 0;

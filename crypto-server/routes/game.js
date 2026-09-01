@@ -1,4 +1,5 @@
 const express = require('express');
+const bcrypt  = require('bcryptjs');
 const router  = express.Router();
 const { db, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY } = require('../db');
 const { tick, applyTradePressure, deleteCoinHistory } = require('../game/market');
@@ -342,6 +343,48 @@ router.post('/admin/set-cash', auth, adminOnly, async (req, res) => {
     if (username === EXCHANGE_USERNAME) return res.status(403).json({ error: 'Нельзя менять баланс EXCHANGE вручную' });
     await db.wallets.update({ username }, { $set: { usd: parseFloat(usd) } });
     const ev = { ts: Date.now(), text: `Админ установил баланс ${username}: $${usd}` };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/player/create', auth, adminOnly, async (req, res) => {
+  try {
+    const username = String(req.body.username || '').trim();
+    const password = String(req.body.password || '');
+    const startUsd = parseFloat(req.body.startUsd);
+    if (!username) return res.status(400).json({ error: 'Укажите имя игрока' });
+    if (password.length < 3) return res.status(400).json({ error: 'Пароль слишком короткий (мин. 3 символа)' });
+    if (username === EXCHANGE_USERNAME || username === 'WARDEN')
+      return res.status(400).json({ error: 'Зарезервированное имя' });
+    const exists = await db.users.findOne({ username });
+    if (exists) return res.status(409).json({ error: 'Игрок с таким именем уже существует' });
+
+    const hash = bcrypt.hashSync(password, 10);
+    await db.users.insert({ username, passwordHash: hash, role: 'player' });
+    const walletDoc = { username, usd: Number.isFinite(startUsd) && startUsd >= 0 ? startUsd : 10000 };
+    for (const coin of await getAllCoins()) walletDoc[coin] = 0;
+    await db.wallets.insert(walletDoc);
+
+    const ev = { ts: Date.now(), text: `Админ создал игрока: ${username}` };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/player/password', auth, adminOnly, async (req, res) => {
+  try {
+    const username = String(req.body.username || '').trim();
+    const password = String(req.body.password || '');
+    if (password.length < 3) return res.status(400).json({ error: 'Пароль слишком короткий (мин. 3 символа)' });
+    const user = await db.users.findOne({ username });
+    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+
+    const hash = bcrypt.hashSync(password, 10);
+    await db.users.update({ username }, { $set: { passwordHash: hash } });
+    const ev = { ts: Date.now(), text: `Админ сменил пароль игроку: ${username}` };
     await db.events.insert(ev);
     req.app.get('io').emit('newEvent', ev);
     res.json({ ok: true });

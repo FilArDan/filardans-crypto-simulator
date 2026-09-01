@@ -414,6 +414,27 @@
   <!-- ТАБЛИЦА ИГРОКОВ -->
   <div class="card section-gap">
     <h2>👥 Балансы и портфели игроков</h2>
+
+    <!-- Создать игрока -->
+    <div style="margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--bd)">
+      <div style="font-weight:600;font-size:13px;margin-bottom:10px">➕ Создать нового игрока</div>
+      <form id="createPlayerForm" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <label class="fld" style="margin:0">
+          Имя
+          <input id="newPlayerName" type="text" maxlength="24" placeholder="Логин" style="width:140px" required>
+        </label>
+        <label class="fld" style="margin:0">
+          Пароль
+          <input id="newPlayerPassword" type="text" maxlength="64" placeholder="Пароль" style="width:140px" required>
+        </label>
+        <label class="fld" style="margin:0">
+          Стартовый USD
+          <input id="newPlayerUsd" type="number" value="10000" min="0" step="100" style="width:110px">
+        </label>
+        <button class="btn btn-secondary btn-sm" type="submit" id="createPlayerBtn">Создать</button>
+      </form>
+    </div>
+
     <div style="overflow-x:auto">
       <table id="playersTable">
         <thead id="playersHead"></thead>

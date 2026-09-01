@@ -158,6 +158,36 @@ async function deletePlayer(username) {
   await loadAdminData();
 }
 
+// ── СОЗДАНИЕ ИГРОКА ──────────────────────────────────────────────────────────
+document.getElementById('createPlayerForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('createPlayerBtn');
+  btn.disabled = true; btn.textContent = '⏳...';
+  const body = {
+    username: document.getElementById('newPlayerName').value.trim(),
+    password: document.getElementById('newPlayerPassword').value,
+    startUsd: parseFloat(document.getElementById('newPlayerUsd').value) || 0,
+  };
+  const res = await api('POST', '/api/admin/player/create', body);
+  if (res.error) {
+    alert(res.error);
+  } else {
+    document.getElementById('createPlayerForm').reset();
+    document.getElementById('newPlayerUsd').value = '10000';
+    await loadAdminData();
+  }
+  btn.disabled = false; btn.textContent = 'Создать';
+});
+
+// ── СМЕНА ПАРОЛЯ ИГРОКА ──────────────────────────────────────────────────────
+async function resetPlayerPassword(username) {
+  const password = prompt(`Новый пароль для "${username}" (мин. 3 символа):`);
+  if (!password) return;
+  const res = await api('POST', '/api/admin/player/password', { username, password });
+  if (res.error) { alert(res.error); return; }
+  alert('Пароль обновлён ✓');
+}
+
 // ── СОЗДАНИЕ МОНЕТЫ ──────────────────────────────────────────────────────────
 const BASE_COIN_DEFAULTS = {
   BTC:  { name: 'Bitcoin',  emoji: '₿',  price: 45000, vol: 3,   supply: 21000000     },
@@ -525,7 +555,10 @@ function renderPlayers() {
       <td><span class="badge ${debt > 0 ? 'badge-warn' : 'badge-ok'}">
         ${debt > 0 ? 'Долг $' + fmt(debt) : 'OK ✓'}
       </span></td>
-      <td>${isSystem ? '' : `<button class="btn btn-dan btn-sm" onclick="deletePlayer('${w.username}')" title="Удалить аккаунт">🗑️</button>`}</td>
+      <td>${isSystem ? '' : `
+        <button class="btn btn-secondary btn-sm" onclick="resetPlayerPassword('${w.username}')" title="Сменить пароль">🔑</button>
+        <button class="btn btn-dan btn-sm" onclick="deletePlayer('${w.username}')" title="Удалить аккаунт">🗑️</button>
+      `}</td>
     </tr>`;
   }).join('');
 }

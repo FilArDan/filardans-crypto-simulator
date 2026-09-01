@@ -7,6 +7,12 @@ let lastPlayers = null;
 let lastWallet  = null;
 let lastDebt    = 0;
 
+// Местная валюта государства — чисто отображаемый «скин»: внутри всё считается
+// в общем расчётном юните, здесь только конвертация для показа игроку.
+let myCurrency = { code: 'USD', name: 'Доллар', symbol: '$', rate: 1 };
+function toLocal(refAmount) { return (Number(refAmount) || 0) / (myCurrency.rate || 1); }
+function fmtLocal(refAmount, dec = 2) { return myCurrency.symbol + fmt(toLocal(refAmount), dec); }
+
 // Средства, зарезервированные под лимитные ордера (в кошельке их уже нет)
 let lastLockedUsd   = 0;
 let lastLockedCoins = {};
@@ -137,8 +143,8 @@ function renderPortfolio(wallet, coins) {
     : '<tr><td colspan="4" style="color:var(--mu);text-align:center;padding:16px">Резервы пусты</td></tr>';
   const el = document.getElementById('sCash');
   if (el) {
-    el.textContent = '$' + fmt(wallet.usd);
-    el.title = lastLockedUsd > 0.005 ? `+ $${fmt(lastLockedUsd)} в резерве под ордера` : '';
+    el.textContent = fmtLocal(wallet.usd);
+    el.title = lastLockedUsd > 0.005 ? `+ ${fmtLocal(lastLockedUsd)} в резерве под ордера` : '';
   }
 }
 
@@ -187,14 +193,24 @@ function portfolioCoinValue(wallet, p, coins) {
   );
 }
 
+// Госбюджет — общий расчётный юнит; местная валюта показана отдельной строкой,
+// только когда у государства действительно свой курс (иначе строка не нужна).
+function updateBudgetLocal(refTotal) {
+  const elLocal = document.getElementById('sTotalLocal');
+  if (!elLocal) return;
+  elLocal.textContent = myCurrency.rate === 1 ? '' : `≈ ${fmtLocal(refTotal)}`;
+}
+
 function recalcByPrices(p) {
   if (lastWallet) {
     renderPortfolio(lastWallet, currentCoins);
     const coinsVal = portfolioCoinValue(lastWallet, p, currentCoins);
+    const total = lastWallet.usd + lastLockedUsd + coinsVal - lastDebt;
     const elTotal = document.getElementById('sTotal');
     const elPort  = document.getElementById('sPort');
-    if (elTotal) elTotal.textContent = '$' + fmt(lastWallet.usd + lastLockedUsd + coinsVal - lastDebt);
+    if (elTotal) elTotal.textContent = '$' + fmt(total);
     if (elPort)  elPort.textContent  = '$' + fmt(coinsVal);
+    updateBudgetLocal(total);
   }
   if (lastPlayers) renderLeaderboard(lastPlayers, p);
   updateTradeHint();
@@ -231,7 +247,8 @@ function updateTradeHint() {
       const usdVal = action === 'buy'
         ? qty * askPrice * (1 + TRADE_FEE)
         : qty * bidPrice * (1 - TRADE_FEE);
-      hint.textContent = `≈ $${fmt(usdVal)} (комиссия ${(TRADE_FEE * 100).toFixed(1)}% + спред ${(SPREAD * 100).toFixed(2)}%)`;
+      const localNote = myCurrency.rate === 1 ? '' : ` (≈ ${fmtLocal(usdVal)})`;
+      hint.textContent = `≈ $${fmt(usdVal)}${localNote} (комиссия ${(TRADE_FEE * 100).toFixed(1)}% + спред ${(SPREAD * 100).toFixed(2)}%)`;
     } else {
       hint.textContent = '';
     }
@@ -597,14 +614,20 @@ function applyLoanUpdate(data) {
 
 // ── ЗАГРУЗКА СОСТОЯНИЯ ────────────────────────────────────────────────────────
 async function loadState() {
-  const [data, loanInfo, companies] = await Promise.all([
+  const [data, loanInfo, companies, currency] = await Promise.all([
     api('GET', '/api/state'),
     api('GET', '/api/loan/info'),
     api('GET', '/api/companies'),
+    api('GET', '/api/currency'),
   ]);
   if (data.error) return;
 
   if (Array.isArray(companies)) renderCompanies(companies);
+  if (currency && !currency.error) {
+    myCurrency = currency;
+    const lbl = document.getElementById('sCashLbl');
+    if (lbl) lbl.textContent = myCurrency.rate === 1 ? 'Фиатный резерв' : `Фиатный резерв (${myCurrency.code})`;
+  }
 
   if (data.coins) {
     currentCoins = data.coins;
@@ -634,10 +657,12 @@ async function loadState() {
   const debt = loanInfo && loanInfo.loan ? loanInfo.loan.due : 0;
   lastDebt = debt;
 
+  const total = data.wallet.usd + lastLockedUsd + coinsVal - debt;
   const elTotal = document.getElementById('sTotal');
   const elPort  = document.getElementById('sPort');
-  if (elTotal) elTotal.textContent = '$' + fmt(data.wallet.usd + lastLockedUsd + coinsVal - debt);
+  if (elTotal) elTotal.textContent = '$' + fmt(total);
   if (elPort)  elPort.textContent  = '$' + fmt(coinsVal);
+  updateBudgetLocal(total);
 }
 
 // ── ЛОГИН ─────────────────────────────────────────────────────────────────────

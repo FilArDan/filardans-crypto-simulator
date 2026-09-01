@@ -29,6 +29,16 @@ async function getAllPrices() {
   return obj;
 }
 
+// Валюта государства — чисто отображаемый «скин» над общим расчётным юнитом.
+// Пока ГМ не задал свою — используется дефолт без видимых отличий.
+const DEFAULT_CURRENCY = { code: 'USD', name: 'Доллар', symbol: '$', rate: 1 };
+async function getCurrency(nation) {
+  const doc = await db.currencies.findOne({ nation });
+  return doc
+    ? { code: doc.code, name: doc.name, symbol: doc.symbol, rate: doc.rate }
+    : { ...DEFAULT_CURRENCY };
+}
+
 async function emitBankUpdate(io) {
   try {
     const w = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
@@ -335,6 +345,56 @@ router.get('/admin/players', auth, adminOnly, async (req, res) => {
     const prices  = await getAllPrices();
     const bots    = await getBotStats(prices);
     res.json({ wallets, loans, bots });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/currency', auth, async (req, res) => {
+  try {
+    res.json(await getCurrency(req.session.username));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/admin/currencies', auth, adminOnly, async (req, res) => {
+  try {
+    const wallets = await db.wallets.find({ username: { $nin: [EXCHANGE_USERNAME, 'WARDEN'] } });
+    const docs    = await db.currencies.find({});
+    const byNation = {};
+    docs.forEach(d => { byNation[d.nation] = d; });
+    const list = wallets.map(w => {
+      const d = byNation[w.username];
+      return d
+        ? { nation: w.username, code: d.code, name: d.name, symbol: d.symbol, rate: d.rate }
+        : { nation: w.username, ...DEFAULT_CURRENCY };
+    });
+    res.json(list);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/currency/params', auth, adminOnly, async (req, res) => {
+  try {
+    const { nation, code, name, symbol, rate } = req.body;
+    if (!nation) return res.status(400).json({ error: 'Укажите государство' });
+    const user = await db.users.findOne({ username: nation });
+    if (!user) return res.status(404).json({ error: 'Государство не найдено' });
+
+    const numRate = parseFloat(rate);
+    if (!Number.isFinite(numRate) || numRate <= 0) return res.status(400).json({ error: 'Неверный курс' });
+
+    const patch = {
+      code:   String(code   || 'USD').trim().slice(0, 8).toUpperCase(),
+      name:   String(name   || 'Доллар').trim().slice(0, 32),
+      symbol: String(symbol || '$').trim().slice(0, 4),
+      rate:   numRate,
+      updatedAt: Date.now(),
+    };
+    await db.currencies.update({ nation }, { $set: { nation, ...patch } }, { upsert: true });
+
+    const ev = { ts: Date.now(), text: `Админ установил валюту государства ${nation}: ${patch.name} (${patch.code}), курс 1 ${patch.code} = $${patch.rate}` };
+    await db.events.insert(ev);
+    const io = req.app.get('io');
+    io.emit('newEvent', ev);
+    io.emit('currencyUpdate', { nation, currency: patch });
+    res.json({ ok: true, currency: patch });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

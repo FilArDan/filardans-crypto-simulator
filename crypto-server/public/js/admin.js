@@ -4,6 +4,7 @@ let coinMeta   = {};
 let allWallets = [];
 let allLoans   = [];
 let allBots    = [];
+let allCurrencies = [];
 let dealCount  = 0;
 let COINS      = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 const BASE_COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
@@ -588,6 +589,7 @@ function renderPlayers() {
     const debt     = allLoans.filter(l => l.username === w.username).reduce((s,l) => s + l.due, 0);
     const isSystem = w.username === 'admin';
     const safeId   = w.username.replace(/[^a-zA-Z0-9]/g, '_');
+    const cur      = allCurrencies.find(c => c.nation === w.username) || { code: 'USD', name: 'Доллар', symbol: '$', rate: 1 };
     return `<tr>
       <td><strong>${w.username}</strong></td>
       <td class="up">$${fmt(w.usd)}</td>
@@ -616,6 +618,22 @@ function renderPlayers() {
           </label>`).join('')}
           <button class="btn btn-secondary btn-sm" onclick="savePlayerWallet('${w.username}','${safeId}')">Сохранить</button>
         </div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;padding:8px 0;border-top:1px dashed var(--bd);margin-top:4px">
+          <div class="lbl" style="margin:0;width:100%">Местная валюта государства</div>
+          <label class="fld" style="margin:0">Код
+            <input type="text" maxlength="8" id="cur-${safeId}-code" value="${cur.code}" style="width:70px;text-transform:uppercase">
+          </label>
+          <label class="fld" style="margin:0">Название
+            <input type="text" maxlength="32" id="cur-${safeId}-name" value="${cur.name}" style="width:130px">
+          </label>
+          <label class="fld" style="margin:0">Символ
+            <input type="text" maxlength="4" id="cur-${safeId}-symbol" value="${cur.symbol}" style="width:55px">
+          </label>
+          <label class="fld" style="margin:0">Курс (1 своя = X общих)
+            <input type="number" min="0.0001" step="any" id="cur-${safeId}-rate" value="${cur.rate}" style="width:110px">
+          </label>
+          <button class="btn btn-secondary btn-sm" onclick="saveCurrency('${w.username}','${safeId}')">Сохранить валюту</button>
+        </div>
       </td>
     </tr>`}
     `;
@@ -625,6 +643,25 @@ function renderPlayers() {
 function togglePlayerWallet(safeId) {
   const row = document.getElementById(`wallet-edit-${safeId}`);
   if (row) row.hidden = !row.hidden;
+}
+
+async function saveCurrency(username, safeId) {
+  const body = {
+    nation: username,
+    code:   document.getElementById(`cur-${safeId}-code`).value,
+    name:   document.getElementById(`cur-${safeId}-name`).value,
+    symbol: document.getElementById(`cur-${safeId}-symbol`).value,
+    rate:   document.getElementById(`cur-${safeId}-rate`).value,
+  };
+  const res = await api('POST', '/api/admin/currency/params', body);
+  if (res.error) { alert(res.error); return; }
+  await loadCurrenciesData();
+  renderPlayers();
+}
+
+async function loadCurrenciesData() {
+  const res = await api('GET', '/api/admin/currencies');
+  if (!res.error) allCurrencies = res;
 }
 
 async function savePlayerWallet(username, safeId) {
@@ -812,16 +849,19 @@ async function loadCompaniesData() {
 
 // ── ЗАГРУЗКА ВСЕХ ДАННЫХ ─────────────────────────────────────────────────────
 async function loadAdminData() {
-  const [adminData, stateData, coinsData] = await Promise.all([
+  const [adminData, stateData, coinsData, currenciesData] = await Promise.all([
     api('GET', '/api/admin/players'),
     api('GET', '/api/state'),
     api('GET', '/api/admin/coins'),
+    api('GET', '/api/admin/currencies'),
   ]);
 
   if (!adminData.error) {
     allWallets = adminData.wallets || [];
     allLoans   = adminData.loans   || [];
   }
+
+  if (!currenciesData.error) allCurrencies = currenciesData;
 
   if (!coinsData.error) {
     coinMeta = coinsData;

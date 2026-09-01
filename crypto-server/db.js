@@ -78,6 +78,8 @@ async function getAllCoins() {
 }
 
 async function initDb() {
+  const existingUserCount = await db.users.count({});
+
   for (const u of INITIAL_USERS) {
     const exists = await db.users.findOne({ username: u.username });
     if (!exists) {
@@ -142,6 +144,12 @@ async function initDb() {
         await db.prices.update({ coin }, { $set: patch });
       }
     }
+  }
+
+  if (existingUserCount > 0) {
+    console.log(`📦 База данных найдена (${dbDir}): загружено пользователей — ${existingUserCount}. Прогресс сохранён.`);
+  } else {
+    console.log(`🆕 База данных не найдена (${dbDir}) — создаю аккаунты и монеты по умолчанию с нуля.`);
   }
 }
 

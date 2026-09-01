@@ -44,11 +44,11 @@ const INITIAL_USERS = [
 const COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 
 const COIN_META = {
-  BTC:  { name: 'Bitcoin',  emoji: '₿',  basePrice: 45000, vol: 0.030, drift: 0, supply: 21000000     },
-  ETH:  { name: 'Ethereum', emoji: 'Ξ',  basePrice: 2800,  vol: 0.045, drift: 0, supply: 120000000    },
-  SOL:  { name: 'Solana',   emoji: '◎',  basePrice: 120,   vol: 0.070, drift: 0, supply: 440000000    },
-  XRP:  { name: 'XRP',      emoji: '✕',  basePrice: 0.52,  vol: 0.050, drift: 0, supply: 45000000000  },
-  DOGE: { name: 'Dogecoin', emoji: '🐕', basePrice: 0.08,  vol: 0.060, drift: 0, supply: 140000000000 },
+  BTC:  { name: 'Bitcoin',  basePrice: 45000, vol: 0.030, drift: 0, supply: 21000000     },
+  ETH:  { name: 'Ethereum', basePrice: 2800,  vol: 0.045, drift: 0, supply: 120000000    },
+  SOL:  { name: 'Solana',   basePrice: 120,   vol: 0.070, drift: 0, supply: 440000000    },
+  XRP:  { name: 'XRP',      basePrice: 0.52,  vol: 0.050, drift: 0, supply: 45000000000  },
+  DOGE: { name: 'Dogecoin', basePrice: 0.08,  vol: 0.060, drift: 0, supply: 140000000000 },
 };
 
 const EXCHANGE_RESERVE     = 1_200_000;

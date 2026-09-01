@@ -371,6 +371,22 @@ async function setBotCash(name, usd) {
   return db.bots.findOne({ name: n });
 }
 
+// ── Ручное редактирование активов бота (ГМ) ──────────────────────────────────
+// held — объект { coin: qty }, значения мержатся с текущим held бота
+async function setBotHoldings(name, held) {
+  const n   = String(name || '').trim();
+  const bot = await db.bots.findOne({ name: n });
+  if (!bot) throw new Error('Бот не найден');
+  const merged = { ...(bot.held || {}) };
+  for (const [coin, val] of Object.entries(held || {})) {
+    const qty = Number(val);
+    if (!Number.isFinite(qty) || qty < 0) throw new Error(`Неверное количество ${coin}`);
+    merged[coin] = qty;
+  }
+  await db.bots.update({ name: n }, { $set: { held: merged } });
+  return db.bots.findOne({ name: n });
+}
+
 async function updateBotPreset(name, type) {
   const n = String(name || '').trim();
   if (!['bull','fox','croc'].includes(type)) throw new Error('Неизвестный пресет');
@@ -386,6 +402,7 @@ module.exports = {
   createBot,
   deleteBot,
   setBotCash,
+  setBotHoldings,
   updateBotPreset,
   priceHistory,
 };

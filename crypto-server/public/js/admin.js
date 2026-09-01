@@ -127,7 +127,6 @@ async function loadExchangeAssets() {
     return `<tr>
       <td>
         <div class="coin-cell">
-          <span>${a.emoji}</span>
           <strong>${a.coin}</strong>
           <span style="color:var(--mu);font-size:11px">${a.name}</span>
         </div>
@@ -215,11 +214,11 @@ async function resetPlayerPassword(username) {
 
 // ── СОЗДАНИЕ МОНЕТЫ ──────────────────────────────────────────────────────────
 const BASE_COIN_DEFAULTS = {
-  BTC:  { name: 'Bitcoin',  emoji: '₿',  price: 45000, vol: 3,   supply: 21000000     },
-  ETH:  { name: 'Ethereum', emoji: 'Ξ',  price: 2800,  vol: 4.5, supply: 120000000    },
-  SOL:  { name: 'Solana',   emoji: '◎',  price: 120,   vol: 7,   supply: 440000000    },
-  XRP:  { name: 'XRP',      emoji: '✕',  price: 0.52,  vol: 5,   supply: 45000000000  },
-  DOGE: { name: 'Dogecoin', emoji: '🐕', price: 0.08,  vol: 6,   supply: 140000000000 },
+  BTC:  { name: 'Bitcoin',  price: 45000, vol: 3,   supply: 21000000     },
+  ETH:  { name: 'Ethereum', price: 2800,  vol: 4.5, supply: 120000000    },
+  SOL:  { name: 'Solana',   price: 120,   vol: 7,   supply: 440000000    },
+  XRP:  { name: 'XRP',      price: 0.52,  vol: 5,   supply: 45000000000  },
+  DOGE: { name: 'Dogecoin', price: 0.08,  vol: 6,   supply: 140000000000 },
 };
 
 document.getElementById('newTicker').addEventListener('input', function () {
@@ -227,7 +226,6 @@ document.getElementById('newTicker').addEventListener('input', function () {
   const d = BASE_COIN_DEFAULTS[ticker];
   if (d) {
     document.getElementById('newName').value   = d.name;
-    document.getElementById('newEmoji').value  = d.emoji;
     document.getElementById('newPrice').value  = d.price;
     document.getElementById('newVol').value    = d.vol;
     document.getElementById('newDrift').value  = 0;
@@ -243,7 +241,6 @@ document.getElementById('createCoinForm').addEventListener('submit', async e => 
   const body = {
     ticker: document.getElementById('newTicker').value.toUpperCase().trim(),
     name:   document.getElementById('newName').value.trim()   || undefined,
-    emoji:  document.getElementById('newEmoji').value.trim()  || '🪙',
     price:  parseFloat(document.getElementById('newPrice').value),
     vol:    parseFloat(document.getElementById('newVol').value)   / 100,
     drift:  parseFloat(document.getElementById('newDrift').value) / 100,
@@ -264,12 +261,11 @@ document.getElementById('createCoinForm').addEventListener('submit', async e => 
 
 // ── УДАЛЕНИЕ МОНЕТЫ ──────────────────────────────────────────────────────────
 async function deleteCoin(ticker) {
-  const m = coinMeta[ticker] || {};
   const isBase = BASE_COINS.includes(ticker);
   const warn = isBase
     ? `\n\n⚠️ Это базовая монета. После удаления её можно восстановить через форму создания (тикер ${ticker}).`
     : '';
-  if (!confirm(`Удалить монету ${m.emoji || '🪙'} ${ticker}?\n\nИгрокам будут возвращены USD по текущей цене.${warn}`)) return;
+  if (!confirm(`Удалить монету ${ticker}?\n\nИгрокам будут возвращены USD по текущей цене.${warn}`)) return;
   const r = await fetch(`/api/admin/coin/${encodeURIComponent(ticker)}`, { method: 'DELETE' });
   const data = await r.json();
   if (data.error) { alert(data.error); return; }
@@ -279,8 +275,7 @@ async function deleteCoin(ticker) {
 
 // ── ОЧИСТКА ИСТОРИИ ЦЕН ──────────────────────────────────────────────────────
 async function clearCoinHistory(ticker) {
-  const m = coinMeta[ticker] || {};
-  if (!confirm(`Очистить историю цен для ${m.emoji || '🪙'} ${ticker}?\nЧарт этой монеты обнулится у всех игроков.`)) return;
+  if (!confirm(`Очистить историю цен для ${ticker}?\nЧарт этой монеты обнулится у всех игроков.`)) return;
   const r = await fetch(`/api/admin/price-history/${encodeURIComponent(ticker)}`, { method: 'DELETE' });
   const data = await r.json();
   if (data.error) { alert(data.error); return; }
@@ -310,10 +305,9 @@ function renderCoinParams() {
     const driftCol = driftPct > 0 ? 'var(--ok)' : driftPct < 0 ? 'var(--dan)' : 'var(--mu)';
     const isCustom = m.isCustom || !BASE_COINS.includes(coin);
     const isBase   = BASE_COINS.includes(coin) && !m.isCustom;
-    const emoji    = m.emoji || (isBase ? '' : '🪙');
     const label    = isBase
-      ? `<strong>${emoji ? emoji + ' ' : ''}${coin}</strong>`
-      : `${emoji} ${coin} <span class="tag-custom">custom</span>`;
+      ? `<strong>${coin}</strong>`
+      : `${coin} <span class="tag-custom">custom</span>`;
 
     return `<tr id="coin-row-${coin}">
       <td>${label}</td>
@@ -409,9 +403,10 @@ function renderBots() {
     const presetBtns = Object.entries(PRESET_INFO).map(([key, info]) =>
       `<button class="preset-btn ${bot.botType === key ? 'active' : ''}" onclick="setBotPreset('${bot.username}','${key}')">${info.label}</button>`
     ).join('');
+    const safeId = bot.username.replace(/[^a-zA-Z0-9]/g,'_');
 
     return `
-    <div class="bot-card" id="bot-card-${bot.username.replace(/[^a-zA-Z0-9]/g,'_')}">
+    <div class="bot-card" id="bot-card-${safeId}">
       <div class="bot-avatar">${bot.botEmoji}</div>
       <div class="bot-info">
         <div class="bot-name">${bot.username}</div>
@@ -421,14 +416,37 @@ function renderBots() {
       <div class="bot-actions">
         <div class="preset-group">${presetBtns}</div>
         <div style="display:flex;gap:6px;align-items:center">
-          <input type="number" class="bot-cash-input" id="bot-cash-${bot.username.replace(/[^a-zA-Z0-9]/g,'_')}"
+          <input type="number" class="bot-cash-input" id="bot-cash-${safeId}"
             value="${bot.usd}" min="0" step="100" title="Установить USD">
           <button class="btn btn-secondary btn-sm" onclick="setBotCashAdmin('${bot.username}')">💰</button>
+          <button class="btn btn-secondary btn-sm" onclick="toggleBotHoldings('${safeId}')" title="Редактировать монеты">Активы</button>
           <button class="btn btn-dan btn-sm" onclick="deleteBotAdmin('${bot.username}')" title="Удалить бота">🗑️</button>
         </div>
       </div>
+      <div id="bot-holdings-${safeId}" style="display:none;width:100%;flex-wrap:wrap;gap:10px;align-items:flex-end;padding-top:10px;margin-top:6px;border-top:1px solid var(--bd)">
+        ${COINS.map(c => `<label class="fld" style="margin:0">${c}
+          <input type="number" class="coin-input" id="bot-held-${safeId}-${c}" value="${(bot.held && bot.held[c]) || 0}" min="0" step="any" style="width:110px">
+        </label>`).join('')}
+        <button class="btn btn-secondary btn-sm" onclick="saveBotHoldings('${bot.username}','${safeId}')">Сохранить</button>
+      </div>
     </div>`;
   }).join('');
+}
+
+function toggleBotHoldings(safeId) {
+  const el = document.getElementById(`bot-holdings-${safeId}`);
+  if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
+
+async function saveBotHoldings(name, safeId) {
+  const held = {};
+  COINS.forEach(c => {
+    const input = document.getElementById(`bot-held-${safeId}-${c}`);
+    if (input) held[c] = input.value;
+  });
+  const res = await api('POST', '/api/admin/bot/holdings', { name, held });
+  if (res.error) { alert(res.error); return; }
+  await loadBotsData();
 }
 
 function updateBotTotals() {
@@ -545,8 +563,7 @@ function renderPlayers() {
     <th>Долг</th>
     ${COINS.map(c => {
       const m = coinMeta[c] || {};
-      const isCustom = m.isCustom || !BASE_COINS.includes(c);
-      return `<th title="${m.name || c}">${isCustom ? (m.emoji || '🪙') + ' ' : ''}${c}</th>`;
+      return `<th title="${m.name || c}">${c}</th>`;
     }).join('')}
     <th>Статус</th>
     <th>Действия</th>
@@ -570,6 +587,7 @@ function renderPlayers() {
   tbody.innerHTML = sorted.map(w => {
     const debt     = allLoans.filter(l => l.username === w.username).reduce((s,l) => s + l.due, 0);
     const isSystem = w.username === 'admin';
+    const safeId   = w.username.replace(/[^a-zA-Z0-9]/g, '_');
     return `<tr>
       <td><strong>${w.username}</strong></td>
       <td class="up">$${fmt(w.usd)}</td>
@@ -581,11 +599,43 @@ function renderPlayers() {
         ${debt > 0 ? 'Долг $' + fmt(debt) : 'OK ✓'}
       </span></td>
       <td>${isSystem ? '' : `
+        <button class="btn btn-secondary btn-sm" onclick="togglePlayerWallet('${safeId}')" title="Редактировать активы">Активы</button>
         <button class="btn btn-secondary btn-sm" onclick="resetPlayerPassword('${w.username}')" title="Сменить пароль">🔑</button>
         <button class="btn btn-dan btn-sm" onclick="deletePlayer('${w.username}')" title="Удалить аккаунт">🗑️</button>
       `}</td>
-    </tr>`;
+    </tr>
+    ${isSystem ? '' : `
+    <tr id="wallet-edit-${safeId}" hidden>
+      <td colspan="${COINS.length + 5}">
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;padding:8px 0">
+          <label class="fld" style="margin:0">USD
+            <input type="number" class="coin-input" id="wallet-${safeId}-usd" value="${w.usd}" min="0" step="1" style="width:110px">
+          </label>
+          ${COINS.map(c => `<label class="fld" style="margin:0">${c}
+            <input type="number" class="coin-input" id="wallet-${safeId}-${c}" value="${w[c] || 0}" min="0" step="any" style="width:110px">
+          </label>`).join('')}
+          <button class="btn btn-secondary btn-sm" onclick="savePlayerWallet('${w.username}','${safeId}')">Сохранить</button>
+        </div>
+      </td>
+    </tr>`}
+    `;
   }).join('');
+}
+
+function togglePlayerWallet(safeId) {
+  const row = document.getElementById(`wallet-edit-${safeId}`);
+  if (row) row.hidden = !row.hidden;
+}
+
+async function savePlayerWallet(username, safeId) {
+  const patch = { usd: document.getElementById(`wallet-${safeId}-usd`).value };
+  COINS.forEach(c => {
+    const input = document.getElementById(`wallet-${safeId}-${c}`);
+    if (input) patch[c] = input.value;
+  });
+  const res = await api('POST', '/api/admin/player/wallet', { username, patch });
+  if (res.error) { alert(res.error); return; }
+  await loadAdminData();
 }
 
 // ── ТАБЛИЦА КРЕДИТОВ ─────────────────────────────────────────────────────────
@@ -595,17 +645,34 @@ function renderLoans() {
   const el = document.getElementById('loanCount');
   if (el) el.textContent = allLoans.length;
   if (!allLoans.length) {
-    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--mu);padding:20px">Активных кредитов нет</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--mu);padding:20px">Активных кредитов нет</td></tr>`;
     return;
   }
   tbody.innerHTML = allLoans.map(l => `
     <tr>
-      <td><strong>${l.username}</strong></td>
-      <td class="up">$${fmt(l.amount)}</td>
+      <td><strong>${l.username}</strong>${l.isBot ? ' <span class="tag-custom">бот</span>' : ''}</td>
+      <td class="up">$${fmt(l.principal)}</td>
       <td class="dn">$${fmt(l.due)}</td>
       <td style="color:var(--mu);font-size:12px">${fmtTime(l.ts)}</td>
+      <td>
+        <button class="btn btn-secondary btn-sm" onclick="repayLoan('${l.username}')" title="Погасить с баланса должника">Погасить</button>
+        <button class="btn btn-dan btn-sm" onclick="forgiveLoan('${l.username}')" title="Списать долг без изменения баланса">Списать</button>
+      </td>
     </tr>
   `).join('');
+}
+
+async function repayLoan(username) {
+  const res = await api('POST', '/api/admin/loan/repay', { username });
+  if (res.error) { alert(res.error); return; }
+  await loadAdminData();
+}
+
+async function forgiveLoan(username) {
+  if (!confirm(`Списать весь долг игрока/бота "${username}"?\nБаланс не изменится — задолженность просто аннулируется.`)) return;
+  const res = await api('POST', '/api/admin/loan/forgive', { username });
+  if (res.error) { alert(res.error); return; }
+  await loadAdminData();
 }
 
 // ── КОТИРОВКИ ────────────────────────────────────────────────────────────────
@@ -618,9 +685,8 @@ function renderPrices() {
     const driftPct = (m.drift || 0) * 100;
     const driftStr = driftPct === 0 ? '—'
       : `<span class="${driftPct > 0 ? 'up' : 'dn'}">${driftPct > 0 ? '+' : ''}${driftPct.toFixed(1)}%</span>`;
-    const isCustom = m.isCustom || !BASE_COINS.includes(c);
     return `<tr>
-      <td><strong>${isCustom ? (m.emoji || '🪙') + ' ' : ''}${c}</strong></td>
+      <td><strong>${c}</strong></td>
       <td style="font-variant-numeric:tabular-nums">$${fmt(prices[c] || 0, dec)}</td>
       <td>${driftStr}</td>
     </tr>`;

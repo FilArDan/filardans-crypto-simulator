@@ -85,6 +85,10 @@ async function tick(io) {
 
   await accrueInterest(io, updatedPrices, priceHistory);
 
+  // Выплата дивидендов держателям акций государственных компаний
+  const { payDividends } = require('./companies');
+  await payDividends(io);
+
   // Заставляем резервный фонд МТП после каждого цикла
   if (io) {
     try {

@@ -142,6 +142,25 @@ function renderPortfolio(wallet, coins) {
   }
 }
 
+function renderCompanies(companies) {
+  const body = document.getElementById('companiesBody');
+  if (!body) return;
+  if (!companies.length) {
+    body.innerHTML = '<tr><td colspan="4" style="color:var(--mu);text-align:center;padding:16px">Государственных компаний пока нет</td></tr>';
+    return;
+  }
+  body.innerHTML = companies.map(c => {
+    const dec = (c.price || 0) < 1 ? 4 : 2;
+    const isOwner = c.ownerNation === myUsername;
+    return `<tr>
+      <td><strong>${c.ticker}</strong><div class="muted" style="font-size:11px">${c.name}</div></td>
+      <td>${isOwner ? `<span class="inv-name me">${c.ownerNation}</span>` : c.ownerNation}</td>
+      <td>$${fmt(c.price, dec)}</td>
+      <td>${c.myShares > 0 ? fmt(c.myShares, 2) : '<span class="muted">—</span>'}</td>
+    </tr>`;
+  }).join('');
+}
+
 function renderFeed(events) {
   const feed = document.getElementById('activityFeed');
   if (!feed) return;
@@ -578,11 +597,14 @@ function applyLoanUpdate(data) {
 
 // ── ЗАГРУЗКА СОСТОЯНИЯ ────────────────────────────────────────────────────────
 async function loadState() {
-  const [data, loanInfo] = await Promise.all([
+  const [data, loanInfo, companies] = await Promise.all([
     api('GET', '/api/state'),
     api('GET', '/api/loan/info'),
+    api('GET', '/api/companies'),
   ]);
   if (data.error) return;
+
+  if (Array.isArray(companies)) renderCompanies(companies);
 
   if (data.coins) {
     currentCoins = data.coins;

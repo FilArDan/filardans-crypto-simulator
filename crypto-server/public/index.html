@@ -58,7 +58,7 @@
 
   <!-- Stats -->
   <div class="stats">
-    <div class="stat"><div class="lbl">Казна (итого)</div><div id="sTotal" class="val">—</div></div>
+    <div class="stat"><div class="lbl">Госбюджет</div><div id="sTotal" class="val">—</div></div>
     <div class="stat"><div class="lbl">Крипторезервы</div><div id="sPort" class="val">—</div></div>
     <div class="stat"><div class="lbl">Фиатный резерв</div><div id="sCash" class="val">—</div></div>
     <div class="stat"><div class="lbl">Госдолг</div><div id="sDebt" class="val">—</div></div>
@@ -92,6 +92,16 @@
           <thead><tr><th>Актив</th><th>Объём</th><th>Курс</th><th>Стоимость</th></tr></thead>
           <tbody id="portfolioBody"></tbody>
         </table>
+      </div>
+
+      <!-- Companies -->
+      <div class="card">
+        <h2>🏢 Государственные компании</h2>
+        <table>
+          <thead><tr><th>Компания</th><th>Владелец</th><th>Цена</th><th>Моя доля</th></tr></thead>
+          <tbody id="companiesBody"></tbody>
+        </table>
+        <div class="lbl" style="margin-top:8px">Покупка/продажа акций — через торговую форму ниже, по тикеру компании.</div>
       </div>
 
       <!-- Trade -->

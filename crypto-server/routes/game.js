@@ -8,6 +8,7 @@ const {
   placeOrder, cancelOrder, listUserOrders, getOrderBook,
   cancelOrdersForCoin, cancelOrdersForUser, MAX_OPEN_ORDERS,
 } = require('../game/orders');
+const { createCompany, updateCompany, deleteCompany, listCompanies } = require('../game/companies');
 
 const TRADE_FEE = 0.004;   // 0.4% комиссия
 const SPREAD    = 0.0015;  // ±0.15% спред (итого 0.3% между buy/sell ценой)
@@ -681,37 +682,107 @@ router.post('/admin/coin/create', auth, adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Снимает ордера, выкупает актив у всех держателей по рыночной цене и удаляет
+// его из db.prices/db.priceHistory. Общий шаг для удаления монеты и компании —
+// с точки зрения рынка это один и тот же тикер.
+async function buybackAndRemoveAsset(ticker, io) {
+  const priceDoc = await db.prices.findOne({ coin: ticker });
+  if (!priceDoc) return false;
+  const curPrice = priceDoc.price || 0;
+  // Снимаем лимитные ордера по монете — резервы возвращаются игрокам до выкупа
+  await cancelOrdersForCoin(ticker, io);
+  const wallets = await db.wallets.find({ username: { $ne: EXCHANGE_USERNAME } });
+  for (const w of wallets) {
+    const holding = w[ticker] || 0;
+    if (holding > 0 && curPrice > 0) {
+      // Выкупаем монеты у игроков за USD биржи
+      await db.wallets.update({ _id: w._id }, { $inc: { usd: holding * curPrice }, $set: { [ticker]: 0 } });
+      await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: -(holding * curPrice) }, $set: { [ticker]: 0 } });
+    }
+  }
+  // Обнуляем запас биржи по этой монете
+  await db.wallets.update({ username: EXCHANGE_USERNAME }, { $set: { [ticker]: 0 } });
+  await db.prices.remove({ coin: ticker }, {});
+  await db.customCoins.remove({ ticker }, {});
+  await deleteCoinHistory(ticker);
+  return true;
+}
+
 router.delete('/admin/coin/:ticker', auth, adminOnly, async (req, res) => {
   try {
     const ticker = (req.params.ticker || '').toUpperCase();
-    const priceDoc = await db.prices.findOne({ coin: ticker });
-    if (!priceDoc) return res.status(404).json({ error: 'Монета не найдена' });
-    const curPrice = priceDoc.price || 0;
-    // Снимаем лимитные ордера по монете — резервы возвращаются игрокам до выкупа
-    await cancelOrdersForCoin(ticker, req.app.get('io'));
-    const wallets  = await db.wallets.find({ username: { $ne: EXCHANGE_USERNAME } });
-    for (const w of wallets) {
-      const holding = w[ticker] || 0;
-      if (holding > 0 && curPrice > 0) {
-        // Выкупаем монеты у игроков за USD биржи
-        await db.wallets.update({ _id: w._id }, { $inc: { usd: holding * curPrice }, $set: { [ticker]: 0 } });
-        await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: -(holding * curPrice) }, $set: { [ticker]: 0 } });
-      }
-    }
-    // Обнуляем запас биржи по этой монете
-    await db.wallets.update({ username: EXCHANGE_USERNAME }, { $set: { [ticker]: 0 } });
-    await db.prices.remove({ coin: ticker }, {});
-    await db.customCoins.remove({ ticker }, {});
-    await deleteCoinHistory(ticker);
+    const io = req.app.get('io');
+    const removed = await buybackAndRemoveAsset(ticker, io);
+    if (!removed) return res.status(404).json({ error: 'Монета не найдена' });
     const allCoinsNew   = await getAllCoins();
     const updatedPrices = await getAllPrices();
     const ev = { ts: Date.now(), text: `Админ удалил монету: ${ticker}` };
+    await db.events.insert(ev);
+    io.emit('newEvent', ev);
+    io.emit('priceUpdate', updatedPrices);
+    io.emit('coinsUpdated', { coins: allCoinsNew });
+    res.json({ ok: true, coins: allCoinsNew });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── АДМИН: компании ───────────────────────────────────────────────────────────
+router.get('/admin/companies', auth, adminOnly, async (req, res) => {
+  try {
+    const prices = await getAllPrices();
+    res.json(await listCompanies(prices));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/company/create', auth, adminOnly, async (req, res) => {
+  try {
+    const company = await createCompany(req.body);
+    const allCoinsNew   = await getAllCoins();
+    const updatedPrices = await getAllPrices();
+    const ev = { ts: Date.now(), text: `Админ основал компанию: ${company.name} (${company.ticker}), владелец — ${company.ownerNation}` };
     await db.events.insert(ev);
     const io = req.app.get('io');
     io.emit('newEvent', ev);
     io.emit('priceUpdate', updatedPrices);
     io.emit('coinsUpdated', { coins: allCoinsNew });
+    await emitPlayersUpdate(io);
+    res.json({ ok: true, company, coins: allCoinsNew, prices: updatedPrices });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+router.post('/admin/company/params', auth, adminOnly, async (req, res) => {
+  try {
+    const { ticker, revenuePerTick, ownerNation } = req.body;
+    const company = await updateCompany(ticker, { revenuePerTick, ownerNation });
+    const ev = { ts: Date.now(), text: `Админ изменил параметры компании ${company.ticker}` };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ ok: true, company });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+router.delete('/admin/company/:ticker', auth, adminOnly, async (req, res) => {
+  try {
+    const ticker = (req.params.ticker || '').toUpperCase();
+    const io = req.app.get('io');
+    const removed = await buybackAndRemoveAsset(ticker, io);
+    if (!removed) return res.status(404).json({ error: 'Компания не найдена' });
+    await deleteCompany(ticker);
+    const allCoinsNew   = await getAllCoins();
+    const updatedPrices = await getAllPrices();
+    const ev = { ts: Date.now(), text: `Админ ликвидировал компанию: ${ticker}` };
+    await db.events.insert(ev);
+    io.emit('newEvent', ev);
+    io.emit('priceUpdate', updatedPrices);
+    io.emit('coinsUpdated', { coins: allCoinsNew });
+    await emitPlayersUpdate(io);
     res.json({ ok: true, coins: allCoinsNew });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/companies', auth, async (req, res) => {
+  try {
+    const prices = await getAllPrices();
+    res.json(await listCompanies(prices, req.session.username));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

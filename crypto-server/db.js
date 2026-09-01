@@ -14,6 +14,7 @@ const db = {
   bots:         new NeDB({ filename: path.join(dbDir, 'bots.db'),         autoload: true }),
   priceHistory: new NeDB({ filename: path.join(dbDir, 'priceHistory.db'), autoload: true }),
   orders:       new NeDB({ filename: path.join(dbDir, 'orders.db'),       autoload: true }),
+  companies:    new NeDB({ filename: path.join(dbDir, 'companies.db'),    autoload: true }),
 };
 
 // Индекс для быстрой фильтрации по монете
@@ -23,6 +24,9 @@ db.priceHistory.ensureIndex({ fieldName: 'coin' });
 db.orders.ensureIndex({ fieldName: 'username' });
 db.orders.ensureIndex({ fieldName: 'coin' });
 db.orders.ensureIndex({ fieldName: 'status' });
+
+// Индекс компаний (акции — государственные и союзные активы)
+db.companies.ensureIndex({ fieldName: 'ticker', unique: true });
 
 const DEFAULT_BOTS = [
   { name: 'Агрессор-1', type: 'bull', usd: 15000, held: {}, avgP: {}, target: {} },

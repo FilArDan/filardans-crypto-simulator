@@ -721,6 +721,95 @@ function fillPlayerSelect() {
     : '<option disabled>Нет игроков</option>';
 }
 
+// ── КОМПАНИИ ─────────────────────────────────────────────────────────────────
+let allCompanies = [];
+
+function fillCompanyOwnerSelect() {
+  const sel = document.getElementById('newCompanyOwner');
+  if (!sel) return;
+  const players = allWallets
+    .filter(w => w.username !== 'WARDEN' && w.username !== 'EXCHANGE')
+    .sort((a, b) => a.username.localeCompare(b.username));
+  sel.innerHTML = players.length
+    ? players.map(w => `<option value="${w.username}">${w.username}</option>`).join('')
+    : '<option disabled>Нет государств</option>';
+}
+
+function renderCompanies() {
+  const tbody = document.getElementById('companiesBody');
+  if (!tbody) return;
+  if (!allCompanies.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--mu);padding:16px">Компаний пока нет. Основай через форму ниже.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = allCompanies.map(c => {
+    const supply = (coinMeta[c.ticker] && coinMeta[c.ticker].supply) || 0;
+    const mcap   = supply * (c.price || 0);
+    return `<tr>
+      <td><strong>${c.ticker}</strong></td>
+      <td>${c.name}</td>
+      <td>${c.ownerNation}</td>
+      <td>$${fmt(c.price, priceDec(c.ticker))}</td>
+      <td>$${fmt(mcap)}</td>
+      <td>
+        <input type="number" class="coin-input" id="company-rev-${c.ticker}" value="${c.revenuePerTick}" min="0" step="any" style="width:90px">
+      </td>
+      <td>
+        <button class="btn btn-secondary btn-sm" onclick="saveCompanyParams('${c.ticker}')">Сохранить</button>
+        <button class="btn btn-dan btn-sm" onclick="deleteCompany('${c.ticker}')" title="Ликвидировать компанию">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function saveCompanyParams(ticker) {
+  const input = document.getElementById(`company-rev-${ticker}`);
+  const revenuePerTick = input ? input.value : undefined;
+  const res = await api('POST', '/api/admin/company/params', { ticker, revenuePerTick });
+  if (res.error) { alert(res.error); return; }
+  await loadCompaniesData();
+}
+
+async function deleteCompany(ticker) {
+  if (!confirm(`Ликвидировать компанию ${ticker}?\nАкции будут выкуплены у держателей по текущей рыночной цене.`)) return;
+  const r   = await fetch(`/api/admin/company/${encodeURIComponent(ticker)}`, { method: 'DELETE' });
+  const res = await r.json();
+  if (res.error) { alert(res.error); return; }
+  await loadAdminData();
+}
+
+document.getElementById('createCompanyForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('createCompanyBtn');
+  btn.disabled = true; btn.textContent = '⏳...';
+  const body = {
+    ticker:         document.getElementById('newCompanyTicker').value.trim(),
+    name:           document.getElementById('newCompanyName').value.trim(),
+    ownerNation:    document.getElementById('newCompanyOwner').value,
+    totalShares:    document.getElementById('newCompanyShares').value,
+    startPrice:     document.getElementById('newCompanyPrice').value,
+    statePct:       document.getElementById('newCompanyStatePct').value,
+    revenuePerTick: document.getElementById('newCompanyRevenue').value,
+    vol:            parseFloat(document.getElementById('newCompanyVol').value) / 100,
+  };
+  const res = await api('POST', '/api/admin/company/create', body);
+  if (res.error) {
+    alert(res.error);
+  } else {
+    document.getElementById('createCompanyForm').reset();
+    await loadAdminData();
+  }
+  btn.disabled = false; btn.textContent = '🏢 Основать компанию';
+});
+
+async function loadCompaniesData() {
+  const res = await api('GET', '/api/admin/companies');
+  if (!res.error) {
+    allCompanies = res;
+    renderCompanies();
+  }
+}
+
 // ── ЗАГРУЗКА ВСЕХ ДАННЫХ ─────────────────────────────────────────────────────
 async function loadAdminData() {
   const [adminData, stateData, coinsData] = await Promise.all([
@@ -756,9 +845,11 @@ async function loadAdminData() {
   renderLoans();
   renderCoinParams();
   fillPlayerSelect();
+  fillCompanyOwnerSelect();
   renderBankCard();  // без аргументов — возьмёт из allWallets/allLoans
   await loadExchangeAssets();
   await loadBotsData();
+  await loadCompaniesData();
 }
 
 // ── КНОПКИ ───────────────────────────────────────────────────────────────────

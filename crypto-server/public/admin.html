@@ -191,6 +191,7 @@
     <button class="side-link" data-section="overview"><span class="ic">📊</span> Обзор</button>
     <button class="side-link" data-section="players"><span class="ic">👥</span> Игроки</button>
     <button class="side-link" data-section="bots"><span class="ic">🤖</span> Боты</button>
+    <button class="side-link" data-section="companies"><span class="ic">🏢</span> Компании</button>
     <button class="side-link" data-section="market"><span class="ic">🎛️</span> Контроль рынка</button>
   </nav>
 
@@ -392,6 +393,66 @@
             <input id="newBotUsd" type="number" value="10000" min="0" step="100" style="width:100px">
           </label>
           <button class="btn btn-secondary btn-sm" type="submit" id="createBotBtn">Создать</button>
+        </form>
+      </div>
+    </div>
+
+  </section>
+
+
+  <!-- ═══════════════════ КОМПАНИИ ═══════════════════ -->
+  <section class="admin-section" id="section-companies" hidden>
+
+    <div class="card">
+      <h2>🏢 Государственные компании</h2>
+      <div class="lbl" style="margin-bottom:14px">
+        Компания — актив вроде монеты: торгуется на общей бирже через обычную сделку/лимитку.
+        Отличие — у неё есть государство-владелец и доход, который каждый тик распределяется держателям акций пропорционально доле.
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Тикер</th><th>Название</th><th>Владелец</th><th>Цена</th><th>Маркеткап</th>
+              <th>Доход/тик</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="companiesBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Создать компанию -->
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--bd)">
+        <div style="font-weight:600;font-size:13px;margin-bottom:10px">➕ Основать компанию</div>
+        <form id="createCompanyForm">
+          <div class="create-grid">
+            <label class="fld">Тикер *
+              <input id="newCompanyTicker" type="text" maxlength="8" placeholder="NZOIL" required
+                style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+            </label>
+            <label class="fld">Название *
+              <input id="newCompanyName" type="text" maxlength="40" placeholder="Новозарийская нефть" required>
+            </label>
+            <label class="fld">Государство-владелец *
+              <select id="newCompanyOwner"></select>
+            </label>
+            <label class="fld">Всего акций
+              <input id="newCompanyShares" type="number" min="1" step="1" value="1000">
+            </label>
+            <label class="fld">Стартовая цена ($)
+              <input id="newCompanyPrice" type="number" min="0.0001" step="any" value="100">
+            </label>
+            <label class="fld">Доля государства при основании (%)
+              <input id="newCompanyStatePct" type="number" min="0" max="100" step="1" value="50">
+            </label>
+            <label class="fld">Доход за тик ($)
+              <input id="newCompanyRevenue" type="number" min="0" step="any" value="10">
+            </label>
+            <label class="fld">Волатильность (%)
+              <input id="newCompanyVol" type="number" min="0.5" max="30" step="0.5" value="3">
+            </label>
+          </div>
+          <button class="btn btn-secondary" type="submit" id="createCompanyBtn">🏢 Основать компанию</button>
         </form>
       </div>
     </div>

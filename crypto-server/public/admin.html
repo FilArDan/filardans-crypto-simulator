@@ -160,10 +160,41 @@
     .assets-table td { font-size: 13px; font-variant-numeric: tabular-nums; }
     .assets-table .coin-cell { display: flex; align-items: center; gap: 6px; }
     .qty-zero { color: var(--mu); }
+
+    /* Боковое меню */
+    .admin-shell { max-width: 1320px; margin: 0 auto; padding: 16px 20px; display: flex; align-items: flex-start; gap: 22px; }
+    .sidebar { width: 200px; flex-shrink: 0; display: flex; flex-direction: column; gap: 3px; position: sticky; top: 16px; }
+    .side-link {
+      display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+      padding: 10px 13px; border-radius: 10px; border: 1px solid transparent;
+      background: transparent; color: var(--mu); font-size: 13px; font-weight: 600;
+      transition: background .15s, color .15s;
+    }
+    .side-link .ic { font-size: 16px; line-height: 1; }
+    .side-link:hover { background: var(--sf2); color: var(--txt); }
+    .side-link.active { background: var(--pri); color: #fff; }
+    .admin-main { flex: 1; min-width: 0; }
+    .admin-section[hidden] { display: none; }
+    .admin-section > *:first-child { margin-top: 0 !important; }
+    @media (max-width: 860px) {
+      .admin-shell { flex-direction: column; padding: 12px; }
+      .sidebar { width: 100%; flex-direction: row; overflow-x: auto; position: static; padding-bottom: 2px; }
+      .side-link { width: auto; white-space: nowrap; }
+    }
   </style>
 </head>
 <body>
-<div class="app">
+<div class="admin-shell">
+
+  <!-- БОКОВОЕ МЕНЮ -->
+  <nav class="sidebar" id="adminSidebar">
+    <button class="side-link" data-section="overview"><span class="ic">📊</span> Обзор</button>
+    <button class="side-link" data-section="players"><span class="ic">👥</span> Игроки</button>
+    <button class="side-link" data-section="bots"><span class="ic">🤖</span> Боты</button>
+    <button class="side-link" data-section="market"><span class="ic">🎛️</span> Контроль рынка</button>
+  </nav>
+
+  <div class="admin-main">
 
 
   <!-- TOPBAR -->
@@ -189,218 +220,284 @@
   </div>
 
 
-  <!-- STATS -->
-  <div class="stats">
-    <div class="stat">
-      <div class="lbl">Игроки онлайн</div>
-      <div class="val" id="onlineCount">0</div>
-    </div>
-    <div class="stat">
-      <div class="lbl">Всего сделок</div>
-      <div class="val" id="dealCount">0</div>
-    </div>
-    <div class="stat">
-      <div class="lbl">Активных кредитов</div>
-      <div class="val" id="loanCount">0</div>
-    </div>
-    <div class="stat">
-      <div class="lbl">Скорость тика</div>
-      <div class="val" id="tickSpeedStat" style="font-size:clamp(14px,2vw,20px)">25 с</div>
-    </div>
-  </div>
+  <!-- ═══════════════════ ОБЗОР ═══════════════════ -->
+  <section class="admin-section" id="section-overview">
 
-
-  <!-- БАНК -->
-  <div class="bank-card section-gap">
-    <div class="lbl">🏦 Казна Банка (WARDEN)</div>
-    <div class="val" id="bankBalance">$—</div>
-    <div class="bank-issued">Выдано кредитов: <span id="bankIssued">$0.00</span> &nbsp;|&nbsp; Долг к возврату: <span id="bankDebt">$0.00</span></div>
-  </div>
-
-
-  <!-- АКТИВЫ БИРЖИ -->
-  <div class="exchange-assets-card section-gap">
-    <h2>📦 Активы биржи (EXCHANGE)</h2>
-    <div class="assets-summary">
-      <div class="a-item">
-        <span class="a-lbl">USD резерв</span>
-        <span class="a-val" id="exchUsd">$—</span>
+    <!-- STATS -->
+    <div class="stats">
+      <div class="stat">
+        <div class="lbl">Игроки онлайн</div>
+        <div class="val" id="onlineCount">0</div>
       </div>
-      <div class="a-item">
-        <span class="a-lbl">Монеты (≈USD)</span>
-        <span class="a-val" id="exchCoinValue">$—</span>
+      <div class="stat">
+        <div class="lbl">Всего сделок</div>
+        <div class="val" id="dealCount">0</div>
       </div>
-      <div class="a-item">
-        <span class="a-lbl">Всего активов</span>
-        <span class="a-val" id="exchTotal">$—</span>
+      <div class="stat">
+        <div class="lbl">Активных кредитов</div>
+        <div class="val" id="loanCount">0</div>
+      </div>
+      <div class="stat">
+        <div class="lbl">Скорость тика</div>
+        <div class="val" id="tickSpeedStat" style="font-size:clamp(14px,2vw,20px)">25 с</div>
       </div>
     </div>
-    <div style="overflow-x:auto">
-      <table class="assets-table">
-        <thead>
-          <tr>
-            <th>Монета</th>
-            <th style="text-align:right">Запас (qty)</th>
-            <th style="text-align:right">Цена</th>
-            <th style="text-align:right">≈ USD</th>
-          </tr>
-        </thead>
-        <tbody id="exchangeAssetsBody"></tbody>
-      </table>
+
+
+    <!-- БАНК -->
+    <div class="bank-card section-gap">
+      <div class="lbl">🏦 Казна Банка (WARDEN)</div>
+      <div class="val" id="bankBalance">$—</div>
+      <div class="bank-issued">Выдано кредитов: <span id="bankIssued">$0.00</span> &nbsp;|&nbsp; Долг к возврату: <span id="bankDebt">$0.00</span></div>
     </div>
-  </div>
 
 
-  <!-- ПАУЗА -->
-  <div class="card section-gap">
-    <h2>⏸️ Управление игрой</h2>
-    <div class="pause-bar">
-      <div class="pause-status" id="pauseStatus">
-        <span class="pause-dot"></span>
-        <span id="pauseStatusText">Игра идёт</span>
+    <!-- АКТИВЫ БИРЖИ -->
+    <div class="exchange-assets-card section-gap">
+      <h2>📦 Активы биржи (EXCHANGE)</h2>
+      <div class="assets-summary">
+        <div class="a-item">
+          <span class="a-lbl">USD резерв</span>
+          <span class="a-val" id="exchUsd">$—</span>
+        </div>
+        <div class="a-item">
+          <span class="a-lbl">Монеты (≈USD)</span>
+          <span class="a-val" id="exchCoinValue">$—</span>
+        </div>
+        <div class="a-item">
+          <span class="a-lbl">Всего активов</span>
+          <span class="a-val" id="exchTotal">$—</span>
+        </div>
       </div>
-      <button class="btn btn-dan" id="pauseBtn">⏸️ Пауза</button>
-      <button class="btn btn-secondary" id="resumeBtn" disabled>▶️ Продолжить</button>
-      <span class="lbl" style="margin:0">Во время паузы цены не меняются, боты не торгуют. Сделки игроков по-прежнему доступны.</span>
-    </div>
-  </div>
-
-
-  <!-- СЛАЙДЕР СКОРОСТИ ТИКА -->
-  <div class="card section-gap">
-    <h2>⏱️ Скорость симуляции: <span id="speedLabel" style="color:var(--pri)">25 с/тик</span></h2>
-    <div style="padding:4px 0 8px">
-      <input type="range" id="speedSlider" min="500" max="120000" step="500" value="25000" style="width:100%;">
-    </div>
-    <div style="display:flex;justify-content:space-between;">
-      <span class="lbl" style="margin:0">500 мс (ультрабыстро)</span>
-      <span class="lbl" style="margin:0">2 мин (медленно)</span>
-    </div>
-  </div>
-
-
-  <!-- ПАРАМЕТРЫ МОНЕТ -->
-  <div class="card section-gap">
-    <h2>⚙️ Параметры монет</h2>
-    <div style="overflow-x:auto">
-      <table>
-        <thead>
-          <tr>
-            <th>Монета</th>
-            <th>Цена</th>
-            <th>Волатильность</th>
-            <th>Тренд (drift)</th>
-            <th>Supply</th>
-            <th>Базовая цена</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="coinParamsBody"></tbody>
-      </table>
-    </div>
-    <div class="lbl" style="margin-top:8px">
-      🔵 <b>Волатильность</b> — разброс цены за тик.&nbsp;&nbsp;
-      🟢 <b>Тренд</b> — постоянный рост или падение.&nbsp;&nbsp;
-      ⚪ <b>Supply</b> — изменение сохраняет капитализацию.&nbsp;&nbsp;
-      🗑️ Удалить можно <b>любую</b> монету; базовые (BTC, ETH...) можно потом создать заново через форму ниже.
-    </div>
-  </div>
-
-
-  <!-- СОЗДАТЬ МОНЕТУ -->
-  <div class="card section-gap">
-    <h2>✨ Создать / восстановить монету</h2>
-    <div class="lbl" style="margin-bottom:12px">Введи тикер базовой монеты (BTC, ETH, SOL, XRP, DOGE) — параметры подставятся автоматически. Или придумай свой тикер для кастомной монеты.</div>
-    <form id="createCoinForm">
-      <div class="create-grid">
-        <label class="fld">Тикер *
-          <input id="newTicker" type="text" maxlength="8" placeholder="MEME" required
-            style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
-        </label>
-        <label class="fld">Название
-          <input id="newName" type="text" maxlength="32" placeholder="MemeToken">
-        </label>
-        <label class="fld">Emoji
-          <input id="newEmoji" type="text" maxlength="4" placeholder="🪙">
-        </label>
-        <label class="fld">Начальная цена ($) *
-          <input id="newPrice" type="number" min="0.0001" step="any" value="1" required>
-        </label>
-        <label class="fld">Волатильность (%)
-          <input id="newVol" type="number" min="0.5" max="30" step="0.5" value="5">
-        </label>
-        <label class="fld">Тренд (%)
-          <input id="newDrift" type="number" min="-10" max="10" step="0.1" value="0">
-        </label>
-        <label class="fld">Supply
-          <input id="newSupply" type="number" min="1" step="1" value="1000000">
-        </label>
+      <div style="overflow-x:auto">
+        <table class="assets-table">
+          <thead>
+            <tr>
+              <th>Монета</th>
+              <th style="text-align:right">Запас (qty)</th>
+              <th style="text-align:right">Цена</th>
+              <th style="text-align:right">≈ USD</th>
+            </tr>
+          </thead>
+          <tbody id="exchangeAssetsBody"></tbody>
+        </table>
       </div>
-      <button class="btn btn-secondary" type="submit" id="createCoinBtn">🚀 Создать монету</button>
-    </form>
-  </div>
-
-
-  <!-- БОТЫ -->
-  <div class="card section-gap">
-    <h2>🤖 Управление ботами</h2>
-    <div class="lbl" style="margin-bottom:14px">
-      <b>🐂 Агрессор</b> — торгует крупными объёмами, высокий риск.&nbsp;&nbsp;
-      <b>🦊 Осторожный</b> — редкие небольшие сделки, консервативен.&nbsp;&nbsp;
-      <b>🐊 Накопитель</b> — постепенно накапливает, фиксирует прибыль по целевой цене.
     </div>
-    <div class="bots-grid" id="botsGrid"><!-- заполняется JS --></div>
 
-    <!-- Создать бота -->
-    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--bd)">
-      <div style="font-weight:600;font-size:13px;margin-bottom:10px">➕ Создать нового бота</div>
-      <form id="createBotForm" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-        <label class="fld" style="margin:0">
-          Имя
-          <input id="newBotName" type="text" maxlength="24" placeholder="Торгаш" style="width:120px" required>
-        </label>
-        <label class="fld" style="margin:0">
-          Пресет
-          <select id="newBotType" style="width:140px">
-            <option value="bull">🐂 Агрессор</option>
-            <option value="fox" selected>🦊 Осторожный</option>
-            <option value="croc">🐊 Накопитель</option>
-          </select>
-        </label>
-        <label class="fld" style="margin:0">
-          Стартовый USD
-          <input id="newBotUsd" type="number" value="10000" min="0" step="100" style="width:100px">
-        </label>
-        <button class="btn btn-secondary btn-sm" type="submit" id="createBotBtn">Создать</button>
-      </form>
+
+    <!-- ЛЕНТА -->
+    <div class="card section-gap">
+      <h2>📋 Лента событий</h2>
+      <div class="feed" id="adminFeed" style="max-height:320px;"></div>
     </div>
-  </div>
+
+  </section>
 
 
-  <!-- ROW: CONTROLS + PRICES -->
-  <div class="g2b section-gap">
+  <!-- ═══════════════════ ИГРОКИ ═══════════════════ -->
+  <section class="admin-section" id="section-players" hidden>
 
+    <!-- ТАБЛИЦА ИГРОКОВ -->
+    <div class="card">
+      <h2>👥 Балансы и портфели игроков</h2>
+
+      <!-- Создать игрока -->
+      <div style="margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--bd)">
+        <div style="font-weight:600;font-size:13px;margin-bottom:10px">➕ Создать нового игрока</div>
+        <form id="createPlayerForm" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <label class="fld" style="margin:0">
+            Имя
+            <input id="newPlayerName" type="text" maxlength="24" placeholder="Логин" style="width:140px" required>
+          </label>
+          <label class="fld" style="margin:0">
+            Пароль
+            <input id="newPlayerPassword" type="text" maxlength="64" placeholder="Пароль" style="width:140px" required>
+          </label>
+          <label class="fld" style="margin:0">
+            Стартовый USD
+            <input id="newPlayerUsd" type="number" value="10000" min="0" step="100" style="width:110px">
+          </label>
+          <button class="btn btn-secondary btn-sm" type="submit" id="createPlayerBtn">Создать</button>
+        </form>
+      </div>
+
+      <div style="overflow-x:auto">
+        <table id="playersTable">
+          <thead id="playersHead"></thead>
+          <tbody id="adminPlayersBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+
+    <!-- БАЛАНС + КРЕДИТЫ -->
+    <div class="g2 section-gap">
+      <div class="card">
+        <h2>💰 Установить баланс игрока</h2>
+        <form id="setCashForm" style="display:flex;flex-direction:column;gap:10px;">
+          <label class="fld">Игрок
+            <select id="cashUsername"></select>
+          </label>
+          <label class="fld">Сумма (USD)
+            <input id="cashAmount" type="number" value="10000" min="0" />
+          </label>
+          <button class="btn btn-secondary btn-sm" type="submit">Применить</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>💳 Активные кредиты</h2>
+        <table>
+          <thead>
+            <tr><th>Игрок</th><th>Взял</th><th>Долг (×1.08)</th><th>Дата</th></tr>
+          </thead>
+          <tbody id="adminLoansBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </section>
+
+
+  <!-- ═══════════════════ БОТЫ ═══════════════════ -->
+  <section class="admin-section" id="section-bots" hidden>
 
     <div class="card">
-      <h2>🎛️ Управление рынком</h2>
-      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
+      <h2>🤖 Управление ботами</h2>
+      <div class="lbl" style="margin-bottom:14px">
+        <b>🐂 Агрессор</b> — торгует крупными объёмами, высокий риск.&nbsp;&nbsp;
+        <b>🦊 Осторожный</b> — редкие небольшие сделки, консервативен.&nbsp;&nbsp;
+        <b>🐊 Накопитель</b> — постепенно накапливает, фиксирует прибыль по целевой цене.
+      </div>
+      <div class="bots-grid" id="botsGrid"><!-- заполняется JS --></div>
+
+      <!-- Создать бота -->
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--bd)">
+        <div style="font-weight:600;font-size:13px;margin-bottom:10px">➕ Создать нового бота</div>
+        <form id="createBotForm" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <label class="fld" style="margin:0">
+            Имя
+            <input id="newBotName" type="text" maxlength="24" placeholder="Торгаш" style="width:120px" required>
+          </label>
+          <label class="fld" style="margin:0">
+            Пресет
+            <select id="newBotType" style="width:140px">
+              <option value="bull">🐂 Агрессор</option>
+              <option value="fox" selected>🦊 Осторожный</option>
+              <option value="croc">🐊 Накопитель</option>
+            </select>
+          </label>
+          <label class="fld" style="margin:0">
+            Стартовый USD
+            <input id="newBotUsd" type="number" value="10000" min="0" step="100" style="width:100px">
+          </label>
+          <button class="btn btn-secondary btn-sm" type="submit" id="createBotBtn">Создать</button>
+        </form>
+      </div>
+    </div>
+
+  </section>
+
+
+  <!-- ═══════════════════ КОНТРОЛЬ РЫНКА ═══════════════════ -->
+  <section class="admin-section" id="section-market" hidden>
+
+    <!-- ПАУЗА -->
+    <div class="card">
+      <h2>⏸️ Управление игрой</h2>
+      <div class="pause-bar">
+        <div class="pause-status" id="pauseStatus">
+          <span class="pause-dot"></span>
+          <span id="pauseStatusText">Игра идёт</span>
+        </div>
+        <button class="btn btn-dan" id="pauseBtn">⏸️ Пауза</button>
+        <button class="btn btn-secondary" id="resumeBtn" disabled>▶️ Продолжить</button>
+        <span class="lbl" style="margin:0">Во время паузы цены не меняются, боты не торгуют. Сделки игроков по-прежнему доступны.</span>
+      </div>
+    </div>
+
+
+    <!-- СЛАЙДЕР СКОРОСТИ ТИКА -->
+    <div class="card section-gap">
+      <h2>⏱️ Скорость симуляции: <span id="speedLabel" style="color:var(--pri)">25 с/тик</span></h2>
+      <div style="padding:4px 0 8px">
+        <input type="range" id="speedSlider" min="500" max="120000" step="500" value="25000" style="width:100%;">
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span class="lbl" style="margin:0">500 мс (ультрабыстро)</span>
+        <span class="lbl" style="margin:0">2 мин (медленно)</span>
+      </div>
+    </div>
+
+
+    <!-- ПАРАМЕТРЫ МОНЕТ -->
+    <div class="card section-gap">
+      <h2>⚙️ Параметры монет</h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Монета</th>
+              <th>Цена</th>
+              <th>Волатильность</th>
+              <th>Тренд (drift)</th>
+              <th>Supply</th>
+              <th>Базовая цена</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="coinParamsBody"></tbody>
+        </table>
+      </div>
+      <div class="lbl" style="margin-top:8px">
+        🔵 <b>Волатильность</b> — разброс цены за тик.&nbsp;&nbsp;
+        🟢 <b>Тренд</b> — постоянный рост или падение.&nbsp;&nbsp;
+        ⚪ <b>Supply</b> — изменение сохраняет капитализацию.&nbsp;&nbsp;
+        🗑️ Удалить можно <b>любую</b> монету; базовые (BTC, ETH...) можно потом создать заново через форму ниже.
+      </div>
+    </div>
+
+
+    <!-- СОЗДАТЬ МОНЕТУ -->
+    <div class="card section-gap">
+      <h2>✨ Создать / восстановить монету</h2>
+      <div class="lbl" style="margin-bottom:12px">Введи тикер базовой монеты (BTC, ETH, SOL, XRP, DOGE) — параметры подставятся автоматически. Или придумай свой тикер для кастомной монеты.</div>
+      <form id="createCoinForm">
+        <div class="create-grid">
+          <label class="fld">Тикер *
+            <input id="newTicker" type="text" maxlength="8" placeholder="MEME" required
+              style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+          </label>
+          <label class="fld">Название
+            <input id="newName" type="text" maxlength="32" placeholder="MemeToken">
+          </label>
+          <label class="fld">Emoji
+            <input id="newEmoji" type="text" maxlength="4" placeholder="🪙">
+          </label>
+          <label class="fld">Начальная цена ($) *
+            <input id="newPrice" type="number" min="0.0001" step="any" value="1" required>
+          </label>
+          <label class="fld">Волатильность (%)
+            <input id="newVol" type="number" min="0.5" max="30" step="0.5" value="5">
+          </label>
+          <label class="fld">Тренд (%)
+            <input id="newDrift" type="number" min="-10" max="10" step="0.1" value="0">
+          </label>
+          <label class="fld">Supply
+            <input id="newSupply" type="number" min="1" step="1" value="1000000">
+          </label>
+        </div>
+        <button class="btn btn-secondary" type="submit" id="createCoinBtn">🚀 Создать монету</button>
+      </form>
+    </div>
+
+
+    <!-- КОТИРОВКИ + ТИК -->
+    <div class="card section-gap">
+      <h2>📊 Котировки сейчас</h2>
+      <div style="margin-bottom:14px">
         <button class="btn btn-secondary" id="tickBtn">🔄 Принудительно обновить цены</button>
       </div>
-      <form id="setCashForm" style="display:flex;flex-direction:column;gap:10px;">
-        <div class="lbl" style="margin-bottom:0">Установить баланс игрока</div>
-        <label class="fld">Игрок
-          <select id="cashUsername"></select>
-        </label>
-        <label class="fld">Сумма (USD)
-          <input id="cashAmount" type="number" value="10000" min="0" />
-        </label>
-        <button class="btn btn-secondary btn-sm" type="submit">Применить</button>
-      </form>
-    </div>
-
-
-    <div class="card">
-      <h2>📊 Котировки сейчас</h2>
       <table>
         <thead>
           <tr><th>Монета</th><th>Цена</th><th>Изм.</th></tr>
@@ -408,61 +505,12 @@
         <tbody id="priceRows"></tbody>
       </table>
     </div>
-  </div>
+
+  </section>
 
 
-  <!-- ТАБЛИЦА ИГРОКОВ -->
-  <div class="card section-gap">
-    <h2>👥 Балансы и портфели игроков</h2>
-
-    <!-- Создать игрока -->
-    <div style="margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--bd)">
-      <div style="font-weight:600;font-size:13px;margin-bottom:10px">➕ Создать нового игрока</div>
-      <form id="createPlayerForm" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-        <label class="fld" style="margin:0">
-          Имя
-          <input id="newPlayerName" type="text" maxlength="24" placeholder="Логин" style="width:140px" required>
-        </label>
-        <label class="fld" style="margin:0">
-          Пароль
-          <input id="newPlayerPassword" type="text" maxlength="64" placeholder="Пароль" style="width:140px" required>
-        </label>
-        <label class="fld" style="margin:0">
-          Стартовый USD
-          <input id="newPlayerUsd" type="number" value="10000" min="0" step="100" style="width:110px">
-        </label>
-        <button class="btn btn-secondary btn-sm" type="submit" id="createPlayerBtn">Создать</button>
-      </form>
-    </div>
-
-    <div style="overflow-x:auto">
-      <table id="playersTable">
-        <thead id="playersHead"></thead>
-        <tbody id="adminPlayersBody"></tbody>
-      </table>
-    </div>
-  </div>
-
-
-  <!-- LOANS + FEED -->
-  <div class="g2 section-gap">
-    <div class="card">
-      <h2>💳 Активные кредиты</h2>
-      <table>
-        <thead>
-          <tr><th>Игрок</th><th>Взял</th><th>Долг (×1.08)</th><th>Дата</th></tr>
-        </thead>
-        <tbody id="adminLoansBody"></tbody>
-      </table>
-    </div>
-    <div class="card">
-      <h2>📋 Лента событий</h2>
-      <div class="feed" id="adminFeed" style="max-height:320px;"></div>
-    </div>
-  </div>
-
-
-</div><!-- /.app -->
+  </div><!-- /.admin-main -->
+</div><!-- /.admin-shell -->
 
 
 <script src="/socket.io/socket.io.js"></script>

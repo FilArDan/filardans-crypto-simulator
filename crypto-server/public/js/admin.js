@@ -14,6 +14,31 @@ const PRESET_INFO = {
   croc: { label: '🐊 Накопитель',  desc: 'Накапливает, фиксирует по цели' },
 };
 
+// ── БОКОВОЕ МЕНЮ ─────────────────────────────────────────────────────────────
+(function initSidebarNav() {
+  const links    = document.querySelectorAll('.side-link');
+  const sections = document.querySelectorAll('.admin-section');
+  if (!links.length || !sections.length) return;
+
+  function activate(id) {
+    let matched = false;
+    sections.forEach(s => {
+      const on = s.id === `section-${id}`;
+      s.hidden = !on;
+      if (on) matched = true;
+    });
+    if (!matched) return activate('overview');
+    links.forEach(l => l.classList.toggle('active', l.dataset.section === id));
+    try { localStorage.setItem('adminActiveSection', id); } catch (_) {}
+  }
+
+  links.forEach(l => l.addEventListener('click', () => activate(l.dataset.section)));
+
+  let saved = 'overview';
+  try { saved = localStorage.getItem('adminActiveSection') || 'overview'; } catch (_) {}
+  activate(saved);
+})();
+
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 async function api(method, path, body) {
   const r = await fetch(path, {

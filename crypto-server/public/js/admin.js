@@ -595,7 +595,7 @@ function renderPlayers() {
     const debt     = allLoans.filter(l => l.username === w.username).reduce((s,l) => s + l.due, 0);
     const isSystem = w.username === 'admin';
     const safeId   = safeIdFor(w.username);
-    const cur      = allCurrencies.find(c => c.nation === w.username) || { code: 'USD', name: 'Доллар', symbol: '$', rate: 1 };
+    const cur      = allCurrencies.find(c => c.nation === w.username) || { code: 'USC', name: 'Единый кредит', symbol: 'USC ', rate: 1 };
     return `<tr>
       <td><strong>${w.username}</strong></td>
       <td class="up">$${fmt(w.usd)}</td>

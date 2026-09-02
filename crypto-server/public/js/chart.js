@@ -249,7 +249,7 @@ function createSeriesForCoin(c) {
   const visible = c === selectedCoin;
   const priceFormat = {
     type: 'custom',
-    formatter: (v) => '$' + Number(v).toLocaleString('ru', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    formatter: (v) => 'USC ' + Number(v).toLocaleString('ru', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
   };
 
   if (chartMode === 'candles') {
@@ -322,7 +322,7 @@ function updateInfoLabel() {
   const hist = getHistory(selectedCoin);
   const last = hist.length ? hist[hist.length - 1] : null;
   info.textContent = last != null
-    ? `${selectedCoin} · $${Number(last.price).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${hist.length} тиков`
+    ? `${selectedCoin} · USC ${Number(last.price).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${hist.length} тиков`
     : `${selectedCoin} · ожидание данных…`;
 }
 
@@ -357,7 +357,7 @@ function setupTooltip(container, dark, gc) {
       text = `${selectedCoin} · O ${fmt(data.open)} H ${fmt(data.high)} L ${fmt(data.low)} C ${fmt(data.close)} · ${timeStr}`;
     } else {
       const price = data.value !== undefined ? data.value : data.close;
-      text = `${selectedCoin} · $${Number(price).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${timeStr}`;
+      text = `${selectedCoin} · USC ${Number(price).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${timeStr}`;
     }
     tooltipEl.innerHTML = text;
     tooltipEl.style.display = 'block';

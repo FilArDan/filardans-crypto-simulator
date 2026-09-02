@@ -67,6 +67,7 @@
     <div class="stat">
       <div class="lbl" id="sCashLbl">Фиатный резерв</div>
       <div id="sCash" class="val">—</div>
+      <div id="sCashBudget" style="font-size:11px;color:var(--mu);margin-top:2px"></div>
     </div>
     <div class="stat"><div class="lbl">Госдолг</div><div id="sDebt" class="val">—</div></div>
   </div>
@@ -123,7 +124,7 @@
           <h2>💸 Межгосударственный перевод</h2>
           <form id="transferForm" class="compact-form">
             <div class="fld"><label class="lbl">Государство-получатель</label><select id="transferTarget"></select></div>
-            <div class="fld"><label class="lbl">Сумма (USD)</label><input id="transferAmount" type="number" step="any" min="0.01" placeholder="100"></div>
+            <div class="fld"><label class="lbl">Сумма (USC)</label><input id="transferAmount" type="number" step="any" min="0.01" placeholder="100"></div>
             <div id="transferError" class="err-msg"></div>
             <button type="submit" class="btn btn-primary btn-sm">Перевести средства</button>
           </form>
@@ -142,7 +143,7 @@
             </div>
             <div id="marginLabel" style="font-size:12px;color:var(--mu);margin-bottom:10px"></div>
             <div class="fld" style="margin-bottom:8px">
-              <label class="lbl">Частичное погашение (USD)</label>
+              <label class="lbl">Частичное погашение (USC)</label>
               <input id="repayAmount" type="number" step="any" min="0.01" placeholder="Пусто — погасить полностью">
             </div>
             <button id="repayBtn" class="btn btn-primary btn-sm">Погасить долг</button>
@@ -153,7 +154,7 @@
             <form id="loanForm" class="compact-form">
               <div class="fld">
                 <label class="lbl">Запрашиваемая сумма</label>
-                <input id="loanAmount" type="number" step="any" min="100" placeholder="до $0">
+                <input id="loanAmount" type="number" step="any" min="100" placeholder="до 0 USC">
                 <div id="loanLimitBar" style="display:none;height:6px;background:var(--sf2);border-radius:999px;overflow:hidden;margin-top:6px">
                   <div id="loanLimitFill" style="height:100%;width:0%;background:var(--pri);border-radius:999px;transition:width .2s,background .2s"></div>
                 </div>
@@ -236,7 +237,7 @@
               <input id="tradeAmount" type="number" step="any" min="0" placeholder="Объём актива">
             </div>
             <div id="fieldUsd" class="fld hidden">
-              <input id="tradeUsd" type="number" step="any" min="0" placeholder="Сумма в USD">
+              <input id="tradeUsd" type="number" step="any" min="0" placeholder="Сумма в USC">
             </div>
             <div id="tradeHint" class="trade-hint"></div>
             <button type="submit" class="btn btn-primary trade-btn-main">Провести сделку</button>
@@ -257,7 +258,7 @@
               <option value="sell">🔴 Продать по цене</option>
             </select>
             <div class="order-grid">
-              <div class="fld"><label class="lbl">Цена (USD)</label><input id="orderPrice" type="number" step="any" min="0" placeholder="0.00"></div>
+              <div class="fld"><label class="lbl">Цена (USC)</label><input id="orderPrice" type="number" step="any" min="0" placeholder="0.00"></div>
               <div class="fld"><label class="lbl">Объём</label><input id="orderAmount" type="number" step="any" min="0" placeholder="0.0"></div>
             </div>
             <div id="orderHint" class="trade-hint"></div>

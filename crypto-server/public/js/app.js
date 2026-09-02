@@ -26,9 +26,22 @@ let currentAsset  = null;
 
 // Местная валюта государства — чисто отображаемый «скин»: внутри всё считается
 // в общем расчётном юните, здесь только конвертация для показа игроку.
-let myCurrency = { code: 'USD', name: 'Доллар', symbol: '$', rate: 1 };
+let myCurrency = { code: 'USC', name: 'Единый кредит', symbol: 'USC ', rate: 1 };
 function toLocal(refAmount) { return (Number(refAmount) || 0) / (myCurrency.rate || 1); }
 function fmtLocal(refAmount, dec = 2) { return myCurrency.symbol + fmt(toLocal(refAmount), dec); }
+
+// Главная референсная валюта — «Единый кредит» (United Standardised Credit,
+// USC): тот самый общий расчётный юнит, в котором всё считается на бэкенде.
+const REF_SYMBOL = 'USC ';
+function fmtRef(refAmount, dec = 2) { return REF_SYMBOL + fmt(refAmount, dec); }
+
+// Госбюджет — укрупнённая единица измерения для казны (1 Госбюджет = 1 млрд
+// кредитов), исключительно для отображения масштаба государственных резервов.
+const CREDITS_PER_GOSBUDGET = 1_000_000_000;
+function fmtGosbudget(refAmount) {
+  const v = (Number(refAmount) || 0) / CREDITS_PER_GOSBUDGET;
+  return `≈ ${v.toLocaleString('ru', { minimumFractionDigits: 2, maximumFractionDigits: 9 })} Госбюджетов`;
+}
 
 // Средства, зарезервированные под лимитные ордера (в кошельке их уже нет)
 let lastLockedUsd   = 0;
@@ -70,7 +83,7 @@ function renderTicker(p, prev) {
     const dir = prev && prev[coin] != null
       ? (price > prev[coin] ? 'up' : price < prev[coin] ? 'dn' : '')
       : '';
-    return `<div class="tick ${dir}"><div class="coin">${coin}</div><div class="price">$${fmt(price, dec)}</div></div>`;
+    return `<div class="tick ${dir}"><div class="coin">${coin}</div><div class="price">${fmtRef(price, dec)}</div></div>`;
   }).join('');
 }
 
@@ -103,7 +116,7 @@ function renderLeaderboard(players, currentPrices) {
     tr.innerHTML = `
       <td><span class="rank ${medal}">${rank}</span></td>
       <td><span class="${isMine ? 'inv-name me' : 'inv-name'}">${pl.username}${botBadge}</span></td>
-      <td>$${fmt(pl.total)}</td>
+      <td>${fmtRef(pl.total)}</td>
       <td><span class="bar-wrap"><span class="bar-fill" style="width:${barW}%"></span></span></td>`;
     tbody.appendChild(tr);
   });
@@ -154,7 +167,7 @@ function renderPortfolio(wallet, coins) {
       const lockNote = locked > 0
         ? ` <span class="muted" title="Зарезервировано под лимитные ордера">🔒${fmt(locked, 4)}</span>`
         : '';
-      return `<tr><td>${c}</td><td>${fmt(free, 5)}${lockNote}</td><td>$${fmt(prices[c] || 0, dec)}</td><td>$${fmt(val)}</td></tr>`;
+      return `<tr><td>${c}</td><td>${fmt(free, 5)}${lockNote}</td><td>${fmtRef(prices[c] || 0, dec)}</td><td>${fmtRef(val)}</td></tr>`;
     });
   body.innerHTML = rows.length
     ? rows.join('')
@@ -164,6 +177,8 @@ function renderPortfolio(wallet, coins) {
     el.textContent = fmtLocal(wallet.usd);
     el.title = lastLockedUsd > 0.005 ? `+ ${fmtLocal(lastLockedUsd)} в резерве под ордера` : '';
   }
+  const budgetEl = document.getElementById('sCashBudget');
+  if (budgetEl) budgetEl.textContent = fmtGosbudget(wallet.usd);
 }
 
 // ── РЫНКИ ─────────────────────────────────────────────────────────────────────
@@ -235,7 +250,7 @@ function renderAssetList() {
       : `<span class="${change > 0 ? 'up' : change < 0 ? 'dn' : ''}">${change > 0 ? '▲' : change < 0 ? '▼' : ''} ${fmt(Math.abs(change), 2)}%</span>`;
     return `<tr class="asset-row" data-asset="${a.ticker}">
       <td><strong>${a.ticker}</strong>${a.name ? `<div class="muted" style="font-size:11px">${a.name}</div>` : ''}</td>
-      <td>$${fmt(price, dec)}</td>
+      <td>${fmtRef(price, dec)}</td>
       <td>${changeHtml}</td>
     </tr>`;
   }).join('');
@@ -280,7 +295,7 @@ function renderAssetHeader() {
 
   if (titleEl) titleEl.textContent = ticker;
   if (subEl)   subEl.textContent   = name || '';
-  if (priceEl) priceEl.textContent = '$' + fmt(price, dec);
+  if (priceEl) priceEl.textContent = fmtRef(price, dec);
   if (changeEl) {
     changeEl.textContent = change == null ? '' : `${change > 0 ? '▲' : change < 0 ? '▼' : ''} ${fmt(Math.abs(change), 2)}%`;
     changeEl.className = 'asset-change-big ' + (change > 0 ? 'up' : change < 0 ? 'dn' : '');
@@ -337,8 +352,8 @@ function recalcByPrices(p) {
     const total = lastWallet.usd + lastLockedUsd + coinsVal - lastDebt;
     const elTotal = document.getElementById('sTotal');
     const elPort  = document.getElementById('sPort');
-    if (elTotal) elTotal.textContent = '$' + fmt(total);
-    if (elPort)  elPort.textContent  = '$' + fmt(coinsVal);
+    if (elTotal) elTotal.textContent = fmtRef(total);
+    if (elPort)  elPort.textContent  = fmtRef(coinsVal);
     updateBudgetLocal(total);
   }
   if (lastPlayers) renderLeaderboard(lastPlayers, p);
@@ -364,7 +379,7 @@ function updateTradeHint() {
       const coinQty = action === 'buy'
         ? usdRaw / (askPrice * (1 + TRADE_FEE))
         : usdRaw / (bidPrice * (1 - TRADE_FEE));
-      hint.textContent = `≈ ${fmt(coinQty, 6)} ${coin} по $${fmt(price, price < 1 ? 4 : 2)}`;
+      hint.textContent = `≈ ${fmt(coinQty, 6)} ${coin} по ${fmtRef(price, price < 1 ? 4 : 2)}`;
     } else {
       hint.textContent = '';
     }
@@ -377,7 +392,7 @@ function updateTradeHint() {
         ? qty * askPrice * (1 + TRADE_FEE)
         : qty * bidPrice * (1 - TRADE_FEE);
       const localNote = myCurrency.rate === 1 ? '' : ` (≈ ${fmtLocal(usdVal)})`;
-      hint.textContent = `≈ $${fmt(usdVal)}${localNote} (комиссия ${(TRADE_FEE * 100).toFixed(1)}% + спред ${(SPREAD * 100).toFixed(2)}%)`;
+      hint.textContent = `≈ ${fmtRef(usdVal)}${localNote} (комиссия ${(TRADE_FEE * 100).toFixed(1)}% + спред ${(SPREAD * 100).toFixed(2)}%)`;
     } else {
       hint.textContent = '';
     }
@@ -430,18 +445,18 @@ function updateOrderHint() {
 
   if (price <= 0 || amount <= 0) {
     hint.textContent = market > 0
-      ? `Рынок: $${fmt(market, market < 1 ? 4 : 2)} — ордер сработает, когда курс дойдёт до лимита`
+      ? `Рынок: ${fmtRef(market, market < 1 ? 4 : 2)} — ордер сработает, когда курс дойдёт до лимита`
       : '';
     return;
   }
 
   if (side === 'buy') {
     const need = price * amount * (1 + TRADE_FEE);
-    hint.textContent = `Резерв: $${fmt(need)} (с комиссией ${(TRADE_FEE * 100).toFixed(1)}%)` +
+    hint.textContent = `Резерв: ${fmtRef(need)} (с комиссией ${(TRADE_FEE * 100).toFixed(1)}%)` +
       (market > 0 && price >= market * (1 + SPREAD) ? ' · исполнится сразу' : '');
   } else {
     const get = price * amount * (1 - TRADE_FEE);
-    hint.textContent = `Резерв: ${fmt(amount, 6)} ${coin} → ≈ $${fmt(get)}` +
+    hint.textContent = `Резерв: ${fmt(amount, 6)} ${coin} → ≈ ${fmtRef(get)}` +
       (market > 0 && price <= market * (1 - SPREAD) ? ' · исполнится сразу' : '');
   }
 }
@@ -461,7 +476,7 @@ function renderOrders(data) {
 
   if (lock) {
     const parts = [];
-    if ((data.lockedUsd || 0) > 0.005) parts.push(`$${fmt(data.lockedUsd)}`);
+    if ((data.lockedUsd || 0) > 0.005) parts.push(`${fmtRef(data.lockedUsd)}`);
     for (const [coin, amt] of Object.entries(data.lockedCoins || {})) {
       if (amt > 0) parts.push(`${fmt(amt, 6)} ${coin}`);
     }
@@ -475,7 +490,7 @@ function renderOrders(data) {
     rows.push(`<tr>
       <td>${o.coin}</td>
       <td><span class="${o.side === 'buy' ? 'ord-side-buy' : 'ord-side-sell'}">${o.side === 'buy' ? 'Покупка' : 'Продажа'}</span></td>
-      <td>$${fmt(o.price, dec)}</td>
+      <td>${fmtRef(o.price, dec)}</td>
       <td>${fmt(o.filled, 4)} / ${fmt(o.amount, 4)}<span class="ord-fill"><span style="width:${pct}%"></span></span></td>
       <td><button class="ord-cancel" data-cancel="${o._id}">✕</button></td>
     </tr>`);
@@ -486,7 +501,7 @@ function renderOrders(data) {
     rows.push(`<tr class="ord-done">
       <td>${o.coin}</td>
       <td>${o.side === 'buy' ? 'Покупка' : 'Продажа'}</td>
-      <td>$${fmt(o.price, dec)}</td>
+      <td>${fmtRef(o.price, dec)}</td>
       <td>${fmt(o.filled, 4)} / ${fmt(o.amount, 4)}</td>
       <td>${st}</td>
     </tr>`);
@@ -515,7 +530,7 @@ function renderOrderBook(book) {
     const w = Math.min(100, Math.round(lvl.amount / maxAmt * 100));
     return `<div class="ob-row ${cls}${lvl.mine ? ' mine' : ''}" data-price="${lvl.price}">
       <span class="ob-depth" style="width:${w}%"></span>
-      <span class="ob-price">$${fmt(lvl.price, dec)}</span>
+      <span class="ob-price">${fmtRef(lvl.price, dec)}</span>
       <span>${fmt(lvl.amount, 4)}${lvl.count > 1 ? ` <span class="muted">×${lvl.count}</span>` : ''}</span>
     </div>`;
   };
@@ -528,8 +543,8 @@ function renderOrderBook(book) {
     : '<div class="ob-empty">Нет заявок на покупку</div>';
 
   midEl.innerHTML =
-    `<span class="ob-last">$${fmt(book.price, dec)}</span>` +
-    `<span class="muted">биржа: $${fmt(book.bidPrice, dec)} / $${fmt(book.askPrice, dec)}</span>`;
+    `<span class="ob-last">${fmtRef(book.price, dec)}</span>` +
+    `<span class="muted">биржа: ${fmtRef(book.bidPrice, dec)} / ${fmtRef(book.askPrice, dec)}</span>`;
 }
 
 async function loadOrders() {
@@ -560,8 +575,8 @@ function updateBookMid(p) {
   lastBook.askPrice = p[coin] * (1 + SPREAD);
   const dec = lastBook.price < 1 ? 5 : 2;
   midEl.innerHTML =
-    `<span class="ob-last">$${fmt(lastBook.price, dec)}</span>` +
-    `<span class="muted">биржа: $${fmt(lastBook.bidPrice, dec)} / $${fmt(lastBook.askPrice, dec)}</span>`;
+    `<span class="ob-last">${fmtRef(lastBook.price, dec)}</span>` +
+    `<span class="muted">биржа: ${fmtRef(lastBook.bidPrice, dec)} / ${fmtRef(lastBook.askPrice, dec)}</span>`;
 }
 
 document.getElementById('orderForm')?.addEventListener('submit', async e => {
@@ -632,9 +647,9 @@ function renderLoanInfo(info) {
     const bar  = document.getElementById('marginBarFill');
     const lbl  = document.getElementById('marginLabel');
 
-    if (due)    due.textContent  = '$' + fmt(info.loan.due);
+    if (due)    due.textContent  = fmtRef(info.loan.due);
     if (rate)   rate.textContent = rateStr;
-    if (elDebt) elDebt.textContent = '$' + fmt(info.loan.due);
+    if (elDebt) elDebt.textContent = fmtRef(info.loan.due);
 
     lastDebt = info.loan.due;
 
@@ -668,7 +683,7 @@ function renderLoanInfo(info) {
 
     if (limitLbl) {
       limitLbl.textContent = maxLoan > 0
-        ? `Лимит: $${fmt(maxLoan, 0)} (резервы $${fmt(portVal, 0)})`
+        ? `Лимит: ${fmtRef(maxLoan, 0)} (резервы ${fmtRef(portVal, 0)})`
         : 'Нет резервов для залога';
       limitLbl.style.color = maxLoan > 0 ? 'var(--ac)' : 'var(--mu)';
     }
@@ -677,7 +692,7 @@ function renderLoanInfo(info) {
 
     if (loanInput) {
       loanInput.max = maxLoan;
-      loanInput.placeholder = maxLoan > 0 ? `до $${fmt(maxLoan, 0)}` : '0';
+      loanInput.placeholder = maxLoan > 0 ? `до ${fmtRef(maxLoan, 0)}` : '0';
 
       const updateBar = () => {
         if (!limitFill) return;
@@ -708,9 +723,9 @@ function applyLoanUpdate(data) {
   if (activePanel) activePanel.style.display = 'block';
   if (newPanel)    newPanel.style.display    = 'none';
 
-  if (due)    due.textContent    = '$' + fmt(data.due);
+  if (due)    due.textContent    = fmtRef(data.due);
   if (rateEl) rateEl.textContent = `${(data.rate * 100).toFixed(3)}%/тик`;
-  if (elDebt) elDebt.textContent = '$' + fmt(data.due);
+  if (elDebt) elDebt.textContent = fmtRef(data.due);
 
   lastDebt = data.due;
 
@@ -783,8 +798,8 @@ async function loadState() {
   const total = data.wallet.usd + lastLockedUsd + coinsVal - debt;
   const elTotal = document.getElementById('sTotal');
   const elPort  = document.getElementById('sPort');
-  if (elTotal) elTotal.textContent = '$' + fmt(total);
-  if (elPort)  elPort.textContent  = '$' + fmt(coinsVal);
+  if (elTotal) elTotal.textContent = fmtRef(total);
+  if (elPort)  elPort.textContent  = fmtRef(coinsVal);
   updateBudgetLocal(total);
 }
 
@@ -968,7 +983,7 @@ socket.on('loanUpdate', applyLoanUpdate);
 socket.on('marginCall', ({ username, remaining }) => {
   if (username !== myUsername) return;
   const msg = remaining > 0.01
-    ? `🚨 ДЕФОЛТ!\nВсе резервы принудительно ликвидированы.\nОсталось госдолга: $${fmt(remaining)}`
+    ? `🚨 ДЕФОЛТ!\nВсе резервы принудительно ликвидированы.\nОсталось госдолга: ${fmtRef(remaining)}`
     : `🚨 ДЕФОЛТ!\nВсе резервы ликвидированы — долг полностью погашен.`;
   alert(msg);
   loadState();

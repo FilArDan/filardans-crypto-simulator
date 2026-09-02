@@ -46,7 +46,7 @@ async function getBasePrices() {
 
 // Валюта государства — чисто отображаемый «скин» над общим расчётным юнитом.
 // Пока ГМ не задал свою — используется дефолт без видимых отличий.
-const DEFAULT_CURRENCY = { code: 'USD', name: 'Доллар', symbol: '$', rate: 1 };
+const DEFAULT_CURRENCY = { code: 'USC', name: 'Единый кредит', symbol: 'USC ', rate: 1 };
 async function getCurrency(nation) {
   const doc = await db.currencies.findOne({ nation });
   return doc

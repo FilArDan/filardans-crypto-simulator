@@ -413,15 +413,15 @@ router.post('/admin/currency/params', auth, adminOnly, async (req, res) => {
     if (!Number.isFinite(numRate) || numRate <= 0) return res.status(400).json({ error: 'Неверный курс' });
 
     const patch = {
-      code:   String(code   || 'USD').trim().slice(0, 8).toUpperCase(),
-      name:   String(name   || 'Доллар').trim().slice(0, 32),
-      symbol: String(symbol || '$').trim().slice(0, 4),
+      code:   String(code   || 'USC').trim().slice(0, 8).toUpperCase(),
+      name:   String(name   || 'Единый кредит').trim().slice(0, 32),
+      symbol: String(symbol || 'USC ').trim().slice(0, 4),
       rate:   numRate,
       updatedAt: Date.now(),
     };
     await db.currencies.update({ nation }, { $set: { nation, ...patch } }, { upsert: true });
 
-    const ev = { ts: Date.now(), text: `Админ установил валюту государства ${nation}: ${patch.name} (${patch.code}), курс 1 ${patch.code} = $${patch.rate}` };
+    const ev = { ts: Date.now(), text: `Админ установил валюту государства ${nation}: ${patch.name} (${patch.code}), курс 1 ${patch.code} = USC ${patch.rate}` };
     await db.events.insert(ev);
     const io = req.app.get('io');
     io.emit('newEvent', ev);

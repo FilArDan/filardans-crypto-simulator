@@ -616,7 +616,7 @@ function renderPlayers() {
     <tr id="wallet-edit-${safeId}" ${expandedPlayer === safeId ? '' : 'hidden'}>
       <td colspan="${COINS.length + 5}">
         <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;padding:8px 0">
-          <label class="fld" style="margin:0">USD
+          <label class="fld" style="margin:0">USC
             <input type="number" class="coin-input" id="wallet-${safeId}-usd" value="${w.usd}" min="0" step="1" style="width:110px">
           </label>
           ${COINS.map(c => `<label class="fld" style="margin:0">${c}

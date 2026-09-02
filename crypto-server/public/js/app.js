@@ -337,12 +337,14 @@ function portfolioCoinValue(wallet, p, coins) {
   );
 }
 
-// Госбюджет — общий расчётный юнит; местная валюта показана отдельной строкой,
-// только когда у государства действительно свой курс (иначе строка не нужна).
+// Госбюджет, крипторезервы и фиатный резерв показываются в местной валюте
+// государства (её задаёт админ) — это то, что видит игрок каждый день.
+// Референсный эквивалент в кредитах (USC) — мелким текстом снизу, только
+// когда у государства действительно свой курс (иначе строка не нужна).
 function updateBudgetLocal(refTotal) {
   const elLocal = document.getElementById('sTotalLocal');
   if (!elLocal) return;
-  elLocal.textContent = myCurrency.rate === 1 ? '' : `≈ ${fmtLocal(refTotal)}`;
+  elLocal.textContent = myCurrency.rate === 1 ? '' : `≈ ${fmtRef(refTotal)}`;
 }
 
 function recalcByPrices(p) {
@@ -352,8 +354,8 @@ function recalcByPrices(p) {
     const total = lastWallet.usd + lastLockedUsd + coinsVal - lastDebt;
     const elTotal = document.getElementById('sTotal');
     const elPort  = document.getElementById('sPort');
-    if (elTotal) elTotal.textContent = fmtRef(total);
-    if (elPort)  elPort.textContent  = fmtRef(coinsVal);
+    if (elTotal) elTotal.textContent = fmtLocal(total);
+    if (elPort)  elPort.textContent  = fmtLocal(coinsVal);
     updateBudgetLocal(total);
   }
   if (lastPlayers) renderLeaderboard(lastPlayers, p);
@@ -798,8 +800,8 @@ async function loadState() {
   const total = data.wallet.usd + lastLockedUsd + coinsVal - debt;
   const elTotal = document.getElementById('sTotal');
   const elPort  = document.getElementById('sPort');
-  if (elTotal) elTotal.textContent = fmtRef(total);
-  if (elPort)  elPort.textContent  = fmtRef(coinsVal);
+  if (elTotal) elTotal.textContent = fmtLocal(total);
+  if (elPort)  elPort.textContent  = fmtLocal(coinsVal);
   updateBudgetLocal(total);
 }
 

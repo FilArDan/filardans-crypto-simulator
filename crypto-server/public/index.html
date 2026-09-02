@@ -71,198 +71,218 @@
     <div class="stat"><div class="lbl">Госдолг</div><div id="sDebt" class="val">—</div></div>
   </div>
 
-  <!-- Ticker -->
-  <div class="ticker-wrap section-gap">
-    <h2>📊 Биржевые котировки</h2>
-    <div id="ticker" class="ticker"></div>
-  </div>
+  <!-- HOME VIEW -->
+  <div id="homeView">
 
-  <!-- Chart -->
-  <div class="card section-gap">
-    <h2>📈 Динамика рынка</h2>
-    <div id="chartLegend" class="tabs"></div>
-    <div class="cw"><div id="priceChart"></div></div>
-    <div id="chartModeToggle" class="chart-mode-toggle" style="margin-top:8px"></div>
-    <div id="cinfo" style="font-size:12px;color:var(--mu);margin-top:4px;min-height:16px"></div>
-  </div>
+    <!-- Market nav -->
+    <div class="market-nav-wrap section-gap">
+      <div id="marketNav" class="market-nav"></div>
+    </div>
 
-  <!-- Main grid: 3 columns -->
-  <div class="g3 section-gap">
+    <!-- Asset list -->
+    <div class="card section-gap">
+      <h2 id="assetListTitle">📊 Активы рынка</h2>
+      <table>
+        <thead><tr><th>Актив</th><th>Цена</th><th>Изменение</th></tr></thead>
+        <tbody id="assetListBody"></tbody>
+      </table>
+    </div>
 
-    <!-- Col 1: Portfolio + Trade -->
-    <div class="col-stack">
+    <!-- Main grid: 3 columns -->
+    <div class="g3 section-gap">
 
-      <!-- Portfolio -->
-      <div class="card">
-        <h2>🏛️ Государственный портфель</h2>
-        <table>
-          <thead><tr><th>Актив</th><th>Объём</th><th>Курс</th><th>Стоимость</th></tr></thead>
-          <tbody id="portfolioBody"></tbody>
-        </table>
+      <!-- Col 1: Portfolio + Orders -->
+      <div class="col-stack">
+
+        <!-- Portfolio -->
+        <div class="card">
+          <h2>🏛️ Государственный портфель</h2>
+          <table>
+            <thead><tr><th>Актив</th><th>Объём</th><th>Курс</th><th>Стоимость</th></tr></thead>
+            <tbody id="portfolioBody"></tbody>
+          </table>
+        </div>
+
+        <!-- Open orders (read-only overview, placement moved to asset page) -->
+        <div class="card">
+          <h2>🎯 Мои ордера <span id="ordersCount" class="lbl-inline"></span></h2>
+          <div id="ordersLocked" class="orders-locked"></div>
+          <table class="orders-table">
+            <thead><tr><th>Актив</th><th>Тип</th><th>Цена</th><th>Исполнено</th><th></th></tr></thead>
+            <tbody id="ordersBody"></tbody>
+          </table>
+        </div>
+
       </div>
 
-      <!-- Companies -->
-      <div class="card">
-        <h2>🏢 Государственные компании</h2>
-        <table>
-          <thead><tr><th>Компания</th><th>Владелец</th><th>Цена</th><th>Моя доля</th></tr></thead>
-          <tbody id="companiesBody"></tbody>
-        </table>
-        <div class="lbl" style="margin-top:8px">Покупка/продажа акций — через торговую форму ниже, по тикеру компании.</div>
+      <!-- Col 2: Transfer + Loan -->
+      <div class="col-stack">
+
+        <!-- Transfer -->
+        <div class="card">
+          <h2>💸 Межгосударственный перевод</h2>
+          <form id="transferForm" class="compact-form">
+            <div class="fld"><label class="lbl">Государство-получатель</label><select id="transferTarget"></select></div>
+            <div class="fld"><label class="lbl">Сумма (USD)</label><input id="transferAmount" type="number" step="any" min="0.01" placeholder="100"></div>
+            <div id="transferError" class="err-msg"></div>
+            <button type="submit" class="btn btn-primary btn-sm">Перевести средства</button>
+          </form>
+        </div>
+
+        <!-- Loan -->
+        <div class="card">
+          <h2>🏦 Межбанковский кредит</h2>
+          <div id="loanError" class="err-msg"></div>
+          <!-- Активный кредит -->
+          <div id="loanActivePanel" style="display:none">
+            <div class="loan-row"><span class="lbl-inline">Госдолг</span><span id="loanDueDisplay" style="font-weight:700"></span></div>
+            <div class="loan-row"><span class="lbl-inline">Ставка МВФ</span><span id="loanRateDisplay" style="color:var(--warn)"></span></div>
+            <div style="height:7px;background:var(--sf2);border-radius:999px;overflow:hidden;margin:8px 0 3px">
+              <div id="marginBarFill" style="height:100%;width:0%;background:var(--pri);border-radius:999px;transition:width .4s,background .3s"></div>
+            </div>
+            <div id="marginLabel" style="font-size:12px;color:var(--mu);margin-bottom:10px"></div>
+            <div class="fld" style="margin-bottom:8px">
+              <label class="lbl">Частичное погашение (USD)</label>
+              <input id="repayAmount" type="number" step="any" min="0.01" placeholder="Пусто — погасить полностью">
+            </div>
+            <button id="repayBtn" class="btn btn-primary btn-sm">Погасить долг</button>
+          </div>
+          <!-- Новый кредит -->
+          <div id="loanNewPanel">
+            <p id="loanRateNote" style="font-size:12px;color:var(--mu);margin-bottom:8px"></p>
+            <form id="loanForm" class="compact-form">
+              <div class="fld">
+                <label class="lbl">Запрашиваемая сумма</label>
+                <input id="loanAmount" type="number" step="any" min="100" placeholder="до $0">
+                <div id="loanLimitBar" style="display:none;height:6px;background:var(--sf2);border-radius:999px;overflow:hidden;margin-top:6px">
+                  <div id="loanLimitFill" style="height:100%;width:0%;background:var(--pri);border-radius:999px;transition:width .2s,background .2s"></div>
+                </div>
+                <div id="loanLimitLabel" style="font-size:12px;margin-top:4px;color:var(--mu)"></div>
+              </div>
+              <button type="submit" class="btn btn-primary btn-sm">Взять кредит</button>
+            </form>
+          </div>
+        </div>
+
       </div>
 
-      <!-- Unions -->
-      <div class="card" id="unionsCard" style="display:none">
-        <h2>🤝 Союзы</h2>
-        <table>
-          <thead><tr><th>Союз</th><th>Токен</th><th>Цена</th><th>Мой баланс</th></tr></thead>
-          <tbody id="unionsBody"></tbody>
-        </table>
-        <div class="lbl" style="margin-top:8px">Покупка токена союза — через торговую форму ниже, по тикеру токена.</div>
+      <!-- Col 3: Leaderboard + Feed -->
+      <div class="col-stack">
+
+        <!-- Leaderboard -->
+        <div class="card">
+          <h2>🏆 Рейтинг держав</h2>
+          <table>
+            <thead><tr><th>#</th><th>Государство</th><th>Капитал</th><th></th></tr></thead>
+            <tbody id="leaderBody"></tbody>
+          </table>
+        </div>
+
+        <!-- Feed -->
+        <div class="card">
+          <h2>📡 Лента событий</h2>
+          <div id="activityFeed" class="feed"></div>
+        </div>
+
       </div>
 
-      <!-- Trade -->
-      <div class="card">
-        <h2>↔️ Торговые операции</h2>
-        <form id="tradeForm" class="trade-form">
-          <div class="trade-selects">
-            <select id="tradeAsset"></select>
+    </div><!-- /g3 -->
+
+  </div><!-- /homeView -->
+
+  <!-- ASSET VIEW -->
+  <div id="assetView" class="hidden section-gap">
+
+    <button type="button" id="assetBackBtn" class="btn btn-secondary btn-sm" style="width:auto">← Назад к рынку</button>
+
+    <div class="asset-header section-gap">
+      <div>
+        <div id="assetTitle" class="asset-title"></div>
+        <div id="assetSubtitle" class="muted" style="font-size:12px"></div>
+      </div>
+      <div class="asset-header-right">
+        <div id="assetPriceBig" class="asset-price-big"></div>
+        <div id="assetChangeBig" class="asset-change-big"></div>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="card section-gap">
+      <h2>📈 Динамика</h2>
+      <div id="chartLegend" class="tabs" style="display:none"></div>
+      <div class="cw"><div id="priceChart"></div></div>
+      <div id="chartModeToggle" class="chart-mode-toggle" style="margin-top:8px"></div>
+      <div id="cinfo" style="font-size:12px;color:var(--mu);margin-top:4px;min-height:16px"></div>
+    </div>
+
+    <div class="g2 section-gap">
+
+      <!-- Col 1: Trade + Limit order -->
+      <div class="col-stack">
+
+        <!-- Market trade -->
+        <div class="card">
+          <h2>↔️ Рыночная сделка</h2>
+          <form id="tradeForm" class="trade-form">
             <select id="tradeType">
               <option value="sell">🔴 Продать</option>
               <option value="buy">🟢 Купить</option>
             </select>
-          </div>
-          <div class="trade-mode-tabs">
-            <button type="button" class="trade-mode-btn active" data-mode="qty">По объёму</button>
-            <button type="button" class="trade-mode-btn" data-mode="usd">По сумме</button>
-          </div>
-          <div id="fieldQty" class="fld">
-            <input id="tradeAmount" type="number" step="any" min="0" placeholder="Объём актива">
-          </div>
-          <div id="fieldUsd" class="fld hidden">
-            <input id="tradeUsd" type="number" step="any" min="0" placeholder="Сумма в USD">
-          </div>
-          <div id="tradeHint" class="trade-hint"></div>
-          <button type="submit" class="btn btn-primary trade-btn-main">Провести сделку</button>
-          <div class="trade-quick">
-            <button type="button" id="buyAllBtn" class="btn btn-secondary trade-btn-quick">Весь резерв → активы</button>
-            <button type="button" id="sellAllBtn" class="btn btn-secondary trade-btn-quick">Все активы → резерв</button>
-          </div>
-          <div id="tradeError" class="err-msg"></div>
-        </form>
-      </div>
+            <div class="trade-mode-tabs">
+              <button type="button" class="trade-mode-btn active" data-mode="qty">По объёму</button>
+              <button type="button" class="trade-mode-btn" data-mode="usd">По сумме</button>
+            </div>
+            <div id="fieldQty" class="fld">
+              <input id="tradeAmount" type="number" step="any" min="0" placeholder="Объём актива">
+            </div>
+            <div id="fieldUsd" class="fld hidden">
+              <input id="tradeUsd" type="number" step="any" min="0" placeholder="Сумма в USD">
+            </div>
+            <div id="tradeHint" class="trade-hint"></div>
+            <button type="submit" class="btn btn-primary trade-btn-main">Провести сделку</button>
+            <div class="trade-quick">
+              <button type="button" id="buyAllBtn" class="btn btn-secondary trade-btn-quick">Весь резерв → актив</button>
+              <button type="button" id="sellAllBtn" class="btn btn-secondary trade-btn-quick">Весь актив → резерв</button>
+            </div>
+            <div id="tradeError" class="err-msg"></div>
+          </form>
+        </div>
 
-      <!-- Limit orders -->
-      <div class="card">
-        <h2>🎯 Лимитные ордера <span id="ordersCount" class="lbl-inline"></span></h2>
-        <form id="orderForm" class="compact-form">
-          <div class="trade-selects">
-            <select id="orderAsset"></select>
+        <!-- Limit order -->
+        <div class="card">
+          <h2>🎯 Лимитный ордер</h2>
+          <form id="orderForm" class="compact-form">
             <select id="orderSide">
               <option value="buy">🟢 Купить по цене</option>
               <option value="sell">🔴 Продать по цене</option>
             </select>
-          </div>
-          <div class="order-grid">
-            <div class="fld"><label class="lbl">Цена (USD)</label><input id="orderPrice" type="number" step="any" min="0" placeholder="0.00"></div>
-            <div class="fld"><label class="lbl">Объём</label><input id="orderAmount" type="number" step="any" min="0" placeholder="0.0"></div>
-          </div>
-          <div id="orderHint" class="trade-hint"></div>
-          <button type="submit" class="btn btn-primary btn-sm">Разместить ордер</button>
-          <div id="orderError" class="err-msg"></div>
-        </form>
-        <div id="ordersLocked" class="orders-locked"></div>
-        <table class="orders-table">
-          <thead><tr><th>Актив</th><th>Тип</th><th>Цена</th><th>Исполнено</th><th></th></tr></thead>
-          <tbody id="ordersBody"></tbody>
-        </table>
-      </div>
-
-    </div>
-
-    <!-- Col 2: Order book + Transfer + Loan -->
-    <div class="col-stack">
-
-      <!-- Order book -->
-      <div class="card">
-        <h2>📖 Биржевой стакан</h2>
-        <select id="obAsset" style="margin-bottom:10px"></select>
-        <div class="ob-head"><span>Цена</span><span>Объём</span></div>
-        <div id="obAsks" class="ob-side"></div>
-        <div id="obMid" class="ob-mid"></div>
-        <div id="obBids" class="ob-side"></div>
-        <div class="ob-note">Клик по уровню — подставить цену в форму ордера</div>
-      </div>
-
-      <!-- Transfer -->
-      <div class="card">
-        <h2>💸 Межгосударственный перевод</h2>
-        <form id="transferForm" class="compact-form">
-          <div class="fld"><label class="lbl">Государство-получатель</label><select id="transferTarget"></select></div>
-          <div class="fld"><label class="lbl">Сумма (USD)</label><input id="transferAmount" type="number" step="any" min="0.01" placeholder="100"></div>
-          <div id="transferError" class="err-msg"></div>
-          <button type="submit" class="btn btn-primary btn-sm">Перевести средства</button>
-        </form>
-      </div>
-
-      <!-- Loan -->
-      <div class="card">
-        <h2>🏦 Межбанковский кредит</h2>
-        <div id="loanError" class="err-msg"></div>
-        <!-- Активный кредит -->
-        <div id="loanActivePanel" style="display:none">
-          <div class="loan-row"><span class="lbl-inline">Госдолг</span><span id="loanDueDisplay" style="font-weight:700"></span></div>
-          <div class="loan-row"><span class="lbl-inline">Ставка МВФ</span><span id="loanRateDisplay" style="color:var(--warn)"></span></div>
-          <div style="height:7px;background:var(--sf2);border-radius:999px;overflow:hidden;margin:8px 0 3px">
-            <div id="marginBarFill" style="height:100%;width:0%;background:var(--pri);border-radius:999px;transition:width .4s,background .3s"></div>
-          </div>
-          <div id="marginLabel" style="font-size:12px;color:var(--mu);margin-bottom:10px"></div>
-          <div class="fld" style="margin-bottom:8px">
-            <label class="lbl">Частичное погашение (USD)</label>
-            <input id="repayAmount" type="number" step="any" min="0.01" placeholder="Пусто — погасить полностью">
-          </div>
-          <button id="repayBtn" class="btn btn-primary btn-sm">Погасить долг</button>
-        </div>
-        <!-- Новый кредит -->
-        <div id="loanNewPanel">
-          <p id="loanRateNote" style="font-size:12px;color:var(--mu);margin-bottom:8px"></p>
-          <form id="loanForm" class="compact-form">
-            <div class="fld">
-              <label class="lbl">Запрашиваемая сумма</label>
-              <input id="loanAmount" type="number" step="any" min="100" placeholder="до $0">
-              <div id="loanLimitBar" style="display:none;height:6px;background:var(--sf2);border-radius:999px;overflow:hidden;margin-top:6px">
-                <div id="loanLimitFill" style="height:100%;width:0%;background:var(--pri);border-radius:999px;transition:width .2s,background .2s"></div>
-              </div>
-              <div id="loanLimitLabel" style="font-size:12px;margin-top:4px;color:var(--mu)"></div>
+            <div class="order-grid">
+              <div class="fld"><label class="lbl">Цена (USD)</label><input id="orderPrice" type="number" step="any" min="0" placeholder="0.00"></div>
+              <div class="fld"><label class="lbl">Объём</label><input id="orderAmount" type="number" step="any" min="0" placeholder="0.0"></div>
             </div>
-            <button type="submit" class="btn btn-primary btn-sm">Взять кредит</button>
+            <div id="orderHint" class="trade-hint"></div>
+            <button type="submit" class="btn btn-primary btn-sm">Разместить ордер</button>
+            <div id="orderError" class="err-msg"></div>
           </form>
         </div>
+
       </div>
 
-    </div>
-
-    <!-- Col 3: Leaderboard + Feed -->
-    <div class="col-stack">
-
-      <!-- Leaderboard -->
-      <div class="card">
-        <h2>🏆 Рейтинг держав</h2>
-        <table>
-          <thead><tr><th>#</th><th>Государство</th><th>Капитал</th><th></th></tr></thead>
-          <tbody id="leaderBody"></tbody>
-        </table>
+      <!-- Col 2: Order book -->
+      <div class="col-stack">
+        <div class="card">
+          <h2>📖 Биржевой стакан</h2>
+          <div class="ob-head"><span>Цена</span><span>Объём</span></div>
+          <div id="obAsks" class="ob-side"></div>
+          <div id="obMid" class="ob-mid"></div>
+          <div id="obBids" class="ob-side"></div>
+          <div class="ob-note">Клик по уровню — подставить цену в форму ордера</div>
+        </div>
       </div>
 
-      <!-- Feed -->
-      <div class="card">
-        <h2>📡 Лента событий</h2>
-        <div id="activityFeed" class="feed"></div>
-      </div>
+    </div><!-- /g2 -->
 
-    </div>
-
-  </div><!-- /g3 -->
+  </div><!-- /assetView -->
 
 </div><!-- /appScreen -->
 

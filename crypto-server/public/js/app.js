@@ -1,11 +1,28 @@
 const socket = io();
 let myUsername = '';
 let prices = {};
+let basePrices = {};
 let currentCoins = [];
 
-let lastPlayers = null;
-let lastWallet  = null;
-let lastDebt    = 0;
+let lastPlayers   = null;
+let lastWallet    = null;
+let lastDebt      = 0;
+let lastCompanies = [];
+let lastUnions    = [];
+// Полная классификация тикеров (не только тех, что доступны игроку) — нужна,
+// чтобы верно исключить из «Общего рынка» компании/токены союзов, к которым
+// у игрока нет доступа (иначе они по ошибке попали бы в общий список).
+let allCompanyTickers    = [];
+let allUnionTokenTickers = [];
+
+// ── Рынки и навигация по активам ─────────────────────────────────────────────
+// «Рынок» — чисто клиентская группировка тикеров: общий рынок (крипта +
+// компании без союзного листинга) и по одному разделу на каждый союз, в
+// котором состоит игрок (токен союза + компании, вынесенные на этот союз).
+// Сервер уже фильтрует companies/unions по доступу конкретного игрока —
+// здесь просто раскладываем то, что он и так видит, по вкладкам.
+let currentMarket = 'GLOBAL';
+let currentAsset  = null;
 
 // Местная валюта государства — чисто отображаемый «скин»: внутри всё считается
 // в общем расчётном юните, здесь только конвертация для показа игроку.
@@ -40,7 +57,7 @@ function showApp(username) {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('appScreen').classList.remove('hidden');
   initChart();
-  loadState().then(() => { loadOrders(); loadOrderBook(); });
+  loadState().then(() => { loadOrders(); });
 }
 
 // ── РЕНДЕР ────────────────────────────────────────────────────────────────────
@@ -149,40 +166,142 @@ function renderPortfolio(wallet, coins) {
   }
 }
 
-function renderCompanies(companies) {
-  const body = document.getElementById('companiesBody');
+// ── РЫНКИ ─────────────────────────────────────────────────────────────────────
+function computeMarkets() {
+  const companyByTicker = {};
+  lastCompanies.forEach(c => { companyByTicker[c.ticker] = c; });
+  const unionTokenTickers = new Set(allUnionTokenTickers);
+  const companyTickers    = new Set(allCompanyTickers);
+
+  const globalAssets = [];
+  currentCoins.forEach(ticker => {
+    if (unionTokenTickers.has(ticker)) return; // токен союза — только в своей вкладке (если игрок в нём состоит)
+    if (companyTickers.has(ticker)) {
+      const comp = companyByTicker[ticker];
+      if (!comp) return; // компания недоступна игроку — не показываем нигде
+      if (comp.unionCodes && comp.unionCodes.length) return; // вынесена на союз(ы) — только там
+    }
+    const comp = companyByTicker[ticker];
+    globalAssets.push({ ticker, name: comp ? comp.name : null, isCompany: !!comp });
+  });
+
+  const markets = [{ id: 'GLOBAL', name: '🌐 Общий рынок', assets: globalAssets }];
+
+  lastUnions.forEach(u => {
+    const assets = [{ ticker: u.tokenTicker, name: u.tokenName, isCompany: false, isUnionToken: true }];
+    lastCompanies.forEach(c => {
+      if ((c.unionCodes || []).includes(u.code)) assets.push({ ticker: c.ticker, name: c.name, isCompany: true });
+    });
+    markets.push({ id: u.code, name: `🤝 ${u.name}`, assets });
+  });
+
+  return markets;
+}
+
+function pctChange(ticker) {
+  const base = basePrices[ticker];
+  const cur  = prices[ticker];
+  if (!base || cur == null) return null;
+  return (cur - base) / base * 100;
+}
+
+function renderMarketNav() {
+  const nav = document.getElementById('marketNav');
+  if (!nav) return;
+  const markets = computeMarkets();
+  if (!markets.some(m => m.id === currentMarket)) currentMarket = 'GLOBAL';
+  nav.innerHTML = markets.map(m =>
+    `<button type="button" class="market-tab${m.id === currentMarket ? ' on' : ''}" data-market="${m.id}">${m.name}</button>`
+  ).join('');
+}
+
+function renderAssetList() {
+  const body  = document.getElementById('assetListBody');
+  const title = document.getElementById('assetListTitle');
   if (!body) return;
-  if (!companies.length) {
-    body.innerHTML = '<tr><td colspan="4" style="color:var(--mu);text-align:center;padding:16px">Государственных компаний пока нет</td></tr>';
+  const markets = computeMarkets();
+  const market = markets.find(m => m.id === currentMarket) || markets[0];
+  if (title) title.textContent = `📊 Активы рынка — ${market ? market.name.replace(/^[^\s]+\s/, '') : ''}`;
+  if (!market || !market.assets.length) {
+    body.innerHTML = '<tr><td colspan="3" style="color:var(--mu);text-align:center;padding:16px">На этом рынке пока нет активов</td></tr>';
     return;
   }
-  body.innerHTML = companies.map(c => {
-    const dec = (c.price || 0) < 1 ? 4 : 2;
-    const isOwner = c.ownerNation === myUsername;
-    return `<tr>
-      <td><strong>${c.ticker}</strong><div class="muted" style="font-size:11px">${c.name}</div></td>
-      <td>${isOwner ? `<span class="inv-name me">${c.ownerNation}</span>` : c.ownerNation}</td>
-      <td>$${fmt(c.price, dec)}</td>
-      <td>${c.myShares > 0 ? fmt(c.myShares, 2) : '<span class="muted">—</span>'}</td>
+  body.innerHTML = market.assets.map(a => {
+    const price  = prices[a.ticker] || 0;
+    const dec    = price < 1 ? 4 : 2;
+    const change = pctChange(a.ticker);
+    const changeHtml = change == null
+      ? '<span class="muted">—</span>'
+      : `<span class="${change > 0 ? 'up' : change < 0 ? 'dn' : ''}">${change > 0 ? '▲' : change < 0 ? '▼' : ''} ${fmt(Math.abs(change), 2)}%</span>`;
+    return `<tr class="asset-row" data-asset="${a.ticker}">
+      <td><strong>${a.ticker}</strong>${a.name ? `<div class="muted" style="font-size:11px">${a.name}</div>` : ''}</td>
+      <td>$${fmt(price, dec)}</td>
+      <td>${changeHtml}</td>
     </tr>`;
   }).join('');
 }
 
-function renderUnions(unions) {
-  const card = document.getElementById('unionsCard');
-  const body = document.getElementById('unionsBody');
-  if (!card || !body) return;
-  card.style.display = unions.length ? '' : 'none';
-  if (!unions.length) return;
-  body.innerHTML = unions.map(u => {
-    const dec = (u.price || 0) < 1 ? 4 : 2;
-    return `<tr>
-      <td><strong>${u.code}</strong><div class="muted" style="font-size:11px">${u.name}</div></td>
-      <td>${u.tokenSymbol} <span class="muted" style="font-size:11px">(${u.tokenTicker})</span></td>
-      <td>$${fmt(u.price, dec)}</td>
-      <td>${u.myTokens > 0 ? fmt(u.myTokens, 2) : '<span class="muted">—</span>'}</td>
-    </tr>`;
-  }).join('');
+document.getElementById('marketNav')?.addEventListener('click', e => {
+  const btn = e.target.closest('[data-market]');
+  if (!btn) return;
+  currentMarket = btn.dataset.market;
+  renderMarketNav();
+  renderAssetList();
+});
+
+document.getElementById('assetListBody')?.addEventListener('click', e => {
+  const row = e.target.closest('[data-asset]');
+  if (!row) return;
+  openAsset(row.dataset.asset);
+});
+
+document.getElementById('assetBackBtn')?.addEventListener('click', showHome);
+
+function showHome() {
+  currentAsset = null;
+  document.getElementById('homeView')?.classList.remove('hidden');
+  document.getElementById('assetView')?.classList.add('hidden');
+}
+
+function renderAssetHeader() {
+  const ticker = currentAsset;
+  if (!ticker) return;
+  const comp = lastCompanies.find(c => c.ticker === ticker);
+  const union = lastUnions.find(u => u.tokenTicker === ticker);
+  const name = comp ? comp.name : (union ? union.tokenName : null);
+  const price = prices[ticker] || 0;
+  const dec = price < 1 ? 4 : 2;
+  const change = pctChange(ticker);
+
+  const titleEl = document.getElementById('assetTitle');
+  const subEl   = document.getElementById('assetSubtitle');
+  const priceEl = document.getElementById('assetPriceBig');
+  const changeEl = document.getElementById('assetChangeBig');
+
+  if (titleEl) titleEl.textContent = ticker;
+  if (subEl)   subEl.textContent   = name || '';
+  if (priceEl) priceEl.textContent = '$' + fmt(price, dec);
+  if (changeEl) {
+    changeEl.textContent = change == null ? '' : `${change > 0 ? '▲' : change < 0 ? '▼' : ''} ${fmt(Math.abs(change), 2)}%`;
+    changeEl.className = 'asset-change-big ' + (change > 0 ? 'up' : change < 0 ? 'dn' : '');
+  }
+}
+
+function openAsset(ticker) {
+  if (!ticker || !currentCoins.includes(ticker)) return;
+  currentAsset = ticker;
+  document.getElementById('homeView')?.classList.add('hidden');
+  document.getElementById('assetView')?.classList.remove('hidden');
+  renderAssetHeader();
+  selectedCoin = ticker;
+  try {
+    if (typeof createChartInstance === 'function') createChartInstance();
+  } catch (e) {
+    console.error('Не удалось построить график:', e);
+  }
+  updateTradeHint();
+  updateOrderHint();
+  loadOrderBook();
 }
 
 function renderFeed(events) {
@@ -193,14 +312,6 @@ function renderFeed(events) {
     const time = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
     return `<div class="feed-item"><span>${e.text}</span><span class="feed-time">${time}</span></div>`;
   }).join('');
-}
-
-function renderTradeAssets(coins) {
-  const sel = document.getElementById('tradeAsset');
-  if (!sel) return;
-  const prev = sel.value;
-  sel.innerHTML = coins.map(c => `<option value="${c}">${c}</option>`).join('');
-  if (coins.includes(prev)) sel.value = prev;
 }
 
 // Крипторезервы = свободные монеты + зарезервированные под ордера
@@ -239,7 +350,7 @@ let tradeMode = 'qty';
 
 function updateTradeHint() {
   const hint   = document.getElementById('tradeHint');
-  const coin   = document.getElementById('tradeAsset')?.value;
+  const coin   = currentAsset;
   const action = document.getElementById('tradeType')?.value;
   if (!hint || !coin) return;
 
@@ -283,7 +394,7 @@ document.querySelectorAll('.trade-mode-btn').forEach(btn => {
   });
 });
 
-['tradeAsset','tradeType','tradeAmount','tradeUsd'].forEach(id => {
+['tradeType','tradeAmount','tradeUsd'].forEach(id => {
   document.getElementById(id)?.addEventListener('input', updateTradeHint);
   document.getElementById(id)?.addEventListener('change', updateTradeHint);
 });
@@ -303,23 +414,13 @@ function throttled(fn, ms) {
   };
 }
 
-function renderOrderAssets(coins) {
-  for (const id of ['orderAsset', 'obAsset']) {
-    const sel = document.getElementById(id);
-    if (!sel) continue;
-    const prev = sel.value;
-    sel.innerHTML = coins.map(c => `<option value="${c}">${c}</option>`).join('');
-    if (coins.includes(prev)) sel.value = prev;
-  }
-}
-
 function currentBookCoin() {
-  return document.getElementById('obAsset')?.value || currentCoins[0] || '';
+  return currentAsset || currentCoins[0] || '';
 }
 
 function updateOrderHint() {
   const hint   = document.getElementById('orderHint');
-  const coin   = document.getElementById('orderAsset')?.value;
+  const coin   = currentAsset;
   const side   = document.getElementById('orderSide')?.value;
   if (!hint || !coin) return;
 
@@ -440,6 +541,9 @@ async function loadOrderBook() {
   const coin = currentBookCoin();
   if (!coin) return;
   const book = await api('GET', '/api/orderbook?coin=' + encodeURIComponent(coin));
+  // Защита от гонки: пока запрос летал, игрок мог открыть другой актив —
+  // не затираем стакан чужими данными, если ответ уже устарел.
+  if (book.coin !== currentBookCoin()) return;
   if (book && !book.error) renderOrderBook(book);
 }
 
@@ -464,7 +568,7 @@ document.getElementById('orderForm')?.addEventListener('submit', async e => {
   e.preventDefault();
   const err = document.getElementById('orderError');
   err.textContent = '';
-  const coin   = document.getElementById('orderAsset').value;
+  const coin   = currentAsset;
   const side   = document.getElementById('orderSide').value;
   const price  = parseFloat(document.getElementById('orderPrice').value);
   const amount = parseFloat(document.getElementById('orderAmount').value);
@@ -491,8 +595,6 @@ document.getElementById('ordersBody')?.addEventListener('click', async e => {
   loadState();
 });
 
-document.getElementById('obAsset')?.addEventListener('change', loadOrderBook);
-
 document.getElementById('obAsks')?.addEventListener('click', e => pickBookPrice(e));
 document.getElementById('obBids')?.addEventListener('click', e => pickBookPrice(e));
 
@@ -500,16 +602,13 @@ function pickBookPrice(e) {
   const row = e.target.closest('[data-price]');
   if (!row) return;
   const priceInput = document.getElementById('orderPrice');
-  const assetSel   = document.getElementById('orderAsset');
-  const coin       = currentBookCoin();
-  if (assetSel && [...assetSel.options].some(o => o.value === coin)) assetSel.value = coin;
   if (priceInput) priceInput.value = row.dataset.price;
   const sideSel = document.getElementById('orderSide');
   if (sideSel) sideSel.value = row.classList.contains('ask') ? 'buy' : 'sell';
   updateOrderHint();
 }
 
-['orderAsset','orderSide','orderPrice','orderAmount'].forEach(id => {
+['orderSide','orderPrice','orderAmount'].forEach(id => {
   document.getElementById(id)?.addEventListener('input', updateOrderHint);
   document.getElementById(id)?.addEventListener('change', updateOrderHint);
 });
@@ -641,8 +740,8 @@ async function loadState() {
   ]);
   if (data.error) return;
 
-  if (Array.isArray(companies)) renderCompanies(companies);
-  if (Array.isArray(unions)) renderUnions(unions);
+  if (Array.isArray(companies)) lastCompanies = companies;
+  if (Array.isArray(unions)) lastUnions = unions;
   if (currency && !currency.error) {
     myCurrency = currency;
     const lbl = document.getElementById('sCashLbl');
@@ -653,6 +752,9 @@ async function loadState() {
     currentCoins = data.coins;
     updateChartCoins(data.coins);
   }
+  if (data.basePrices) basePrices = data.basePrices;
+  if (Array.isArray(data.companyTickers))    allCompanyTickers    = data.companyTickers;
+  if (Array.isArray(data.unionTokenTickers)) allUnionTokenTickers = data.unionTokenTickers;
 
   lastPlayers     = data.players;
   lastWallet      = data.wallet;
@@ -664,8 +766,9 @@ async function loadState() {
   renderFeed(data.events || []);
   renderLeaderboard(data.players, data.prices);
   renderTransferSelect(data.players);
-  renderTradeAssets(data.coins || currentCoins);
-  renderOrderAssets(data.coins || currentCoins);
+  renderMarketNav();
+  renderAssetList();
+  if (currentAsset) renderAssetHeader();
   renderLoanInfo(loanInfo);
   addPricePoint(data.prices);
   updateTradeHint();
@@ -726,7 +829,7 @@ function resolveTradeAmount(coin, action) {
 // ── ТОРГОВЛЯ: основная форма ──────────────────────────────────────────────────
 document.getElementById('tradeForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const coin   = document.getElementById('tradeAsset').value;
+  const coin   = currentAsset;
   const action = document.getElementById('tradeType').value;
   const err    = document.getElementById('tradeError');
   err.textContent = '';
@@ -742,7 +845,7 @@ document.getElementById('tradeForm').addEventListener('submit', async e => {
 
 // ── КУПИТЬ ВСЁ ────────────────────────────────────────────────────────────────
 document.getElementById('buyAllBtn').addEventListener('click', async () => {
-  const coin  = document.getElementById('tradeAsset').value;
+  const coin  = currentAsset;
   const err   = document.getElementById('tradeError');
   err.textContent = '';
 
@@ -763,7 +866,7 @@ document.getElementById('buyAllBtn').addEventListener('click', async () => {
 
 // ── ПРОДАТЬ ВСЁ ───────────────────────────────────────────────────────────────
 document.getElementById('sellAllBtn').addEventListener('click', async () => {
-  const coin = document.getElementById('tradeAsset').value;
+  const coin = currentAsset;
   const err  = document.getElementById('tradeError');
   err.textContent = '';
 
@@ -822,6 +925,8 @@ socket.on('priceUpdate', p => {
   recalcByPrices(p);
   updateBookMid(p);
   updateOrderHint();
+  renderAssetList();
+  if (currentAsset) renderAssetHeader();
 });
 
 socket.on('orderUpdate', ({ username }) => {
@@ -872,8 +977,7 @@ socket.on('marginCall', ({ username, remaining }) => {
 socket.on('coinsUpdated', ({ coins }) => {
   currentCoins = coins;
   updateChartCoins(coins);
-  renderTradeAssets(coins);
-  renderOrderAssets(coins);
+  if (currentAsset && !coins.includes(currentAsset)) showHome();
   loadState();
   loadOrders();
   loadOrderBook();

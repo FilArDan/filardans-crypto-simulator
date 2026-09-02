@@ -35,6 +35,15 @@ async function getAllPrices() {
   return obj;
 }
 
+// Базовая (справочная) цена каждого актива — используется на клиенте только
+// для расчёта % изменения в списке активов, на сам матчинг не влияет.
+async function getBasePrices() {
+  const docs = await db.prices.find({});
+  const obj  = {};
+  docs.forEach(d => { obj[d.coin] = d.basePrice != null ? d.basePrice : d.price; });
+  return obj;
+}
+
 // Валюта государства — чисто отображаемый «скин» над общим расчётным юнитом.
 // Пока ГМ не задал свою — используется дефолт без видимых отличий.
 const DEFAULT_CURRENCY = { code: 'USD', name: 'Доллар', symbol: '$', rate: 1 };
@@ -92,6 +101,7 @@ router.get('/price-history', auth, async (req, res) => {
 router.get('/state', auth, async (req, res) => {
   try {
     const prices     = await getAllPrices();
+    const basePrices = await getBasePrices();
     const wallet     = await db.wallets.findOne({ username: req.session.username });
     const loans      = await db.loans.find({ username: req.session.username, paid: { $ne: true } });
     const events     = await db.events.find({}).sort({ ts: -1 }).limit(25);
@@ -110,13 +120,24 @@ router.get('/state', auth, async (req, res) => {
     players.push(...bots);
     const paused = req.app.get('isPaused')();
     const orders = await listUserOrders(req.session.username, false);
+
+    // Классификация тикеров для группировки по «рынкам» на клиенте — сами
+    // тикеры и так видны всем в общем списке coins, здесь лишь помечаем,
+    // какие из них не обычная крипта (чтобы не путать их с общим рынком,
+    // если у игрока нет доступа к соответствующему союзу).
+    const allCompanies       = await db.companies.find({});
+    const allUnions          = await db.unions.find({});
+    const companyTickers     = allCompanies.map(c => c.ticker);
+    const unionTokenTickers  = allUnions.map(u => u.tokenTicker);
+
     res.json({
-      prices, wallet, loans, events, players, coins: allCoins, paused,
+      prices, basePrices, wallet, loans, events, players, coins: allCoins, paused,
       spread: SPREAD, tradeFee: TRADE_FEE,
       openOrders:  orders.open.length,
       lockedUsd:   orders.lockedUsd,
       lockedCoins: orders.lockedCoins,
       maxOpenOrders: MAX_OPEN_ORDERS,
+      companyTickers, unionTokenTickers,
     });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });

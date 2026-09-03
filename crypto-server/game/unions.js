@@ -1,21 +1,18 @@
-/* ===== СОЮЗЫ, СОЮЗНЫЕ ТОКЕНЫ И КОНТРОЛЬ ДОСТУПА =====
+/* ===== СОЮЗЫ И КОНТРОЛЬ ДОСТУПА =====
  *
- * Союзный токен — обычный тикер в db.prices (та же модель, что у монет и
- * компаний), поэтому торгуется через существующий /api/trade и лимитные
- * ордера. Отличия от обычной монеты — две вещи:
- *   1) кто может её торговать (canTrade) — только участники союза;
- *   2) кто выступает маркет-мейкером (resolveReserveAccount) — резерв
- *      союза (UNION_<code>, обычный кошелёк в db.wallets), а не общий EXCHANGE.
- * То же самое resolveReserveAccount/canTrade применяется к компании,
- * вынесенной на союзную биржу — тикер тот же, просто шире круг допущенных
- * и другой маркет-мейкер.
+ * Союз — просто группа государств-участников. Сам по себе он не торгуется и
+ * не имеет своего кошелька/токена (эта часть была временно убрана — при
+ * необходимости её можно вернуть отдельно). Единственная функция союза —
+ * контроль доступа: компания, вынесенная на союзную биржу (company.unionCodes),
+ * становится видна и торгуема для всех участников перечисленных союзов
+ * (плюс государству-владельцу всегда доступна), поверх обычного
+ * государству-владельцу-only доступа. Маркет-мейкером для таких компаний
+ * остаётся общий EXCHANGE — своего резерва у союза нет.
  */
-const { db, getAllCoins, EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY } = require('../db');
-
-function reserveUsernameFor(code) { return `UNION_${code}`; }
+const { db } = require('../db');
 
 // ── Создание союза ────────────────────────────────────────────────────────────
-async function createUnion({ code, name, members, tokenName, tokenSymbol, tokenSupply, tokenStartPrice, tokenVol, reserveUsd }) {
+async function createUnion({ code, name, members }) {
   const cleanCode = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
   if (!cleanCode) throw new Error('Укажи код союза (1–12 букв/цифр)');
   const exists = await db.unions.findOne({ code: cleanCode });
@@ -29,32 +26,10 @@ async function createUnion({ code, name, members, tokenName, tokenSymbol, tokenS
     if (!user) throw new Error(`Государство ${m} не найдено`);
   }
 
-  const tokenTicker = `${cleanCode}_UT`; // NeDB не допускает точки в именах полей документа
-  const allCoins = await getAllCoins();
-  if (allCoins.includes(tokenTicker)) throw new Error(`Тикер ${tokenTicker} уже занят`);
-
-  const supply = Math.max(1, Math.floor(Number(tokenSupply)) || 100000);
-  const price  = Math.max(0.0001, Number(tokenStartPrice) || 1);
-  const volume = Math.max(0.005, Math.min(0.30, Number(tokenVol) || 0.03));
-  const reserve = Math.max(0, Number(reserveUsd) || 0);
-  const reserveUsername = reserveUsernameFor(cleanCode);
-
-  await db.prices.insert({ coin: tokenTicker, price, basePrice: price, vol: volume, drift: 0, supply });
-  await db.wallets.update({}, { $set: { [tokenTicker]: 0 } }, { multi: true });
-
-  // Резерв союза — обычный кошелёк, по образцу EXCHANGE: держит USD-запас и весь непроданный токен
-  await db.wallets.insert({ username: reserveUsername, usd: reserve, [tokenTicker]: supply });
-
-  await db.priceHistory.insert({ coin: tokenTicker, price, ts: Date.now() });
-
   await db.unions.insert({
     code: cleanCode,
     name: cleanName,
     members: memberList,
-    tokenTicker,
-    tokenName: String(tokenName || '').trim() || `Токен ${cleanName}`,
-    tokenSymbol: String(tokenSymbol || cleanCode).trim().slice(0, 6),
-    reserveUsername,
     createdAt: Date.now(),
   });
 
@@ -81,31 +56,29 @@ async function removeMember(code, username) {
 }
 
 async function deleteUnion(code) {
-  await db.unions.remove({ code: String(code || '').toUpperCase() }, {});
+  const c = String(code || '').toUpperCase();
+  await db.unions.remove({ code: c }, {});
+  // Снимаем листинг с компаний, которые ссылались на распущенный союз —
+  // иначе они молча пропадают из интерфейса (доступ считался бы только
+  // владельцу, а на клиенте — не показывались бы нигде вообще).
+  const listed = await db.companies.find({ unionCodes: c });
+  for (const company of listed) {
+    const remaining = (company.unionCodes || []).filter(code2 => code2 !== c);
+    await db.companies.update({ ticker: company.ticker }, { $set: { unionCodes: remaining } });
+  }
 }
 
 // ── Публикация компании на союзные биржи ─────────────────────────────────────
 // Компания может быть вынесена сразу на несколько союзов одновременно —
 // доступ получают участники любого из перечисленных союзов (плюс само
-// государство-владелец всегда имеет доступ). unionFloat — сколько акций
-// перевести из кошелька владельца в резерв конкретного союза для мгновенной
-// ликвидности (маркет-мейкер по этому союзу), опционально.
-async function addCompanyUnionListing(ticker, unionCode, unionFloat) {
+// государство-владелец всегда имеет доступ).
+async function addCompanyUnionListing(ticker, unionCode) {
   const t = String(ticker || '').toUpperCase();
   const c = String(unionCode || '').toUpperCase();
   const company = await db.companies.findOne({ ticker: t });
   if (!company) throw new Error('Компания не найдена');
   const union = await db.unions.findOne({ code: c });
   if (!union) throw new Error('Союз не найден');
-
-  const float = Math.max(0, Math.floor(Number(unionFloat) || 0));
-  if (float > 0) {
-    const ownerWallet = await db.wallets.findOne({ username: company.ownerNation });
-    const have = ownerWallet ? (ownerWallet[t] || 0) : 0;
-    if (have < float) throw new Error(`У ${company.ownerNation} есть только ${have} акций ${t}`);
-    await db.wallets.update({ username: company.ownerNation }, { $inc: { [t]: -float } });
-    await db.wallets.update({ username: union.reserveUsername }, { $inc: { [t]: +float } });
-  }
 
   const current = new Set(company.unionCodes || []);
   current.add(c);
@@ -143,37 +116,16 @@ async function listRestrictions() {
 }
 
 // ── Резолвинг маркет-мейкера и допуска ────────────────────────────────────────
-// Кэшируется на время одного вызова не нужно — коллекции маленькие, поиск дешёвый.
-async function findUnionByToken(ticker) {
-  return db.unions.findOne({ tokenTicker: ticker });
-}
-
+// Своего резерва у союза больше нет — маркет-мейкером для любого актива
+// (включая компании, вынесенные на союзную биржу) остаётся общий EXCHANGE.
 async function resolveReserveAccount(ticker) {
-  const union = await findUnionByToken(ticker);
-  if (union) return union.reserveUsername;
-
-  const company = await db.companies.findOne({ ticker });
-  if (company && company.unionCodes && company.unionCodes.length) {
-    // Маркет-мейкером выступает резерв первого союза, на который вынесена
-    // компания — P2P между участниками разных союзов при этом не ограничен,
-    // резерв нужен только для мгновенной ликвидности «остатка об биржу».
-    const companyUnion = await db.unions.findOne({ code: company.unionCodes[0] });
-    if (companyUnion) return companyUnion.reserveUsername;
-  }
+  const { EXCHANGE_USERNAME } = require('../db');
   return EXCHANGE_USERNAME;
 }
 
 async function canTrade(username, ticker) {
   const banned = await db.tradeRestrictions.findOne({ username, ticker });
   if (banned) return { ok: false, reason: 'Торговля этим активом вам запрещена' };
-
-  const union = await findUnionByToken(ticker);
-  if (union) {
-    if (!union.members.includes(username)) {
-      return { ok: false, reason: `Доступно только участникам союза «${union.name}»` };
-    }
-    return { ok: true };
-  }
 
   const company = await db.companies.findOne({ ticker });
   if (company) {
@@ -196,37 +148,16 @@ async function canTrade(username, ticker) {
 }
 
 // ── Списки для UI ─────────────────────────────────────────────────────────────
-async function listUnions(prices, username) {
+async function listUnions(username) {
   const unions = await db.unions.find({});
-  const wallet = username ? await db.wallets.findOne({ username }) : null;
   return unions
     .filter(u => !username || u.members.includes(username))
-    .map(u => ({
-      code: u.code,
-      name: u.name,
-      members: u.members,
-      tokenTicker: u.tokenTicker,
-      tokenName: u.tokenName,
-      tokenSymbol: u.tokenSymbol,
-      price: (prices && prices[u.tokenTicker]) || 0,
-      myTokens: wallet ? (wallet[u.tokenTicker] || 0) : 0,
-    }));
+    .map(u => ({ code: u.code, name: u.name, members: u.members }));
 }
 
-async function listUnionsAdmin(prices) {
+async function listUnionsAdmin() {
   const unions = await db.unions.find({});
-  const reserves = await Promise.all(unions.map(u => db.wallets.findOne({ username: u.reserveUsername })));
-  return unions.map((u, i) => ({
-    code: u.code,
-    name: u.name,
-    members: u.members,
-    tokenTicker: u.tokenTicker,
-    tokenName: u.tokenName,
-    tokenSymbol: u.tokenSymbol,
-    price: (prices && prices[u.tokenTicker]) || 0,
-    reserveUsd: reserves[i] ? (reserves[i].usd || 0) : 0,
-    reserveTokens: reserves[i] ? (reserves[i][u.tokenTicker] || 0) : 0,
-  }));
+  return unions.map(u => ({ code: u.code, name: u.name, members: u.members }));
 }
 
 module.exports = {

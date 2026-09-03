@@ -192,6 +192,7 @@
     <button class="side-link" data-section="players"><span class="ic">👥</span> Игроки</button>
     <button class="side-link" data-section="bots"><span class="ic">🤖</span> Боты</button>
     <button class="side-link" data-section="companies"><span class="ic">🏢</span> Компании</button>
+    <button class="side-link" data-section="unions"><span class="ic">🤝</span> Союзы</button>
     <button class="side-link" data-section="market"><span class="ic">🎛️</span> Контроль рынка</button>
   </nav>
 
@@ -461,6 +462,46 @@
 
 
   <!-- ═══════════════════ СОЮЗЫ ═══════════════════ -->
+  <section class="admin-section" id="section-unions" hidden>
+
+    <div class="card">
+      <h2>🤝 Союзы</h2>
+      <div class="lbl" style="margin-bottom:14px">
+        Союз — просто группа государств-участников, без своего токена/резерва. Единственный эффект: компания, вынесенная на биржу союза (в разделе «Компании»), становится доступна всем его участникам, а не только государству-владельцу.
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr><th>Код</th><th>Название</th><th>Участники</th><th></th></tr>
+          </thead>
+          <tbody id="unionsBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Создать союз -->
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--bd)">
+        <div style="font-weight:600;font-size:13px;margin-bottom:10px">➕ Создать союз</div>
+        <form id="createUnionForm">
+          <div class="create-grid">
+            <label class="fld">Код *
+              <input id="newUnionCode" type="text" maxlength="12" placeholder="NORTHPACT" required
+                style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+            </label>
+            <label class="fld">Название *
+              <input id="newUnionName" type="text" maxlength="40" placeholder="Северный пакт" required>
+            </label>
+          </div>
+          <label class="fld" style="margin-bottom:12px">Участники (государства) *
+            <select id="newUnionMembers" multiple style="min-height:90px"></select>
+          </label>
+          <button class="btn btn-secondary" type="submit" id="createUnionBtn">🤝 Создать союз</button>
+        </form>
+      </div>
+    </div>
+
+  </section>
+
+
   <!-- ═══════════════════ КОНТРОЛЬ РЫНКА ═══════════════════ -->
   <section class="admin-section" id="section-market" hidden>
 

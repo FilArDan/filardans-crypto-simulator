@@ -124,11 +124,9 @@ router.get('/state', auth, async (req, res) => {
     // Классификация тикеров для группировки по «рынкам» на клиенте — сами
     // тикеры и так видны всем в общем списке coins, здесь лишь помечаем,
     // какие из них не обычная крипта (чтобы не путать их с общим рынком,
-    // если у игрока нет доступа к соответствующему союзу).
-    const allCompanies       = await db.companies.find({});
-    const allUnions          = await db.unions.find({});
-    const companyTickers     = allCompanies.map(c => c.ticker);
-    const unionTokenTickers  = allUnions.map(u => u.tokenTicker);
+    // если у игрока нет доступа к соответствующей компании).
+    const allCompanies   = await db.companies.find({});
+    const companyTickers = allCompanies.map(c => c.ticker);
 
     res.json({
       prices, basePrices, wallet, loans, events, players, coins: allCoins, paused,
@@ -137,7 +135,7 @@ router.get('/state', auth, async (req, res) => {
       lockedUsd:   orders.lockedUsd,
       lockedCoins: orders.lockedCoins,
       maxOpenOrders: MAX_OPEN_ORDERS,
-      companyTickers, unionTokenTickers,
+      companyTickers,
     });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -882,10 +880,10 @@ router.get('/companies', auth, async (req, res) => {
 
 router.post('/admin/company/listing', auth, adminOnly, async (req, res) => {
   try {
-    const { ticker, unionCode, unionFloat, remove } = req.body;
+    const { ticker, unionCode, remove } = req.body;
     const company = remove
       ? await removeCompanyUnionListing(ticker, unionCode)
-      : await addCompanyUnionListing(ticker, unionCode, unionFloat);
+      : await addCompanyUnionListing(ticker, unionCode);
     const ev = {
       ts: Date.now(),
       text: remove
@@ -903,23 +901,17 @@ router.post('/admin/company/listing', auth, adminOnly, async (req, res) => {
 // ── АДМИН: союзы ───────────────────────────────────────────────────────────────
 router.get('/admin/unions', auth, adminOnly, async (req, res) => {
   try {
-    const prices = await getAllPrices();
-    res.json(await listUnionsAdmin(prices));
+    res.json(await listUnionsAdmin());
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/admin/union/create', auth, adminOnly, async (req, res) => {
   try {
     const union = await createUnion(req.body);
-    const allCoinsNew   = await getAllCoins();
-    const updatedPrices = await getAllPrices();
     const ev = { ts: Date.now(), text: `Админ создал союз: ${union.name} (${union.code}), участники: ${union.members.join(', ')}` };
     await db.events.insert(ev);
-    const io = req.app.get('io');
-    io.emit('newEvent', ev);
-    io.emit('priceUpdate', updatedPrices);
-    io.emit('coinsUpdated', { coins: allCoinsNew });
-    res.json({ ok: true, union, coins: allCoinsNew, prices: updatedPrices });
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ ok: true, union });
   } catch(e) { res.status(400).json({ error: e.message }); }
 });
 
@@ -940,33 +932,21 @@ router.post('/admin/union/member', auth, adminOnly, async (req, res) => {
 router.delete('/admin/union/:code', auth, adminOnly, async (req, res) => {
   try {
     const code = (req.params.code || '').toUpperCase();
-    const io = req.app.get('io');
     const union = await db.unions.findOne({ code });
     if (!union) return res.status(404).json({ error: 'Союз не найден' });
-    // Выкуп токена финансируется резервом самого союза, не глобальной биржей
-    await buybackAndRemoveAsset(union.tokenTicker, io, union.reserveUsername);
-    // Остаток резерва союза (после выкупа) возвращаем в общий резерв биржи
-    const reserveWallet = await db.wallets.findOne({ username: union.reserveUsername });
-    if (reserveWallet && reserveWallet.usd > 0) {
-      await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: reserveWallet.usd } });
-    }
-    await db.wallets.remove({ username: union.reserveUsername }, {});
     await deleteUnion(code);
-    const allCoinsNew   = await getAllCoins();
-    const updatedPrices = await getAllPrices();
     const ev = { ts: Date.now(), text: `Админ распустил союз: ${code}` };
     await db.events.insert(ev);
+    const io = req.app.get('io');
     io.emit('newEvent', ev);
-    io.emit('priceUpdate', updatedPrices);
-    io.emit('coinsUpdated', { coins: allCoinsNew });
-    res.json({ ok: true, coins: allCoinsNew });
+    await emitPlayersUpdate(io);
+    res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 router.get('/unions', auth, async (req, res) => {
   try {
-    const prices = await getAllPrices();
-    res.json(await listUnions(prices, req.session.username));
+    res.json(await listUnions(req.session.username));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

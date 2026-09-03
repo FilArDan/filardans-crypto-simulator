@@ -10,17 +10,17 @@ let lastDebt      = 0;
 let lastCompanies = [];
 let lastUnions    = [];
 // Полная классификация тикеров (не только тех, что доступны игроку) — нужна,
-// чтобы верно исключить из «Общего рынка» компании/токены союзов, к которым
-// у игрока нет доступа (иначе они по ошибке попали бы в общий список).
-let allCompanyTickers    = [];
-let allUnionTokenTickers = [];
+// чтобы верно исключить из «Общего рынка» компании, к которым у игрока нет
+// доступа (иначе они по ошибке попали бы в общий список).
+let allCompanyTickers = [];
 
 // ── Рынки и навигация по активам ─────────────────────────────────────────────
 // «Рынок» — чисто клиентская группировка тикеров: общий рынок (крипта +
 // компании без союзного листинга) и по одному разделу на каждый союз, в
-// котором состоит игрок (токен союза + компании, вынесенные на этот союз).
-// Сервер уже фильтрует companies/unions по доступу конкретного игрока —
-// здесь просто раскладываем то, что он и так видит, по вкладкам.
+// котором состоит игрок (компании, вынесенные на этот союз — у самого союза
+// своего тикера/токена нет, это просто группа доступа). Сервер уже
+// фильтрует companies/unions по доступу конкретного игрока — здесь просто
+// раскладываем то, что он и так видит, по вкладкам.
 let currentMarket = 'GLOBAL';
 let currentAsset  = null;
 
@@ -185,12 +185,10 @@ function renderPortfolio(wallet, coins) {
 function computeMarkets() {
   const companyByTicker = {};
   lastCompanies.forEach(c => { companyByTicker[c.ticker] = c; });
-  const unionTokenTickers = new Set(allUnionTokenTickers);
-  const companyTickers    = new Set(allCompanyTickers);
+  const companyTickers = new Set(allCompanyTickers);
 
   const globalAssets = [];
   currentCoins.forEach(ticker => {
-    if (unionTokenTickers.has(ticker)) return; // токен союза — только в своей вкладке (если игрок в нём состоит)
     if (companyTickers.has(ticker)) {
       const comp = companyByTicker[ticker];
       if (!comp) return; // компания недоступна игроку — не показываем нигде
@@ -202,8 +200,10 @@ function computeMarkets() {
 
   const markets = [{ id: 'GLOBAL', name: '🌐 Общий рынок', assets: globalAssets }];
 
+  // У союза своего тикера/токена нет — это просто группа доступа, вкладка
+  // показывает компании, вынесенные на его биржу.
   lastUnions.forEach(u => {
-    const assets = [{ ticker: u.tokenTicker, name: u.tokenName, isCompany: false, isUnionToken: true }];
+    const assets = [];
     lastCompanies.forEach(c => {
       if ((c.unionCodes || []).includes(u.code)) assets.push({ ticker: c.ticker, name: c.name, isCompany: true });
     });
@@ -282,8 +282,7 @@ function renderAssetHeader() {
   const ticker = currentAsset;
   if (!ticker) return;
   const comp = lastCompanies.find(c => c.ticker === ticker);
-  const union = lastUnions.find(u => u.tokenTicker === ticker);
-  const name = comp ? comp.name : (union ? union.tokenName : null);
+  const name = comp ? comp.name : null;
   const price = prices[ticker] || 0;
   const dec = price < 1 ? 4 : 2;
   const change = pctChange(ticker);
@@ -770,8 +769,7 @@ async function loadState() {
     updateChartCoins(data.coins);
   }
   if (data.basePrices) basePrices = data.basePrices;
-  if (Array.isArray(data.companyTickers))    allCompanyTickers    = data.companyTickers;
-  if (Array.isArray(data.unionTokenTickers)) allUnionTokenTickers = data.unionTokenTickers;
+  if (Array.isArray(data.companyTickers)) allCompanyTickers = data.companyTickers;
 
   lastPlayers     = data.players;
   lastWallet      = data.wallet;

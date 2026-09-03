@@ -69,6 +69,17 @@ function fmtTime(ts) {
 // схлопываются в один и тот же id, и элементы начинают путаться местами.
 function safeIdFor(str) { return String(str || '').replace(/[^\p{L}\p{N}]/gu, '_'); }
 
+// Не перерисовываем контейнер (regenerate innerHTML), пока админ печатает в
+// одном из его полей — иначе фоновое обновление (дивиденды компаний, сделки
+// ботов и т.п. прилетают регулярно, каждые 15-25с) стирает несохранённый
+// текст на середине набора. Ре-рендер просто откладывается до следующего
+// цикла, когда поле потеряет фокус (например, после нажатия «Сохранить»).
+function hasFocusedInput(container) {
+  const active = document.activeElement;
+  return !!(active && container && container.contains(active) &&
+    ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName));
+}
+
 function coinDec(c)  { return BASE_COINS.includes(c) ? 5 : 3; }
 function priceDec(c) {
   const p = prices[c] || 0;
@@ -302,6 +313,7 @@ async function clearAllHistory() {
 function renderCoinParams() {
   const tbody = document.getElementById('coinParamsBody');
   if (!tbody) return;
+  if (hasFocusedInput(tbody)) return;
 
   tbody.innerHTML = COINS.map(coin => {
     const m        = coinMeta[coin] || {};
@@ -399,6 +411,7 @@ async function saveCoinParams(coin) {
 function renderBots() {
   const grid = document.getElementById('botsGrid');
   if (!grid) return;
+  if (hasFocusedInput(grid)) return;
 
   if (!allBots.length) {
     grid.innerHTML = `<div style="color:var(--mu);font-size:13px;padding:8px 0">Ботов пока нет. Создай через форму ниже.</div>`;
@@ -563,6 +576,7 @@ function renderPlayers() {
   const thead = document.getElementById('playersHead');
   const tbody = document.getElementById('adminPlayersBody');
   if (!thead || !tbody) return;
+  if (hasFocusedInput(tbody)) return;
 
   thead.innerHTML = `<tr>
     <th>Игрок</th>
@@ -825,27 +839,23 @@ function fillCompanyOwnerSelect() {
 function renderCompanies() {
   const tbody = document.getElementById('companiesBody');
   if (!tbody) return;
+  if (hasFocusedInput(tbody)) return;
   if (!allCompanies.length) {
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--mu);padding:16px">Компаний пока нет. Основай через форму ниже.</td></tr>`;
     return;
   }
-  const unionOptions = allUnions.map(u => `<option value="${u.code}">${u.code}</option>`).join('');
-
   tbody.innerHTML = allCompanies.map(c => {
     const supply = (coinMeta[c.ticker] && coinMeta[c.ticker].supply) || 0;
     const mcap   = supply * (c.price || 0);
-    const unionCodes = c.unionCodes || [];
-    const accessBadge = unionCodes.length
-      ? `<span class="tag-custom">${unionCodes.join(', ')}</span>`
-      : `<span class="lbl-inline">приватная</span>`;
-    const removeBtns = unionCodes.map(code =>
-      `<button class="btn btn-dan btn-sm" onclick="removeCompanyListing('${c.ticker}','${code}')" title="Снять с биржи союза ${code}">✕${code}</button>`
-    ).join('');
+    // Листинг на биржи союзов временно убран из интерфейса вместе с самой
+    // темой союзов/токенов — компании сейчас всегда приватные (видны только
+    // государству-владельцу). Бэкенд (unionCodes/canTrade) не тронут, так
+    // что функциональность можно будет вернуть в интерфейс позже.
     return `<tr>
       <td><strong>${c.ticker}</strong></td>
       <td>${c.name}</td>
       <td>${c.ownerNation}</td>
-      <td>${accessBadge}</td>
+      <td><span class="lbl-inline">приватная</span></td>
       <td>$${fmt(c.price, priceDec(c.ticker))}</td>
       <td>$${fmt(mcap)}</td>
       <td>
@@ -855,33 +865,8 @@ function renderCompanies() {
         <button class="btn btn-secondary btn-sm" onclick="saveCompanyParams('${c.ticker}')">Сохранить</button>
         <button class="btn btn-dan btn-sm" onclick="deleteCompany('${c.ticker}')" title="Ликвидировать компанию">🗑️</button>
       </td>
-    </tr>
-    <tr>
-      <td colspan="8" style="padding-top:0">
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0 10px">
-          <span class="lbl-inline">Листинг на союз:</span>
-          <select id="company-union-${c.ticker}" style="width:140px">${unionOptions || '<option disabled>Нет союзов</option>'}</select>
-          <input type="number" id="company-float-${c.ticker}" placeholder="акций в резерв" min="0" step="1" style="width:130px">
-          <button class="btn btn-secondary btn-sm" onclick="addCompanyListing('${c.ticker}')" ${allUnions.length ? '' : 'disabled'}>Вынести</button>
-          ${removeBtns}
-        </div>
-      </td>
     </tr>`;
   }).join('');
-}
-
-async function addCompanyListing(ticker) {
-  const unionCode = document.getElementById(`company-union-${ticker}`).value;
-  const unionFloat = document.getElementById(`company-float-${ticker}`).value;
-  const res = await api('POST', '/api/admin/company/listing', { ticker, unionCode, unionFloat });
-  if (res.error) { alert(res.error); return; }
-  await loadCompaniesData();
-}
-
-async function removeCompanyListing(ticker, unionCode) {
-  const res = await api('POST', '/api/admin/company/listing', { ticker, unionCode, remove: true });
-  if (res.error) { alert(res.error); return; }
-  await loadCompaniesData();
 }
 
 async function saveCompanyParams(ticker) {
@@ -932,110 +917,8 @@ async function loadCompaniesData() {
   }
 }
 
-// ── СОЮЗЫ ────────────────────────────────────────────────────────────────────
-let allUnions = [];
-
-function fillUnionMembersSelect() {
-  const sel = document.getElementById('newUnionMembers');
-  if (!sel) return;
-  const players = allWallets
-    .filter(w => w.username !== 'WARDEN' && w.username !== 'EXCHANGE' && !w.username.startsWith('UNION_'))
-    .sort((a, b) => a.username.localeCompare(b.username));
-  sel.innerHTML = players.length
-    ? players.map(w => `<option value="${w.username}">${w.username}</option>`).join('')
-    : '<option disabled>Нет государств</option>';
-}
-
-function renderUnions() {
-  const tbody = document.getElementById('unionsBody');
-  if (!tbody) return;
-  if (!allUnions.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--mu);padding:16px">Союзов пока нет. Создай через форму ниже.</td></tr>`;
-    return;
-  }
-  const playerOptions = allWallets
-    .filter(w => w.username !== 'WARDEN' && w.username !== 'EXCHANGE' && !w.username.startsWith('UNION_'))
-    .sort((a, b) => a.username.localeCompare(b.username));
-
-  tbody.innerHTML = allUnions.map(u => `
-    <tr>
-      <td><strong>${u.code}</strong></td>
-      <td>${u.name}</td>
-      <td>${u.members.map(m => `<span class="tag-custom">${m}</span>`).join(' ')}</td>
-      <td>${u.tokenSymbol} <span class="lbl-inline">(${u.tokenTicker})</span></td>
-      <td>$${fmt(u.price, priceDec(u.tokenTicker))}</td>
-      <td>$${fmt(u.reserveUsd)}</td>
-      <td><button class="btn btn-dan btn-sm" onclick="deleteUnion('${u.code}')" title="Распустить союз">🗑️</button></td>
-    </tr>
-    <tr>
-      <td colspan="7" style="padding-top:0">
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0 10px">
-          <span class="lbl-inline">Участники:</span>
-          <select id="union-member-${u.code}" style="width:160px">
-            ${playerOptions.map(w => `<option value="${w.username}">${w.username}</option>`).join('')}
-          </select>
-          <button class="btn btn-secondary btn-sm" onclick="addUnionMember('${u.code}')">Добавить</button>
-          ${u.members.map(m => `<button class="btn btn-dan btn-sm" onclick="removeUnionMember('${u.code}','${m}')" title="Исключить ${m}">✕${m}</button>`).join('')}
-        </div>
-      </td>
-    </tr>
-  `).join('');
-}
-
-async function addUnionMember(code) {
-  const username = document.getElementById(`union-member-${code}`).value;
-  const res = await api('POST', '/api/admin/union/member', { code, username, action: 'add' });
-  if (res.error) { alert(res.error); return; }
-  await loadUnionsData();
-}
-
-async function removeUnionMember(code, username) {
-  const res = await api('POST', '/api/admin/union/member', { code, username, action: 'remove' });
-  if (res.error) { alert(res.error); return; }
-  await loadUnionsData();
-}
-
-async function deleteUnion(code) {
-  if (!confirm(`Распустить союз ${code}?\nТокен будет выкуплен у держателей резервом союза, остаток резерва вернётся на биржу.`)) return;
-  const r   = await fetch(`/api/admin/union/${encodeURIComponent(code)}`, { method: 'DELETE' });
-  const res = await r.json();
-  if (res.error) { alert(res.error); return; }
-  await loadAdminData();
-}
-
-document.getElementById('createUnionForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const btn = document.getElementById('createUnionBtn');
-  btn.disabled = true; btn.textContent = '⏳...';
-  const members = [...document.getElementById('newUnionMembers').selectedOptions].map(o => o.value);
-  const body = {
-    code:            document.getElementById('newUnionCode').value.trim(),
-    name:            document.getElementById('newUnionName').value.trim(),
-    tokenName:       document.getElementById('newUnionTokenName').value.trim(),
-    tokenSymbol:     document.getElementById('newUnionTokenSymbol').value.trim(),
-    tokenSupply:     document.getElementById('newUnionTokenSupply').value,
-    tokenStartPrice: document.getElementById('newUnionTokenPrice').value,
-    reserveUsd:      document.getElementById('newUnionReserve').value,
-    members,
-  };
-  const res = await api('POST', '/api/admin/union/create', body);
-  if (res.error) {
-    alert(res.error);
-  } else {
-    document.getElementById('createUnionForm').reset();
-    await loadAdminData();
-  }
-  btn.disabled = false; btn.textContent = '🤝 Создать союз';
-});
-
-async function loadUnionsData() {
-  const res = await api('GET', '/api/admin/unions');
-  if (!res.error) {
-    allUnions = res;
-    renderUnions();
-    renderCompanies(); // список компаний зависит от списка союзов (select листинга)
-  }
-}
+// Тема союзов/токенов временно убрана из интерфейса (см. game/unions.js —
+// бэкенд остался нетронутым, можно будет вернуть админ-панель позже).
 
 // ── ЗАГРУЗКА ВСЕХ ДАННЫХ ─────────────────────────────────────────────────────
 // Сокет-события (walletUpdate/coinsUpdated) прилетают часто и пачками —
@@ -1084,12 +967,10 @@ async function loadAdminData() {
   renderCoinParams();
   fillPlayerSelect();
   fillCompanyOwnerSelect();
-  fillUnionMembersSelect();
   renderBankCard();  // без аргументов — возьмёт из allWallets/allLoans
   await loadExchangeAssets();
   await loadBotsData();
   await loadRestrictionsData();
-  await loadUnionsData();
   await loadCompaniesData();
   renderPlayers();
   renderLoans();

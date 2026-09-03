@@ -69,16 +69,28 @@ function fmtTime(ts) {
 // схлопываются в один и тот же id, и элементы начинают путаться местами.
 function safeIdFor(str) { return String(str || '').replace(/[^\p{L}\p{N}]/gu, '_'); }
 
-// Не перерисовываем контейнер (regenerate innerHTML), пока админ печатает в
-// одном из его полей — иначе фоновое обновление (дивиденды компаний, сделки
-// ботов и т.п. прилетают регулярно, каждые 15-25с) стирает несохранённый
-// текст на середине набора. Ре-рендер просто откладывается до следующего
-// цикла, когда поле потеряет фокус (например, после нажатия «Сохранить»).
-function hasFocusedInput(container) {
-  const active = document.activeElement;
-  return !!(active && container && container.contains(active) &&
-    ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName));
+// Не перерисовываем контейнер (regenerate innerHTML), пока в нём есть
+// несохранённая правка — иначе фоновое обновление (дивиденды компаний,
+// сделки ботов и т.п. прилетают регулярно, каждые 15-25с) стирает то, что
+// админ ещё не сохранил. Важно: триггер — именно РЕДАКТИРОВАНИЕ (событие
+// input/change), а не просто фокус в поле — иначе достаточно один раз
+// кликнуть в live-обновляемое поле (например, баланс бота), чтобы вся
+// секция навсегда «замёрзла» до перезагрузки страницы. Правка считается
+// сброшенной, как только контейнер успешно перерисован (см. вызовы ниже).
+function hasUnsavedEdits(container) {
+  return !!(container && container.dataset.dirty === '1');
 }
+function markContainerDirty(e) {
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+    e.currentTarget.dataset.dirty = '1';
+  }
+}
+['adminPlayersBody', 'companiesBody', 'coinParamsBody', 'botsGrid', 'unionsBody'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('input', markContainerDirty);
+  el.addEventListener('change', markContainerDirty);
+});
 
 function coinDec(c)  { return BASE_COINS.includes(c) ? 5 : 3; }
 function priceDec(c) {
@@ -313,7 +325,8 @@ async function clearAllHistory() {
 function renderCoinParams() {
   const tbody = document.getElementById('coinParamsBody');
   if (!tbody) return;
-  if (hasFocusedInput(tbody)) return;
+  if (hasUnsavedEdits(tbody)) return;
+  tbody.dataset.dirty = '';
 
   tbody.innerHTML = COINS.map(coin => {
     const m        = coinMeta[coin] || {};
@@ -411,7 +424,8 @@ async function saveCoinParams(coin) {
 function renderBots() {
   const grid = document.getElementById('botsGrid');
   if (!grid) return;
-  if (hasFocusedInput(grid)) return;
+  if (hasUnsavedEdits(grid)) return;
+  grid.dataset.dirty = '';
 
   if (!allBots.length) {
     grid.innerHTML = `<div style="color:var(--mu);font-size:13px;padding:8px 0">Ботов пока нет. Создай через форму ниже.</div>`;
@@ -576,7 +590,8 @@ function renderPlayers() {
   const thead = document.getElementById('playersHead');
   const tbody = document.getElementById('adminPlayersBody');
   if (!thead || !tbody) return;
-  if (hasFocusedInput(tbody)) return;
+  if (hasUnsavedEdits(tbody)) return;
+  tbody.dataset.dirty = '';
 
   thead.innerHTML = `<tr>
     <th>Игрок</th>
@@ -839,7 +854,8 @@ function fillCompanyOwnerSelect() {
 function renderCompanies() {
   const tbody = document.getElementById('companiesBody');
   if (!tbody) return;
-  if (hasFocusedInput(tbody)) return;
+  if (hasUnsavedEdits(tbody)) return;
+  tbody.dataset.dirty = '';
   if (!allCompanies.length) {
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--mu);padding:16px">Компаний пока нет. Основай через форму ниже.</td></tr>`;
     return;
@@ -963,7 +979,8 @@ function fillUnionMembersSelect() {
 function renderUnions() {
   const tbody = document.getElementById('unionsBody');
   if (!tbody) return;
-  if (hasFocusedInput(tbody)) return;
+  if (hasUnsavedEdits(tbody)) return;
+  tbody.dataset.dirty = '';
   if (!allUnions.length) {
     tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--mu);padding:16px">Союзов пока нет. Создай через форму ниже.</td></tr>`;
     return;
@@ -1187,6 +1204,13 @@ socket.on('newEvent', ev => {
 });
 
 socket.on('walletUpdate', () => debouncedReload());
+
+// Боты живут в отдельной коллекции (db.bots), а не в db.wallets — их сделки
+// НЕ шлют walletUpdate, только общий playersUpdate раз в тик. Без этой
+// подписки секция «Боты» обновлялась только когда что-то ещё (человеческая
+// сделка и т.п.) случайно дёргало debouncedReload — баланс ботов выглядел
+// замороженным, хотя сами боты продолжали торговать.
+socket.on('playersUpdate', () => debouncedReload());
 
 // ── ИНИЦИАЛИЗАЦИЯ ─────────────────────────────────────────────────────────────
 api('GET', '/auth/me').then(res => {

@@ -49,8 +49,10 @@ let lastLockedUsd   = 0;
 let lastLockedCoins = {};
 
 // ── Константы торговли (должны совпадать с game.js на сервере) ────────────────
-const TRADE_FEE = 0.004;   // 0.4% комиссия
-const SPREAD    = 0.0015;  // ±0.15% спред
+const TRADE_FEE     = 0.004;   // 0.4% комиссия
+const DEFAULT_SPREAD = 0.0015; // дефолт для активов без своего спреда (см. spreads)
+let spreads = {}; // per-актив спред, задаётся ГМом точечно — приходит в /api/state
+function spreadFor(coin) { return spreads[coin] > 0 ? spreads[coin] : DEFAULT_SPREAD; }
 
 async function api(method, path, body) {
   const r = await fetch(path, {
@@ -564,11 +566,13 @@ function updateTradeHint() {
 
   const price = prices[coin] || 0;
 
+  const spread = spreadFor(coin);
+
   if (tradeMode === 'usd') {
     const usdRaw = parseFloat(document.getElementById('tradeUsd')?.value) || 0;
     if (price > 0 && usdRaw > 0) {
-      const askPrice = price * (1 + SPREAD);
-      const bidPrice = price * (1 - SPREAD);
+      const askPrice = price * (1 + spread);
+      const bidPrice = price * (1 - spread);
       const coinQty = action === 'buy'
         ? usdRaw / (askPrice * (1 + TRADE_FEE))
         : usdRaw / (bidPrice * (1 - TRADE_FEE));
@@ -579,13 +583,13 @@ function updateTradeHint() {
   } else {
     const qty = parseFloat(document.getElementById('tradeAmount')?.value) || 0;
     if (price > 0 && qty > 0) {
-      const askPrice = price * (1 + SPREAD);
-      const bidPrice = price * (1 - SPREAD);
+      const askPrice = price * (1 + spread);
+      const bidPrice = price * (1 - spread);
       const usdVal = action === 'buy'
         ? qty * askPrice * (1 + TRADE_FEE)
         : qty * bidPrice * (1 - TRADE_FEE);
       const localNote = myCurrency.rate === 1 ? '' : ` (≈ ${fmtLocal(usdVal)})`;
-      hint.textContent = `≈ ${fmtRef(usdVal)}${localNote} (комиссия ${(TRADE_FEE * 100).toFixed(1)}% + спред ${(SPREAD * 100).toFixed(2)}%)`;
+      hint.textContent = `≈ ${fmtRef(usdVal)}${localNote} (комиссия ${(TRADE_FEE * 100).toFixed(1)}% + спред ${(spread * 100).toFixed(2)}%)`;
     } else {
       hint.textContent = '';
     }
@@ -643,14 +647,15 @@ function updateOrderHint() {
     return;
   }
 
+  const spread = spreadFor(coin);
   if (side === 'buy') {
     const need = price * amount * (1 + TRADE_FEE);
     hint.textContent = `Резерв: ${fmtRef(need)} (с комиссией ${(TRADE_FEE * 100).toFixed(1)}%)` +
-      (market > 0 && price >= market * (1 + SPREAD) ? ' · исполнится сразу' : '');
+      (market > 0 && price >= market * (1 + spread) ? ' · исполнится сразу' : '');
   } else {
     const get = price * amount * (1 - TRADE_FEE);
     hint.textContent = `Резерв: ${fmt(amount, 6)} ${coin} → ≈ ${fmtRef(get)}` +
-      (market > 0 && price <= market * (1 - SPREAD) ? ' · исполнится сразу' : '');
+      (market > 0 && price <= market * (1 - spread) ? ' · исполнится сразу' : '');
   }
 }
 
@@ -764,8 +769,8 @@ function updateBookMid(p) {
   const coin  = currentBookCoin();
   if (!midEl || !lastBook || !coin || p[coin] == null) return;
   lastBook.price    = p[coin];
-  lastBook.bidPrice = p[coin] * (1 - SPREAD);
-  lastBook.askPrice = p[coin] * (1 + SPREAD);
+  lastBook.bidPrice = p[coin] * (1 - spreadFor(coin));
+  lastBook.askPrice = p[coin] * (1 + spreadFor(coin));
   const dec = lastBook.price < 1 ? 5 : 2;
   midEl.innerHTML =
     `<span class="ob-last">${fmtRef(lastBook.price, dec)}</span>` +
@@ -961,6 +966,7 @@ async function loadState() {
     updateChartCoins(data.coins);
   }
   if (data.basePrices) basePrices = data.basePrices;
+  if (data.spreads) spreads = data.spreads;
   if (Array.isArray(data.companyTickers)) allCompanyTickers = data.companyTickers;
 
   lastPlayers     = data.players;
@@ -1022,8 +1028,8 @@ function resolveTradeAmount(coin, action) {
   if (tradeMode === 'usd') {
     const usd = parseFloat(document.getElementById('tradeUsd').value);
     if (!Number.isFinite(usd) || usd <= 0) return null;
-    const askPrice = price * (1 + SPREAD);
-    const bidPrice = price * (1 - SPREAD);
+    const askPrice = price * (1 + spreadFor(coin));
+    const bidPrice = price * (1 - spreadFor(coin));
     return action === 'buy'
       ? usd / (askPrice * (1 + TRADE_FEE))
       : usd / (bidPrice * (1 - TRADE_FEE));
@@ -1063,7 +1069,7 @@ document.getElementById('buyAllBtn').addEventListener('click', async () => {
   if (price <= 0) { err.textContent = 'Курс актива неизвестен'; return; }
   if (usd < 0.01) { err.textContent = 'Недостаточно резервов'; return; }
 
-  const askPrice = price * (1 + SPREAD);
+  const askPrice = price * (1 + spreadFor(coin));
   const amount   = usd / (askPrice * (1 + TRADE_FEE));
 
   const res = await api('POST', '/api/trade', { coin, amount, action: 'buy' });

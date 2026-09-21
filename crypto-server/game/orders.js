@@ -11,12 +11,16 @@
  *         если лимит игрока это позволяет и у биржи хватает запаса.
  *  • Исполнение всегда по цене не хуже лимита: разница возвращается игроку.
  */
-const { db, getAllCoins } = require('../db');
+const { db, getAllCoins, DEFAULT_SPREAD } = require('../db');
 
 const TRADE_FEE       = 0.004;   // 0.4% комиссия (синхронизировано с routes/game.js)
-const SPREAD          = 0.0015;  // ±0.15% спред биржи
 const MAX_OPEN_ORDERS = 20;      // максимум активных ордеров на игрока
 const QTY_EPS         = 1e-9;    // порог «нулевого» остатка по объёму
+
+async function spreadFor(coin) {
+  const doc = await db.prices.findOne({ coin });
+  return doc && doc.spread > 0 ? doc.spread : DEFAULT_SPREAD;
+}
 
 function remaining(order) {
   return Math.max(0, (order.amount || 0) - (order.filled || 0));
@@ -155,6 +159,7 @@ async function matchCoin(coin, marketPrice, fills) {
   // ── 2. Остаток — об биржу по рыночной цене ─────────────────────────────────
   let price = marketPrice;
   if (Number.isFinite(price) && price > 0) {
+    const spread = await spreadFor(coin);
     const rest = [...bids, ...asks].filter(o => remaining(o) > QTY_EPS);
     for (const order of rest) {
       const exch = await db.wallets.findOne({ username: reserveAccount });
@@ -162,11 +167,11 @@ async function matchCoin(coin, marketPrice, fills) {
 
       let qty = 0, execPrice = 0;
       if (order.side === 'buy') {
-        execPrice = price * (1 + SPREAD);
+        execPrice = price * (1 + spread);
         if (execPrice > order.price) continue;               // рынок дороже лимита
         qty = Math.min(remaining(order), exch[coin] || 0);   // запас биржи
       } else {
-        execPrice = price * (1 - SPREAD);
+        execPrice = price * (1 - spread);
         if (execPrice < order.price) continue;               // рынок дешевле лимита
         const affordable = execPrice > 0
           ? Math.max(0, exch.usd || 0) / (execPrice * (1 - TRADE_FEE))
@@ -385,13 +390,14 @@ async function getOrderBook(coin, username) {
 
   const bids = [...levels.buy.values() ].sort((a, b) => b.price - a.price).slice(0, 12);
   const asks = [...levels.sell.values()].sort((a, b) => a.price - b.price).slice(0, 12);
+  const spread = priceDoc.spread > 0 ? priceDoc.spread : DEFAULT_SPREAD;
 
   return {
     coin,
     price:     priceDoc.price,
-    askPrice:  priceDoc.price * (1 + SPREAD),
-    bidPrice:  priceDoc.price * (1 - SPREAD),
-    spread:    SPREAD,
+    askPrice:  priceDoc.price * (1 + spread),
+    bidPrice:  priceDoc.price * (1 - spread),
+    spread,
     tradeFee:  TRADE_FEE,
     bids,
     asks,
@@ -436,6 +442,5 @@ module.exports = {
   cancelOrdersForCoin,
   cancelOrdersForUser,
   TRADE_FEE,
-  SPREAD,
   MAX_OPEN_ORDERS,
 };

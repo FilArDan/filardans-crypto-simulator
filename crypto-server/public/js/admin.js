@@ -333,8 +333,10 @@ function renderCoinParams() {
     const m        = coinMeta[coin] || {};
     const volPct   = +(((m.vol   || 0.04) * 100).toFixed(1));
     const driftPct = +(((m.drift || 0)    * 100).toFixed(1));
-    const supply   = m.supply    || '';
-    const base     = m.basePrice || '';
+    const supply    = m.supply    || '';
+    const base      = m.basePrice || '';
+    const spreadPct = ((m.spread   != null ? m.spread   : 0.0015) * 100);
+    const liquidity = (m.liquidity != null ? m.liquidity : 1);
     const driftCol = driftPct > 0 ? 'var(--ok)' : driftPct < 0 ? 'var(--dan)' : 'var(--mu)';
     const isCustom = m.isCustom || !BASE_COINS.includes(coin);
     const isBase   = BASE_COINS.includes(coin) && !m.isCustom;
@@ -379,6 +381,16 @@ function renderCoinParams() {
           value="${base}" min="0.0001" step="any" placeholder="Базовая цена">
       </td>
 
+      <td>
+        <input type="number" class="coin-input" id="spread-${coin}" style="width:80px"
+          value="${(spreadPct).toFixed(2)}" min="0" max="20" step="0.01" placeholder="0.15" title="±% между ценой покупки и продажи">
+      </td>
+
+      <td>
+        <input type="number" class="coin-input" id="liquidity-${coin}" style="width:80px"
+          value="${liquidity}" min="0.05" max="20" step="0.05" placeholder="1" title="Множитель глубины рынка: больше — слабее реагирует на объём сделок">
+      </td>
+
       <td style="display:flex;gap:6px;align-items:center">
         <button class="btn btn-secondary btn-sm" onclick="saveCoinParams('${coin}')">
           Сохранить
@@ -400,14 +412,18 @@ function renderCoinParams() {
 }
 
 async function saveCoinParams(coin) {
-  const vol       = parseFloat(document.getElementById(`vol-${coin}`).value)   / 100;
-  const drift     = parseFloat(document.getElementById(`drift-${coin}`).value) / 100;
-  const supplyVal = parseFloat(document.getElementById(`supply-${coin}`).value);
-  const baseVal   = parseFloat(document.getElementById(`base-${coin}`).value);
+  const vol         = parseFloat(document.getElementById(`vol-${coin}`).value)   / 100;
+  const drift       = parseFloat(document.getElementById(`drift-${coin}`).value) / 100;
+  const supplyVal   = parseFloat(document.getElementById(`supply-${coin}`).value);
+  const baseVal     = parseFloat(document.getElementById(`base-${coin}`).value);
+  const spreadVal   = parseFloat(document.getElementById(`spread-${coin}`).value);
+  const liquidityVal = parseFloat(document.getElementById(`liquidity-${coin}`).value);
 
   const body = { coin, vol, drift };
-  if (!isNaN(supplyVal) && supplyVal > 0) body.supply    = supplyVal;
-  if (!isNaN(baseVal)   && baseVal   > 0) body.basePrice = baseVal;
+  if (!isNaN(supplyVal)    && supplyVal    > 0) body.supply    = supplyVal;
+  if (!isNaN(baseVal)      && baseVal      > 0) body.basePrice = baseVal;
+  if (!isNaN(spreadVal)    && spreadVal    >= 0) body.spread    = spreadVal / 100;
+  if (!isNaN(liquidityVal) && liquidityVal > 0) body.liquidity = liquidityVal;
 
   const btn = document.querySelector(`#coin-row-${coin} .btn`);
   if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }

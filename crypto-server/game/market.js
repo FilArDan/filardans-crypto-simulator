@@ -1,4 +1,4 @@
-const { db, getAllCoins, EXCHANGE_USERNAME } = require('../db');
+const { db, getAllCoins, EXCHANGE_USERNAME, DEFAULT_LIQUIDITY } = require('../db');
 const { updatePriceHistory, botTick, priceHistory, getBotStats } = require('./bots');
 const { accrueInterest } = require('./bank');
 
@@ -120,8 +120,9 @@ async function tick(io) {
 async function applyTradePressure(coin, amount, action) {
   const doc = await db.prices.findOne({ coin });
   if (!doc || !doc.supply || doc.supply <= 0) return doc ? doc.price : 0;
+  const liquidity = doc.liquidity > 0 ? doc.liquidity : DEFAULT_LIQUIDITY;
   const rawImpact = (amount / doc.supply) * 100;
-  const impact    = Math.min(Math.log1p(rawImpact) * 0.015, 0.20);
+  const impact    = Math.min(Math.log1p(rawImpact) * (0.015 / liquidity), 0.20);
   const newPrice  = roundPrice(
     Math.max(0.0001,
       action === 'buy'

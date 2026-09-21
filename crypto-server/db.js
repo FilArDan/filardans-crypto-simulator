@@ -56,6 +56,13 @@ const INITIAL_USERS = [
   { username: 'WARDEN',    password: 'sherpa', role: 'admin',  startUsd: 0     },
 ];
 
+// Дефолты спреда/ликвидности для активов, у которых ГМ не задал своих
+// значений (в т.ч. все существующие монеты до этой фичи) — совпадают со
+// старыми глобальными константами, так что ничего не меняется, пока ГМ
+// сам не тронет ползунки конкретного актива.
+const DEFAULT_SPREAD    = 0.0015; // ±0.15%
+const DEFAULT_LIQUIDITY = 1;      // множитель глубины рынка (больше = меньше проскальзывание от объёма)
+
 const COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 
 const COIN_META = {
@@ -160,4 +167,4 @@ async function initDb() {
   }
 }
 
-module.exports = { db, initDb, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY };
+module.exports = { db, initDb, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY, DEFAULT_SPREAD, DEFAULT_LIQUIDITY };

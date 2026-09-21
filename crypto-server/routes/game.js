@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt  = require('bcryptjs');
 const router  = express.Router();
-const { db, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY } = require('../db');
+const { db, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY, DEFAULT_SPREAD, DEFAULT_LIQUIDITY } = require('../db');
 const { tick, applyTradePressure, deleteCoinHistory } = require('../game/market');
 const { getBotStats, priceHistory, listBotsRaw, createBot, deleteBot, setBotCash, setBotHoldings, updateBotPreset } = require('../game/bots');
 const {
@@ -17,7 +17,7 @@ const {
 } = require('../game/unions');
 
 const TRADE_FEE = 0.004;   // 0.4% комиссия
-const SPREAD    = 0.0015;  // ±0.15% спред (итого 0.3% между buy/sell ценой)
+// Спред теперь по-активно (db.prices[coin].spread, дефолт — DEFAULT_SPREAD из db.js)
 
 function auth(req, res, next) {
   if (!req.session.username) return res.status(401).json({ error: 'Не авторизован' });
@@ -41,6 +41,16 @@ async function getBasePrices() {
   const docs = await db.prices.find({});
   const obj  = {};
   docs.forEach(d => { obj[d.coin] = d.basePrice != null ? d.basePrice : d.price; });
+  return obj;
+}
+
+// Спред у каждого актива — задаётся ГМом точечно (по умолчанию общий
+// DEFAULT_SPREAD). Клиенту нужен, чтобы подсказки в форме сделки совпадали
+// с реальным исполнением на сервере.
+async function getSpreads() {
+  const docs = await db.prices.find({});
+  const obj  = {};
+  docs.forEach(d => { obj[d.coin] = d.spread > 0 ? d.spread : DEFAULT_SPREAD; });
   return obj;
 }
 
@@ -102,6 +112,7 @@ router.get('/state', auth, async (req, res) => {
   try {
     const prices     = await getAllPrices();
     const basePrices = await getBasePrices();
+    const spreads    = await getSpreads();
     const wallet     = await db.wallets.findOne({ username: req.session.username });
     const loans      = await db.loans.find({ username: req.session.username, paid: { $ne: true } });
     const events     = await db.events.find({}).sort({ ts: -1 }).limit(25);
@@ -143,8 +154,8 @@ router.get('/state', auth, async (req, res) => {
     const companyTickers = allCompanies.map(c => c.ticker);
 
     res.json({
-      prices, basePrices, wallet, loans, events, players, coins: allCoins, paused,
-      spread: SPREAD, tradeFee: TRADE_FEE,
+      prices, basePrices, spreads, wallet, loans, events, players, coins: allCoins, paused,
+      tradeFee: TRADE_FEE,
       openOrders:  orders.open.length,
       lockedUsd:   orders.lockedUsd,
       lockedCoins: orders.lockedCoins,
@@ -174,10 +185,11 @@ router.post('/trade', auth, async (req, res) => {
     const wallet         = await db.wallets.findOne({ username: req.session.username });
     const exchangeWallet = await db.wallets.findOne({ username: reserveAccount });
     const midPrice       = priceDoc.price;
+    const spread         = priceDoc.spread > 0 ? priceDoc.spread : DEFAULT_SPREAD;
     const io             = req.app.get('io');
 
     if (action === 'buy') {
-      const askPrice  = midPrice * (1 + SPREAD);
+      const askPrice  = midPrice * (1 + spread);
       const baseValue = askPrice * amount;
       const feeAmount = baseValue * TRADE_FEE;
       const cost      = baseValue + feeAmount;
@@ -207,7 +219,7 @@ router.post('/trade', auth, async (req, res) => {
       res.json({ wallet: updated, prices: updatedPrices });
 
     } else {
-      const bidPrice  = midPrice * (1 - SPREAD);
+      const bidPrice  = midPrice * (1 - spread);
       const baseValue = bidPrice * amount;
       const feeAmount = baseValue * TRADE_FEE;
       const proceeds  = baseValue - feeAmount;
@@ -712,6 +724,8 @@ router.get('/admin/coins', auth, adminOnly, async (req, res) => {
         vol:       d.vol,
         drift:     d.drift,
         supply:    d.supply,
+        spread:    d.spread > 0 ? d.spread : DEFAULT_SPREAD,
+        liquidity: d.liquidity > 0 ? d.liquidity : DEFAULT_LIQUIDITY,
         isCustom:  customTickers.has(d.coin),
         isBase,
         name:  isBase ? (COIN_META[d.coin]?.name  || d.coin) : (custom.find(c => c.ticker === d.coin)?.name  || d.coin),
@@ -723,7 +737,7 @@ router.get('/admin/coins', auth, adminOnly, async (req, res) => {
 
 router.post('/admin/coin/params', auth, adminOnly, async (req, res) => {
   try {
-    const { coin, vol, drift, supply, basePrice } = req.body;
+    const { coin, vol, drift, supply, basePrice, spread, liquidity } = req.body;
     const allCoins = await getAllCoins();
     if (!allCoins.includes(coin)) return res.json({ error: 'Неизвестная монета' });
     const doc   = await db.prices.findOne({ coin });
@@ -731,6 +745,8 @@ router.post('/admin/coin/params', auth, adminOnly, async (req, res) => {
     if (vol       != null) patch.vol       = Math.max(0.005, Math.min(0.30, parseFloat(vol)));
     if (drift     != null) patch.drift     = Math.max(-0.10, Math.min(0.10, parseFloat(drift)));
     if (basePrice != null) patch.basePrice = Math.max(0.0001, parseFloat(basePrice));
+    if (spread    != null) patch.spread    = Math.max(0, Math.min(0.20, parseFloat(spread)));
+    if (liquidity != null) patch.liquidity = Math.max(0.05, Math.min(20, parseFloat(liquidity)));
     if (supply != null && parseFloat(supply) > 0) {
       const oldMcap   = doc.price * (doc.supply || 1);
       const newSupply = parseFloat(supply);
@@ -740,9 +756,11 @@ router.post('/admin/coin/params', auth, adminOnly, async (req, res) => {
     await db.prices.update({ coin }, { $set: patch });
     const updatedPrices = await getAllPrices();
     const parts = [];
-    if (patch.vol   != null) parts.push(`vol=${(patch.vol*100).toFixed(1)}%`);
-    if (patch.drift != null) parts.push(`drift=${patch.drift>=0?'+':''}${(patch.drift*100).toFixed(1)}%`);
-    if (patch.supply!= null) parts.push(`supply=${patch.supply.toLocaleString('ru')}`);
+    if (patch.vol       != null) parts.push(`vol=${(patch.vol*100).toFixed(1)}%`);
+    if (patch.drift     != null) parts.push(`drift=${patch.drift>=0?'+':''}${(patch.drift*100).toFixed(1)}%`);
+    if (patch.supply    != null) parts.push(`supply=${patch.supply.toLocaleString('ru')}`);
+    if (patch.spread    != null) parts.push(`спред=±${(patch.spread*100).toFixed(2)}%`);
+    if (patch.liquidity != null) parts.push(`ликвидность=×${patch.liquidity}`);
     const ev = { ts: Date.now(), text: `Админ изменил параметры ${coin}: ${parts.join(', ')}` };
     await db.events.insert(ev);
     const io = req.app.get('io');

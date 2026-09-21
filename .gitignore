@@ -20,3 +20,6 @@ Thumbs.db
 
 # Build output
 dist/
+
+# Загруженные игроками аватарки — пользовательские данные, не часть репозитория
+crypto-server/public/avatars/

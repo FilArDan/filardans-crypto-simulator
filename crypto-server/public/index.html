@@ -50,7 +50,11 @@
       <div><h1>Mothership Crypto</h1><div class="sub">Межгосударственная биржа будущего</div></div>
     </div>
     <div class="topbar-right">
-      <span id="playerName" style="font-weight:600"></span>
+      <button type="button" id="profileBtn" class="profile-chip" title="Профиль">
+        <img id="profileAvatar" class="avatar avatar-sm" src="" alt="" hidden>
+        <span id="profileAvatarFallback" class="avatar avatar-sm avatar-fallback"></span>
+        <span id="playerName" style="font-weight:600"></span>
+      </button>
       <button class="tbtn" id="themeBtn" title="Сменить тему">🌙</button>
       <button class="btn btn-secondary btn-sm" id="logoutBtn">Выйти</button>
     </div>
@@ -284,6 +288,56 @@
     </div><!-- /g2 -->
 
   </div><!-- /assetView -->
+
+  <!-- SIMPLE VIEW (упрощённый режим) -->
+  <div id="simpleView" class="hidden section-gap">
+    <div class="card">
+      <h2>📊 Активы</h2>
+      <div class="lbl" style="margin-bottom:10px">Покупка и продажа — по текущей рыночной цене.</div>
+      <table>
+        <thead><tr><th>Актив</th><th>Цена</th><th>У меня</th><th colspan="3">Купить / Продать</th></tr></thead>
+        <tbody id="simpleAssetBody"></tbody>
+      </table>
+      <div id="simpleTradeError" class="err-msg"></div>
+    </div>
+  </div><!-- /simpleView -->
+
+  <!-- PROFILE VIEW -->
+  <div id="profileView" class="hidden section-gap">
+    <button type="button" id="profileBackBtn" class="btn btn-secondary btn-sm" style="width:auto">← Назад</button>
+
+    <div class="card section-gap">
+      <h2>⚙️ Профиль</h2>
+      <div class="profile-avatar-row">
+        <img id="profileViewAvatar" class="avatar avatar-lg" src="" alt="" hidden>
+        <span id="profileViewAvatarFallback" class="avatar avatar-lg avatar-fallback"></span>
+        <div>
+          <label class="btn btn-secondary btn-sm" style="width:auto;cursor:pointer;display:inline-block">
+            Загрузить аватар
+            <input type="file" id="avatarInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+          </label>
+          <div id="avatarError" class="err-msg"></div>
+        </div>
+      </div>
+      <form id="profileNameForm" class="compact-form section-gap">
+        <div class="fld">
+          <label class="lbl">Отображаемое имя</label>
+          <input id="displayNameInput" type="text" maxlength="32" placeholder="Как вас видят другие игроки">
+        </div>
+        <div id="profileNameError" class="err-msg"></div>
+        <button type="submit" class="btn btn-primary btn-sm" style="width:auto">Сохранить имя</button>
+      </form>
+    </div>
+
+    <div class="card section-gap">
+      <h2>🧭 Режим интерфейса</h2>
+      <div class="lbl" style="margin-bottom:10px">Упрощённый режим — просто список активов с покупкой/продажей по рыночной цене, без лимитных ордеров, стакана и графиков.</div>
+      <div class="ui-mode-toggle">
+        <button type="button" class="ui-mode-btn" data-mode="full">Полный режим</button>
+        <button type="button" class="ui-mode-btn" data-mode="simple">Упрощённый режим</button>
+      </div>
+    </div>
+  </div><!-- /profileView -->
 
 </div><!-- /appScreen -->
 

@@ -143,6 +143,7 @@ app.use('/auth', rateLimiter);
 
 app.use('/auth', require('./routes/auth'));
 app.use('/api',  require('./routes/game'));
+app.use('/api',  require('./routes/profile'));
 
 // ── Пауза ─────────────────────────────────────────────────────────────────────
 let paused = false;

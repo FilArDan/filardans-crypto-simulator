@@ -21,6 +21,10 @@
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);line-height:1.5;min-height:100vh;}
 button,input,select{font:inherit;color:inherit;cursor:pointer;}
 img{display:block;max-width:100%;}
+/* Без этого правила элементы с явным display (например, .avatar-fallback{display:flex})
+   перебивают дефолтный [hidden]{display:none} браузера — атрибут hidden молча
+   переставал бы работать на любом элементе с собственным display в стилях. */
+[hidden]{display:none!important;}
 .hidden{display:none!important;}
 
 /* ===== SHARED ===== */
@@ -73,6 +77,25 @@ h1{font-size:clamp(18px,2.5vw,24px);font-weight:800;letter-spacing:-.5px;}
 .sub{color:var(--mu);font-size:12px;margin-top:1px;}
 .topbar-right{display:flex;align-items:center;gap:8px;}
 #playerName{font-weight:700;font-size:13px;}
+
+/* ===== ПРОФИЛЬ / АВАТАРКА ===== */
+.profile-chip{display:flex;align-items:center;gap:8px;background:transparent;border:1px solid var(--bd);border-radius:999px;padding:4px 12px 4px 4px;transition:background .15s;}
+.profile-chip:hover{background:var(--sf2);}
+.avatar{border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--sf2);}
+.avatar-sm{width:26px;height:26px;}
+.avatar-lg{width:64px;height:64px;font-size:24px;}
+.avatar-fallback{display:flex;align-items:center;justify-content:center;background:var(--pri);color:#fff;font-weight:800;font-size:12px;}
+.avatar-lg.avatar-fallback{font-size:24px;}
+.profile-avatar-row{display:flex;align-items:center;gap:16px;}
+
+.ui-mode-toggle{display:flex;gap:8px;flex-wrap:wrap;}
+.ui-mode-btn{border:1px solid var(--bd);background:var(--sf2);border-radius:10px;padding:9px 16px;font-size:13px;font-weight:700;transition:background .15s,color .15s;}
+.ui-mode-btn.on{background:var(--pri);color:#fff;border-color:transparent;}
+.ui-mode-btn:hover:not(.on){background:var(--sf3);}
+
+/* ===== УПРОЩЁННЫЙ РЕЖИМ ===== */
+.simple-trade-cell{display:flex;align-items:center;gap:6px;}
+.simple-amount{width:90px;padding:6px 8px;font-size:12px;}
 
 /* ===== STATS ===== */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:0;}

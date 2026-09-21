@@ -12,9 +12,23 @@ function roundPrice(p) {
 async function emitPlayersUpdate(io, currentPrices) {
   try {
     const allWallets = await db.wallets.find({ username: { $ne: 'admin' } });
+    const allUsers    = await db.users.find({});
+    const profileByUsername = {};
+    allUsers.forEach(u => {
+      profileByUsername[u.username] = {
+        displayName: u.displayName || u.username,
+        avatarUrl:   u.avatarPath ? `/avatars/${u.avatarPath}` : null,
+      };
+    });
     const players = allWallets
       .filter(w => w.username !== EXCHANGE_USERNAME && !w.username.startsWith('UNION_'))
-      .map(w => ({ username: w.username, usd: w.usd, coins: w, isBot: false }));
+      .map(w => ({
+        username: w.username,
+        usd: w.usd,
+        coins: w,
+        isBot: false,
+        ...(profileByUsername[w.username] || { displayName: w.username, avatarUrl: null }),
+      }));
     const bots = (await getBotStats(currentPrices)).map(b => ({
       username: b.username,
       usd:      b.usd,

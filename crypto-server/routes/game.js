@@ -107,9 +107,23 @@ router.get('/state', auth, async (req, res) => {
     const events     = await db.events.find({}).sort({ ts: -1 }).limit(25);
     const allWallets = await db.wallets.find({ username: { $ne: 'admin' } });
     const allCoins   = await getAllCoins();
+    const allUsers   = await db.users.find({});
+    const profileByUsername = {};
+    allUsers.forEach(u => {
+      profileByUsername[u.username] = {
+        displayName: u.displayName || u.username,
+        avatarUrl:   u.avatarPath ? `/avatars/${u.avatarPath}` : null,
+      };
+    });
     const players = allWallets
       .filter(w => w.username !== EXCHANGE_USERNAME && !w.username.startsWith('UNION_'))
-      .map(w => ({ username: w.username, usd: w.usd, coins: w, isBot: false }));
+      .map(w => ({
+        username: w.username,
+        usd: w.usd,
+        coins: w,
+        isBot: false,
+        ...(profileByUsername[w.username] || { displayName: w.username, avatarUrl: null }),
+      }));
     const bots = (await getBotStats(prices)).map(b => ({
       username: b.username,
       usd:      b.usd,
@@ -374,7 +388,10 @@ router.get('/admin/players', auth, adminOnly, async (req, res) => {
     const loans   = await db.loans.find({ paid: { $ne: true } });
     const prices  = await getAllPrices();
     const bots    = await getBotStats(prices);
-    res.json({ wallets, loans, bots });
+    const users   = await db.users.find({});
+    const displayNames = {};
+    users.forEach(u => { if (u.displayName) displayNames[u.username] = u.displayName; });
+    res.json({ wallets, loans, bots, displayNames });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

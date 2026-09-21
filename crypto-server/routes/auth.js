@@ -17,7 +17,13 @@ router.post('/login', async (req, res) => {
     // получить пустую сессию если store (NeDB) ещё не успел сохранить.
     req.session.save(err => {
       if (err) return res.status(500).json({ error: 'Ошибка сессии' });
-      res.json({ username: user.username, role: user.role });
+      res.json({
+        username: user.username,
+        role: user.role,
+        displayName: user.displayName || user.username,
+        avatarUrl: user.avatarPath ? `/avatars/${user.avatarPath}` : null,
+        uiMode: user.uiMode === 'simple' ? 'simple' : 'full',
+      });
     });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -26,10 +32,17 @@ router.post('/logout', (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
 });
 
-router.get('/me', (req, res) => {
+router.get('/me', async (req, res) => {
   if (!req.session.username)
     return res.status(401).json({ error: 'Не авторизован' });
-  res.json({ username: req.session.username, role: req.session.role });
+  const user = await db.users.findOne({ username: req.session.username });
+  res.json({
+    username: req.session.username,
+    role: req.session.role,
+    displayName: user && user.displayName || req.session.username,
+    avatarUrl: user && user.avatarPath ? `/avatars/${user.avatarPath}` : null,
+    uiMode: user && user.uiMode === 'simple' ? 'simple' : 'full',
+  });
 });
 
 module.exports = router;

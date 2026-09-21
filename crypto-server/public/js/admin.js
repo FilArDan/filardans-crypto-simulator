@@ -3,6 +3,7 @@ let prices     = {};
 let coinMeta   = {};
 let allWallets = [];
 let allLoans   = [];
+let allDisplayNames = {}; // username -> отображаемое имя, заданное игроком в профиле
 let allBots    = [];
 let allCurrencies = [];
 let dealCount  = 0;
@@ -626,7 +627,7 @@ function renderPlayers() {
     const safeId   = safeIdFor(w.username);
     const cur      = allCurrencies.find(c => c.nation === w.username) || { code: 'USC', name: 'Единый кредит', symbol: 'USC ', rate: 1 };
     return `<tr>
-      <td><strong>${w.username}</strong></td>
+      <td><strong>${w.username}</strong>${allDisplayNames[w.username] && allDisplayNames[w.username] !== w.username ? `<div class="muted" style="font-size:11px">${allDisplayNames[w.username]}</div>` : ''}</td>
       <td class="up">$${fmt(w.usd)}</td>
       <td class="${debt > 0 ? 'dn' : ''}">$${fmt(debt)}</td>
       ${COINS.map(c => `<td style="font-size:12px;color:var(--mu);font-variant-numeric:tabular-nums">
@@ -1081,8 +1082,9 @@ async function loadAdminData() {
   ]);
 
   if (!adminData.error) {
-    allWallets = adminData.wallets || [];
-    allLoans   = adminData.loans   || [];
+    allWallets    = adminData.wallets     || [];
+    allLoans      = adminData.loans       || [];
+    allDisplayNames = adminData.displayNames || {};
   }
 
   if (!currenciesData.error) allCurrencies = currenciesData;

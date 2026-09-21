@@ -1,5 +1,6 @@
 const socket = io();
 let myUsername = '';
+let myProfile = { displayName: '', avatarUrl: null, uiMode: 'full' };
 let prices = {};
 let basePrices = {};
 let currentCoins = [];
@@ -64,14 +65,135 @@ function fmt(n, dec = 2) {
   return Number(n || 0).toLocaleString('ru', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
 
-function showApp(username) {
+function showApp(username, profile) {
   myUsername = username;
-  document.getElementById('playerName').textContent = username;
+  myProfile = {
+    displayName: (profile && profile.displayName) || username,
+    avatarUrl:   (profile && profile.avatarUrl) || null,
+    uiMode:      (profile && profile.uiMode === 'simple') ? 'simple' : 'full',
+  };
+  renderProfileChip();
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('appScreen').classList.remove('hidden');
   initChart();
+  applyUiMode();
   loadState().then(() => { loadOrders(); });
 }
+
+// ── ПРОФИЛЬ (отображаемое имя, аватарка, режим интерфейса) ───────────────────
+function initials(name) {
+  return String(name || '').trim().slice(0, 2).toUpperCase() || '?';
+}
+
+function renderAvatarInto(imgEl, fallbackEl, avatarUrl, name) {
+  if (!imgEl || !fallbackEl) return;
+  if (avatarUrl) {
+    imgEl.src = avatarUrl;
+    imgEl.hidden = false;
+    fallbackEl.hidden = true;
+  } else {
+    imgEl.hidden = true;
+    fallbackEl.hidden = false;
+    fallbackEl.textContent = initials(name);
+  }
+}
+
+function renderProfileChip() {
+  const nameEl = document.getElementById('playerName');
+  if (nameEl) nameEl.textContent = myProfile.displayName;
+  renderAvatarInto(
+    document.getElementById('profileAvatar'),
+    document.getElementById('profileAvatarFallback'),
+    myProfile.avatarUrl, myProfile.displayName
+  );
+}
+
+function renderProfileView() {
+  const nameInput = document.getElementById('displayNameInput');
+  if (nameInput) nameInput.value = myProfile.displayName;
+  renderAvatarInto(
+    document.getElementById('profileViewAvatar'),
+    document.getElementById('profileViewAvatarFallback'),
+    myProfile.avatarUrl, myProfile.displayName
+  );
+  document.querySelectorAll('.ui-mode-btn').forEach(b =>
+    b.classList.toggle('on', b.dataset.mode === myProfile.uiMode));
+}
+
+// Какой «домашний» экран открыт помимо профиля/страницы актива — нужно,
+// чтобы кнопка «Назад» в профиле возвращала туда, откуда пришли.
+let lastMainView = 'home';
+
+function applyUiMode() {
+  const simple = myProfile.uiMode === 'simple';
+  document.getElementById('homeView')?.classList.toggle('hidden', simple);
+  document.getElementById('simpleView')?.classList.toggle('hidden', !simple);
+  document.getElementById('assetView')?.classList.add('hidden');
+  currentAsset = null;
+  lastMainView = simple ? 'simple' : 'home';
+  if (simple) renderSimpleAssetList();
+}
+
+function openProfile() {
+  renderProfileView();
+  document.getElementById('homeView')?.classList.add('hidden');
+  document.getElementById('simpleView')?.classList.add('hidden');
+  document.getElementById('assetView')?.classList.add('hidden');
+  document.getElementById('profileView')?.classList.remove('hidden');
+}
+
+function closeProfile() {
+  document.getElementById('profileView')?.classList.add('hidden');
+  if (lastMainView === 'simple') {
+    document.getElementById('simpleView')?.classList.remove('hidden');
+  } else {
+    document.getElementById('homeView')?.classList.remove('hidden');
+  }
+}
+
+document.getElementById('profileBtn')?.addEventListener('click', openProfile);
+document.getElementById('profileBackBtn')?.addEventListener('click', closeProfile);
+
+document.getElementById('profileNameForm')?.addEventListener('submit', async e => {
+  e.preventDefault();
+  const err = document.getElementById('profileNameError');
+  err.textContent = '';
+  const displayName = document.getElementById('displayNameInput').value.trim();
+  const res = await api('POST', '/api/profile', { displayName });
+  if (res.error) { err.textContent = res.error; return; }
+  myProfile.displayName = res.displayName;
+  renderProfileChip();
+  renderProfileView();
+});
+
+document.getElementById('avatarInput')?.addEventListener('change', async e => {
+  const err = document.getElementById('avatarError');
+  err.textContent = '';
+  const file = e.target.files[0];
+  if (!file) return;
+  const form = new FormData();
+  form.append('avatar', file);
+  const r = await fetch('/api/profile/avatar', { method: 'POST', body: form });
+  const res = await r.json();
+  e.target.value = '';
+  if (res.error) { err.textContent = res.error; return; }
+  myProfile.avatarUrl = res.avatarUrl;
+  renderProfileChip();
+  renderProfileView();
+});
+
+document.querySelectorAll('.ui-mode-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const mode = btn.dataset.mode;
+    if (mode === myProfile.uiMode) return;
+    const res = await api('POST', '/api/profile', { uiMode: mode });
+    if (res.error) return;
+    myProfile.uiMode = res.uiMode;
+    renderProfileView();
+    closeProfile();
+    applyUiMode();
+  });
+});
 
 // ── РЕНДЕР ────────────────────────────────────────────────────────────────────
 function renderTicker(p, prev) {
@@ -111,11 +233,12 @@ function renderLeaderboard(players, currentPrices) {
     const medal = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
     const barW = maxTotal > 0 ? Math.round(pl.total / maxTotal * 100) : 0;
     const botBadge = pl.isBot ? ' <span style="font-size:11px;color:var(--mu);opacity:.7">[авт.]</span>' : '';
+    const shownName = pl.displayName || pl.username;
     const tr = document.createElement('tr');
     if (isMine) tr.className = 'me';
     tr.innerHTML = `
       <td><span class="rank ${medal}">${rank}</span></td>
-      <td><span class="${isMine ? 'inv-name me' : 'inv-name'}">${pl.username}${botBadge}</span></td>
+      <td><span class="${isMine ? 'inv-name me' : 'inv-name'}">${shownName}${botBadge}</span></td>
       <td>${fmtRef(pl.total)}</td>
       <td><span class="bar-wrap"><span class="bar-fill" style="width:${barW}%"></span></span></td>`;
     tbody.appendChild(tr);
@@ -144,7 +267,8 @@ function renderTransferSelect(players) {
     .forEach(p => {
       const o = document.createElement('option');
       o.value = p.username;
-      o.textContent = p.isBot ? `${p.username} [авт.]` : p.username;
+      const shownName = p.displayName || p.username;
+      o.textContent = p.isBot ? `${shownName} [авт.]` : shownName;
       sc.appendChild(o);
     });
 
@@ -256,6 +380,70 @@ function renderAssetList() {
   }).join('');
 }
 
+// ── УПРОЩЁННЫЙ РЕЖИМ: плоский список активов, покупка/продажа по рынку ───────
+function renderSimpleAssetList() {
+  const body = document.getElementById('simpleAssetBody');
+  if (!body) return;
+  // Не перерисовываем, пока в одном из полей суммы есть набранный текст —
+  // иначе тик рынка (раз в 15-25с) стирает недопечатанное количество.
+  if (body.dataset.dirty === '1') return;
+  const seen = new Set();
+  const assets = [];
+  computeMarkets().forEach(m => m.assets.forEach(a => {
+    if (seen.has(a.ticker)) return;
+    seen.add(a.ticker);
+    assets.push(a);
+  }));
+  if (!assets.length) {
+    body.innerHTML = '<tr><td colspan="4" style="color:var(--mu);text-align:center;padding:16px">Активов пока нет</td></tr>';
+    return;
+  }
+  body.innerHTML = assets.map(a => {
+    const price = prices[a.ticker] || 0;
+    const dec   = price < 1 ? 4 : 2;
+    const held  = lastWallet ? (lastWallet[a.ticker] || 0) : 0;
+    return `<tr>
+      <td><strong>${a.ticker}</strong>${a.name ? `<div class="muted" style="font-size:11px">${a.name}</div>` : ''}</td>
+      <td>${fmtRef(price, dec)}</td>
+      <td>${held > 0 ? fmt(held, 4) : '<span class="muted">—</span>'}</td>
+      <td colspan="3">
+        <div class="simple-trade-cell">
+          <input type="number" class="simple-amount" min="0" step="any" placeholder="0.0" id="simple-amt-${a.ticker}">
+          <button type="button" class="btn btn-ok btn-sm" data-simple-buy="${a.ticker}">Купить</button>
+          <button type="button" class="btn btn-dan btn-sm" data-simple-sell="${a.ticker}">Продать</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  body.dataset.dirty = '';
+}
+
+document.getElementById('simpleAssetBody')?.addEventListener('input', e => {
+  if (e.target.classList.contains('simple-amount')) e.currentTarget.dataset.dirty = '1';
+});
+
+document.getElementById('simpleAssetBody')?.addEventListener('click', async e => {
+  const buyBtn  = e.target.closest('[data-simple-buy]');
+  const sellBtn = e.target.closest('[data-simple-sell]');
+  const btn = buyBtn || sellBtn;
+  if (!btn) return;
+  const ticker = buyBtn ? buyBtn.dataset.simpleBuy : sellBtn.dataset.simpleSell;
+  const action = buyBtn ? 'buy' : 'sell';
+  const err = document.getElementById('simpleTradeError');
+  err.textContent = '';
+  const input  = document.getElementById(`simple-amt-${ticker}`);
+  const amount = parseFloat(input && input.value);
+  if (!Number.isFinite(amount) || amount <= 0) { err.textContent = 'Введите корректное количество'; return; }
+  btn.disabled = true;
+  const res = await api('POST', '/api/trade', { coin: ticker, amount, action });
+  btn.disabled = false;
+  if (res.error) { err.textContent = res.error; return; }
+  if (input) input.value = '';
+  const body = document.getElementById('simpleAssetBody');
+  if (body) body.dataset.dirty = '';
+  loadState();
+});
+
 document.getElementById('marketNav')?.addEventListener('click', e => {
   const btn = e.target.closest('[data-market]');
   if (!btn) return;
@@ -274,8 +462,12 @@ document.getElementById('assetBackBtn')?.addEventListener('click', showHome);
 
 function showHome() {
   currentAsset = null;
-  document.getElementById('homeView')?.classList.remove('hidden');
   document.getElementById('assetView')?.classList.add('hidden');
+  if (myProfile.uiMode === 'simple') {
+    document.getElementById('simpleView')?.classList.remove('hidden');
+  } else {
+    document.getElementById('homeView')?.classList.remove('hidden');
+  }
 }
 
 function renderAssetHeader() {
@@ -784,6 +976,7 @@ async function loadState() {
   renderMarketNav();
   renderAssetList();
   if (currentAsset) renderAssetHeader();
+  if (myProfile.uiMode === 'simple') renderSimpleAssetList();
   renderLoanInfo(loanInfo);
   addPricePoint(data.prices);
   updateTradeHint();
@@ -813,7 +1006,7 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
   const res = await api('POST', '/auth/login', { username, password });
   if (res.error) { err.textContent = res.error; return; }
   if (res.role === 'admin') { window.location.href = '/admin.html'; return; }
-  showApp(res.username);
+  showApp(res.username, res);
 });
 
 document.getElementById('logoutBtn').addEventListener('click', async () => {
@@ -942,6 +1135,7 @@ socket.on('priceUpdate', p => {
   updateOrderHint();
   renderAssetList();
   if (currentAsset) renderAssetHeader();
+  if (myProfile.uiMode === 'simple') renderSimpleAssetList();
 });
 
 socket.on('orderUpdate', ({ username }) => {
@@ -1018,6 +1212,6 @@ socket.on('coinsUpdated', ({ coins }) => {
 api('GET', '/auth/me').then(res => {
   if (res.username) {
     if (res.role === 'admin') { window.location.href = '/admin.html'; return; }
-    showApp(res.username);
+    showApp(res.username, res);
   }
 });

@@ -846,12 +846,14 @@ function renderFeed(events) {
 function fillPlayerSelect() {
   const sel = document.getElementById('cashUsername');
   if (!sel) return;
+  const prevValue = sel.value;
   const players = allWallets
     .filter(w => w.username !== 'WARDEN' && w.username !== 'EXCHANGE' && !w.username.startsWith('UNION_'))
     .sort((a, b) => a.username.localeCompare(b.username));
   sel.innerHTML = players.length
     ? players.map(w => `<option value="${w.username}">${w.username} (баланс: $${fmt(w.usd)})</option>`).join('')
     : '<option disabled>Нет игроков</option>';
+  if (prevValue && [...sel.options].some(o => o.value === prevValue)) sel.value = prevValue;
 }
 
 // ── КОМПАНИИ ─────────────────────────────────────────────────────────────────
@@ -860,12 +862,14 @@ let allCompanies = [];
 function fillCompanyOwnerSelect() {
   const sel = document.getElementById('newCompanyOwner');
   if (!sel) return;
+  const prevValue = sel.value;
   const players = allWallets
     .filter(w => w.username !== 'WARDEN' && w.username !== 'EXCHANGE' && !w.username.startsWith('UNION_'))
     .sort((a, b) => a.username.localeCompare(b.username));
   sel.innerHTML = players.length
     ? players.map(w => `<option value="${w.username}">${w.username}</option>`).join('')
     : '<option disabled>Нет государств</option>';
+  if (prevValue && [...sel.options].some(o => o.value === prevValue)) sel.value = prevValue;
 }
 
 function renderCompanies() {
@@ -985,12 +989,14 @@ let allUnions = [];
 function fillUnionMembersSelect() {
   const sel = document.getElementById('newUnionMembers');
   if (!sel) return;
+  const prevSelected = new Set([...sel.selectedOptions].map(o => o.value));
   const players = allWallets
     .filter(w => w.username !== 'WARDEN' && w.username !== 'EXCHANGE')
     .sort((a, b) => a.username.localeCompare(b.username));
   sel.innerHTML = players.length
     ? players.map(w => `<option value="${w.username}">${w.username}</option>`).join('')
     : '<option disabled>Нет государств</option>';
+  [...sel.options].forEach(o => { if (prevSelected.has(o.value)) o.selected = true; });
 }
 
 function renderUnions() {

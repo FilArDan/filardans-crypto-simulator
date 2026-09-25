@@ -1199,19 +1199,24 @@ socket.on('coinsUpdated', ({ coins }) => {
 });
 
 // ── ТЕМА ──────────────────────────────────────────────────────────────────────
+// Тёмная тема — дефолт (см. data-theme="dark" на <html>). Состояние кнопки
+// считываем из реального текущего атрибута, а не держим отдельную
+// переменную — иначе первый клик визуально ничего не менял (переключал
+// «тёмную» на «тёмную»), просто из-за рассинхрона стартового состояния.
 (function() {
   const btn  = document.getElementById('themeBtn');
   const html = document.documentElement;
-  let dark = false;
-  if (btn) {
-    btn.textContent = '🌙';
-    btn.addEventListener('click', () => {
-      dark = !dark;
-      html.setAttribute('data-theme', dark ? 'dark' : 'light');
-      btn.textContent = dark ? '☀️' : '🌙';
-      if (typeof createChartInstance === 'function') createChartInstance();
-    });
-  }
+  if (!btn) return;
+  const syncIcon = () => {
+    btn.textContent = html.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙';
+  };
+  syncIcon();
+  btn.addEventListener('click', () => {
+    const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    syncIcon();
+    if (typeof createChartInstance === 'function') createChartInstance();
+  });
 })();
 
 // ── ПРОВЕРКА СЕССИИ ───────────────────────────────────────────────────────────

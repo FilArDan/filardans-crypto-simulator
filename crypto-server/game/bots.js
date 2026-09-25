@@ -190,6 +190,11 @@ async function bullTick(bot, coins, prices) {
     const frac     = 0.50 + Math.random() * 0.40;
     const amt      = (bot.held[coin] || 0) * frac;
     const proceeds = amt * price * (1 - FEE);
+
+    // Проверяем резерв USD у биржи — без этого казна может уйти в минус
+    const exchWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+    if (!exchWallet || (exchWallet.usd || 0) < proceeds) return;
+
     bot.usd += proceeds;
     bot.held[coin] -= amt;
     if (bot.held[coin] < 0.0001) bot.held[coin] = 0;
@@ -233,6 +238,11 @@ async function foxTick(bot, coins, prices) {
     const frac     = 0.10 + Math.random() * 0.20;
     const amt      = (bot.held[coin] || 0) * frac;
     const proceeds = amt * price * (1 - FEE);
+
+    // Проверяем резерв USD у биржи — без этого казна может уйти в минус
+    const exchWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+    if (!exchWallet || (exchWallet.usd || 0) < proceeds) return;
+
     bot.usd += proceeds;
     bot.held[coin] -= amt;
     if (bot.held[coin] < 0.0001) bot.held[coin] = 0;
@@ -289,6 +299,11 @@ async function crocTick(bot, coins, prices) {
     if (prices[coin] >= avg * targetMult) {
       const amt      = (bot.held[coin] || 0) * 0.20;
       const proceeds = amt * prices[coin] * (1 - FEE);
+
+      // Проверяем резерв USD у биржи — без этого казна может уйти в минус
+      const exchWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+      if (!exchWallet || (exchWallet.usd || 0) < proceeds) return;
+
       bot.usd += proceeds;
       bot.held[coin] -= amt;
       if (bot.held[coin] < 0.0001) { bot.held[coin] = 0; bot.avgP[coin] = 0; }

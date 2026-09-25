@@ -226,6 +226,12 @@ router.post('/trade', auth, async (req, res) => {
 
       if ((wallet[coin] || 0) < amount) return res.json({ error: `Недостаточно ${coin}` });
 
+      // Проверяем резерв USD у биржи — без этого казна может уйти в минус
+      const exchangeUsd = exchangeWallet ? (exchangeWallet.usd || 0) : 0;
+      if (exchangeUsd < proceeds) {
+        return res.json({ error: `Резерв биржи временно не располагает достаточным USD (доступно: $${exchangeUsd.toFixed(2)})` });
+      }
+
       // Игрок отдаёт монеты → биржа; биржа платит USD → игрок
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: +proceeds, [coin]: -amount } });
       await db.wallets.update({ username: reserveAccount },       { $inc: { usd: -proceeds, [coin]: +amount } });

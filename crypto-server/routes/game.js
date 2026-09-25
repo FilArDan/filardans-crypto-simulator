@@ -346,7 +346,7 @@ router.post('/loan', auth, async (req, res) => {
     if (!num || num < 100) return res.json({ error: 'Минимум $100' });
     const existing = await db.loans.findOne({ username: req.session.username, paid: { $ne: true } });
     if (existing) return res.json({ error: `Сначала погаси текущий долг ($${existing.due.toFixed(2)})` });
-    const { computeLoanRate, portfolioValue, MAX_LOAN_RATIO } = require('../game/bank');
+    const { computeLoanRate, portfolioValue, MAX_LOAN_RATIO, LOAN_ORIGINATION_FEE } = require('../game/bank');
     const wallet  = await db.wallets.findOne({ username: req.session.username });
     const prices  = await getAllPrices();
     const coins   = await getAllCoins();
@@ -358,12 +358,16 @@ router.post('/loan', auth, async (req, res) => {
       return res.json({ error: 'Биржа временно не может выдать кредит. Попробуй позже.' });
     }
     const rate = computeLoanRate(priceHistory);
+    // Комиссия за выдачу удерживается сразу — реальный приток в казну.
+    // Заёмщик всё равно должен вернуть полную сумму (due = num).
+    const originationFee = num * LOAN_ORIGINATION_FEE;
+    const payout          = num - originationFee;
     await db.loans.insert({ username: req.session.username, principal: num, due: num, rate, ts: Date.now(), paid: false });
-    await db.wallets.update({ username: req.session.username }, { $inc: { usd: +num } });
-    await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: -num } });
+    await db.wallets.update({ username: req.session.username }, { $inc: { usd: +payout } });
+    await db.wallets.update({ username: EXCHANGE_USERNAME },    { $inc: { usd: -payout } });
     const updated = await db.wallets.findOne({ username: req.session.username });
     const io = req.app.get('io');
-    const ev = { ts: Date.now(), text: `${req.session.username} взял кредит $${num.toFixed(2)} (ставка ${(rate * 100).toFixed(3)}%/тик)` };
+    const ev = { ts: Date.now(), text: `${req.session.username} взял кредит $${num.toFixed(2)} (на руки $${payout.toFixed(2)}, комиссия $${originationFee.toFixed(2)}, ставка ${(rate * 100).toFixed(3)}%/тик)` };
     await db.events.insert(ev);
     io.emit('newEvent', ev);
     await emitBankUpdate(io);
@@ -472,6 +476,31 @@ router.post('/admin/set-cash', auth, adminOnly, async (req, res) => {
     await db.events.insert(ev);
     req.app.get('io').emit('newEvent', ev);
     res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Единственное разрешённое место для ручной правки казны биржи (EXCHANGE) —
+// обычный редактор кошелька игрока (/admin/set-cash, /admin/player/wallet)
+// намеренно блокирует EXCHANGE, чтобы её не задели случайно вместе с игроком.
+router.post('/admin/bank/balance', auth, adminOnly, async (req, res) => {
+  try {
+    const delta = parseFloat(req.body.delta);
+    if (!Number.isFinite(delta) || delta === 0) return res.status(400).json({ error: 'Неверная сумма' });
+    const exchWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+    if (!exchWallet) return res.status(404).json({ error: 'Кошелёк биржи не найден' });
+    const newUsd = (exchWallet.usd || 0) + delta;
+    if (newUsd < 0) return res.status(400).json({ error: `Итоговый баланс ушёл бы в минус ($${newUsd.toFixed(2)})` });
+    await db.wallets.update({ username: EXCHANGE_USERNAME }, { $set: { usd: newUsd } });
+
+    const io = req.app.get('io');
+    const ev = {
+      ts: Date.now(),
+      text: `Админ ${delta > 0 ? 'пополнил' : 'списал с'} казну биржи на $${Math.abs(delta).toFixed(2)} (новый баланс: $${newUsd.toFixed(2)})`,
+    };
+    await db.events.insert(ev);
+    io.emit('newEvent', ev);
+    await emitBankUpdate(io);
+    res.json({ ok: true, usd: newUsd });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

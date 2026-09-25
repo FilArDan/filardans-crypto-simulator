@@ -8,6 +8,11 @@ const MAX_LOAN_RATIO   = 2.0;     // максимум займа = 2× наци�
 const MARGIN_THRESHOLD = 0.80;    // порог долговой нагрузки → дефолт
 const FEE              = 0.004;   // синхронизировано с TRADE_FEE в game.js
 
+// Комиссия за выдачу кредита (и игрокам, и ботам): удерживается из
+// резерва биржи сразу при выдаче — реальный приток денег в казну,
+// а не проценты, которые лишь копятся как долг заёмщика.
+const LOAN_ORIGINATION_FEE = 0.01; // 1% от суммы займа
+
 // ── Динамическая ключевая ставка МВФ ────────────────────────────────────────
 function computeLoanRate(priceHistory) {
   const coins = Object.keys(priceHistory || {});
@@ -149,4 +154,5 @@ module.exports = {
   portfolioValue,
   MARGIN_THRESHOLD,
   MAX_LOAN_RATIO,
+  LOAN_ORIGINATION_FEE,
 };

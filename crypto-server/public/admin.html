@@ -261,6 +261,11 @@
       <div class="lbl">🏦 Казна Банка (WARDEN)</div>
       <div class="val" id="bankBalance">$—</div>
       <div class="bank-issued">Выдано кредитов: <span id="bankIssued">$0.00</span> &nbsp;|&nbsp; Долг к возврату: <span id="bankDebt">$0.00</span></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+        <input type="number" id="bankDeltaInput" class="coin-input" style="width:140px" step="any" placeholder="напр. 5000 или -2000">
+        <button class="btn btn-secondary btn-sm" onclick="applyBankDelta()">Изменить баланс казны</button>
+        <span id="bankDeltaError" style="color:var(--dan);font-size:12px"></span>
+      </div>
     </div>
 
 

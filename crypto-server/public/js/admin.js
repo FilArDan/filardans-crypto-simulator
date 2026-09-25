@@ -130,6 +130,18 @@ function renderBankCard(usd, totalIssued, totalDebt) {
   if (elDebt)   elDebt.textContent   = '$' + fmt(debt);
 }
 
+async function applyBankDelta() {
+  const input = document.getElementById('bankDeltaInput');
+  const err   = document.getElementById('bankDeltaError');
+  err.textContent = '';
+  const delta = parseFloat(input.value);
+  if (!Number.isFinite(delta) || delta === 0) { err.textContent = 'Укажи ненулевую сумму'; return; }
+  const res = await api('POST', '/api/admin/bank/balance', { delta });
+  if (res.error) { err.textContent = res.error; return; }
+  input.value = '';
+  renderBankCard(res.usd);
+}
+
 // ── АКТИВЫ БИРЖИ ─────────────────────────────────────────────────────────────
 async function loadExchangeAssets() {
   const res = await api('GET', '/api/admin/exchange-assets');

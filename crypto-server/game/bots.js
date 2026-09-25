@@ -2,7 +2,10 @@
 
 const { db, EXCHANGE_USERNAME } = require('../db');
 
-const FEE = 0.001;
+// Была рассинхронизирована с TRADE_FEE в game.js/orders.js (0.004) — боты
+// торгуют почти на каждом тике и составляют основной объём сделок, поэтому
+// заниженная комиссия здесь была главной причиной вымывания казны биржи.
+const FEE = 0.004;
 const BOT_EMOJI = { bull: '\uD83D\uDC02', fox: '\uD83E\uDD8A', croc: '\uD83D\uDC0A' };
 const HIST_LEN = 30;
 const priceHistory = {};
@@ -84,8 +87,8 @@ function botPortfolioValue(bot, prices) {
 // Константы: максимальный кредит и минимальный порог USD для запроса
 const BOT_LOAN_RATE      = 0.002;  // 0.2% долга в тик (выше, чем у игрока)
 const BOT_MIN_USD_THRESH = 50;     // ниже этого порога бот рассматривает кредит
-const BOT_LOAN_MULT      = 3;      // берёт до 3× текущего USD (но не более MAX)
-const BOT_LOAN_MAX       = 5000;   // максимальный размер кредита бота
+const BOT_LOAN_MULT      = 2;      // берёт до 2× текущего USD (но не более MAX) — было 3×
+const BOT_LOAN_MAX       = 3000;   // максимальный размер кредита бота — было 5000
 const BOT_LOAN_MIN       = 100;    // минимум — как у игрока
 
 /**
@@ -107,7 +110,11 @@ async function tryBotLoan(botName, currentUsd, requestAmount) {
   const exchWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
   if (!exchWallet || exchWallet.usd < amount) return 0;
 
-  // Выдаём кредит: биржа отдаёт USD боту
+  // Выдаём кредит: биржа отдаёт USD боту за вычетом комиссии за выдачу
+  // (тот же LOAN_ORIGINATION_FEE, что и у игроков) — due остаётся полной
+  // суммой, комиссия оседает в казне сразу.
+  const { LOAN_ORIGINATION_FEE } = require('./bank');
+  const payout = amount - amount * LOAN_ORIGINATION_FEE;
   await db.loans.insert({
     username:  botName,
     principal: amount,
@@ -117,8 +124,8 @@ async function tryBotLoan(botName, currentUsd, requestAmount) {
     paid:      false,
     isBot:     true,
   });
-  await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: -amount } });
-  return amount;
+  await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: -payout } });
+  return payout;
 }
 
 /**

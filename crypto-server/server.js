@@ -74,6 +74,40 @@ setInterval(() => {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// ── Защита от NoSQL-инъекций ───────────────────────────────────────────────
+// В проекте нет SQL (хранилище — NeDB), поэтому классической SQL-инъекции
+// тут просто неоткуда взяться. Но у NoSQL то же самое семейство атак
+// работает иначе: везде, где значение из тела запроса или query-параметра
+// напрямую попадает в фильтр вида db.users.findOne({ username }) — то есть
+// почти во всех роутах — вместо обычной строки можно прислать объект с
+// оператором NeDB/MongoDB, например {"username":{"$gt":""}}, и запрос
+// внезапно начнёт матчить произвольную запись, а не сравнивать точное
+// значение. Рекурсивно вырезаем любые ключи, начинающиеся на "$" (операторы)
+// или содержащие "." (пути), из тела запроса и query-параметров — для
+// обычных строк/чисел/массивов это не меняет ровным счётом ничего.
+function stripInjectionOperators(value) {
+  if (Array.isArray(value)) {
+    value.forEach(stripInjectionOperators);
+    return value;
+  }
+  if (value && typeof value === 'object') {
+    for (const key of Object.keys(value)) {
+      if (key.startsWith('$') || key.includes('.')) {
+        delete value[key];
+        continue;
+      }
+      stripInjectionOperators(value[key]);
+    }
+  }
+  return value;
+}
+app.use((req, res, next) => {
+  if (req.body)  stripInjectionOperators(req.body);
+  if (req.query) stripInjectionOperators(req.query);
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── NeDB Session Store ────────────────────────────────────────────────────────

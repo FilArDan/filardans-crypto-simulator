@@ -6,7 +6,7 @@ const { db } = require('../db');
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    if (!username || !password)
+    if (typeof username !== 'string' || typeof password !== 'string' || !username || !password)
       return res.status(400).json({ error: 'Укажите логин и пароль' });
     const user = await db.users.findOne({ username });
     if (!user || !bcrypt.compareSync(password, user.passwordHash))

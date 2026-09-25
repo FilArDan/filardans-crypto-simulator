@@ -219,7 +219,13 @@ function createChartInstance() {
         return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
       },
     },
-    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    crosshair: {
+      mode: LightweightCharts.CrosshairMode.Normal,
+      // Свой тултип уже показывает цену серии в точке — встроенный лейбл
+      // на оси дублирует его, но по Y-координате курсора (не по кривой),
+      // из-за чего числа расходятся и выглядят как баг.
+      horzLine: { labelVisible: false },
+    },
     autoSize: true,
   });
 

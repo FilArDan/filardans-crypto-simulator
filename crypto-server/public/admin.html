@@ -5,6 +5,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Crypto Server — Администратор</title>
+  <script>
+    // Применяем сохранённую тему ДО отрисовки — иначе будет заметно мигание
+    // дефолтной тёмной темой перед переключением на сохранённую светлую.
+    try {
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme === 'light' || savedTheme === 'dark') {
+        document.documentElement.setAttribute('data-theme', savedTheme);
+      }
+    } catch (_) {}
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -626,6 +636,7 @@
     btn.addEventListener('click', () => {
       theme = theme === 'dark' ? 'light' : 'dark';
       root.setAttribute('data-theme', theme);
+      try { localStorage.setItem('theme', theme); } catch (_) {}
       btn.innerHTML = theme === 'dark' ? '☀️' : '🌙';
     });
   })();

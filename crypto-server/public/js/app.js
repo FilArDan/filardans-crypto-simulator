@@ -1214,6 +1214,7 @@ socket.on('coinsUpdated', ({ coins }) => {
   btn.addEventListener('click', () => {
     const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     html.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme', next); } catch (_) {}
     syncIcon();
     if (typeof createChartInstance === 'function') createChartInstance();
   });

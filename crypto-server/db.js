@@ -159,6 +159,20 @@ async function getAllCoins() {
   return docs.map(d => d.coin);
 }
 
+// Сколько тикера реально циркулирует прямо сейчас (на бирже + у игроков и
+// ботов) — используется только для одноразовой миграции vaultRemaining у
+// уже существующих монет (см. initDb).
+async function computeCirculating(coin) {
+  const [wallets, bots] = await Promise.all([
+    db.wallets.find({ [coin]: { $gt: 0 } }),
+    db.bots.find({ [`held.${coin}`]: { $gt: 0 } }),
+  ]);
+  let total = 0;
+  wallets.forEach(w => { total += w[coin] || 0; });
+  bots.forEach(b => { total += (b.held && b.held[coin]) || 0; });
+  return total;
+}
+
 async function initDb() {
   mongoClient = new MongoClient(MONGODB_URI);
   await mongoClient.connect();
@@ -234,6 +248,7 @@ async function initDb() {
     const exists = await db.prices.findOne({ coin });
     if (!exists) {
       const meta = COIN_META[coin];
+      const initialExchangeFloat = EXCHANGE_COIN_SUPPLY[coin] || 0;
       await db.prices.insert({
         coin,
         price:     meta.basePrice,
@@ -241,6 +256,10 @@ async function initDb() {
         vol:       meta.vol,
         drift:     meta.drift,
         supply:    meta.supply,
+        // Хранилище ("Max Supply" минус то, что сразу выдано бирже) —
+        // ГМ выпускает из него ещё монет на биржу вручную (/admin/coin/release-vault),
+        // если торговля застаивается из-за исчерпанного резерва биржи.
+        vaultRemaining: Math.max(0, meta.supply - initialExchangeFloat),
       });
     } else {
       const meta = COIN_META[coin];
@@ -249,10 +268,25 @@ async function initDb() {
       if (exists.vol       == null) patch.vol       = meta.vol;
       if (exists.drift     == null) patch.drift     = meta.drift;
       if (exists.supply    == null) patch.supply    = meta.supply;
+      if (exists.vaultRemaining == null) {
+        // Миграция уже существующей игры: то, что ещё нигде не циркулирует
+        // (не на бирже и не у игроков/ботов), считаем осевшим в хранилище —
+        // так supply/circulating сходятся без изменения чьих-либо балансов.
+        const circulating = await computeCirculating(coin);
+        patch.vaultRemaining = Math.max(0, (exists.supply ?? meta.supply) - circulating);
+      }
       if (Object.keys(patch).length > 0) {
         await db.prices.update({ coin }, { $set: patch });
       }
     }
+  }
+
+  // Остальные тикеры (кастомные монеты, компании) — если у хранилища для них
+  // не заведено поле, значит его никогда и не было: всё, что есть, уже в
+  // обращении (совпадает с их поведением до появления концепции хранилища).
+  const otherPriceDocs = await db.prices.find({ vaultRemaining: null });
+  for (const doc of otherPriceDocs) {
+    await db.prices.update({ coin: doc.coin }, { $set: { vaultRemaining: 0 } });
   }
 
   if (existingUserCount > 0) {

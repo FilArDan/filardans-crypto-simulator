@@ -819,6 +819,7 @@ router.get('/admin/coins', auth, adminOnly, async (req, res) => {
         spread:    d.spread > 0 ? d.spread : DEFAULT_SPREAD,
         liquidity: d.liquidity > 0 ? d.liquidity : DEFAULT_LIQUIDITY,
         icon:      d.icon || null,
+        vaultRemaining: d.vaultRemaining || 0,
         isCustom:  customTickers.has(d.coin),
         isBase,
         name:  isBase ? (COIN_META[d.coin]?.name  || d.coin) : (custom.find(c => c.ticker === d.coin)?.name  || d.coin),
@@ -849,13 +850,23 @@ router.post('/admin/coin/params', auth, adminOnly, async (req, res) => {
     }
     await db.prices.update({ coin }, { $set: patch });
 
-    // Если supply уменьшили — резерв биржи не должен остаться больше нового
-    // supply, иначе биржа продолжит продавать монеты сверх заявленного лимита.
+    // Если supply (max supply) уменьшили — хранилище + резерв биржи не
+    // должны остаться больше нового supply, иначе биржа сможет продать
+    // монет сверх заявленного максимума. Сначала подрезаем хранилище (это
+    // просто невыпущенный запас, ничей баланс не трогает), и только если
+    // этого не хватило — подрезаем сам резерв биржи.
     if (patch.supply != null) {
+      const curVault = doc.vaultRemaining || 0;
+      let newVault = curVault;
+      if (curVault > patch.supply) {
+        newVault = patch.supply;
+        await db.prices.update({ coin }, { $set: { vaultRemaining: newVault } });
+      }
       const exch = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
       const curReserve = (exch && exch[coin]) || 0;
-      if (curReserve > patch.supply) {
-        await db.wallets.update({ username: EXCHANGE_USERNAME }, { $set: { [coin]: patch.supply } });
+      const maxReserve = Math.max(0, patch.supply - newVault);
+      if (curReserve > maxReserve) {
+        await db.wallets.update({ username: EXCHANGE_USERNAME }, { $set: { [coin]: maxReserve } });
       }
     }
     const updatedPrices = await getAllPrices();
@@ -874,6 +885,34 @@ router.post('/admin/coin/params', auth, adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Выпуск монет из хранилища (vaultRemaining) на резерв биржи — чтобы ГМ мог
+// разогреть застоявшуюся торговлю, не пересоздавая актив и не трогая
+// чужие балансы вручную. Не имеет отношения к supply (max supply) — просто
+// перекладывает уже учтённый в нём запас из "не выпущено" в "продаётся".
+router.post('/admin/coin/release-vault', auth, adminOnly, async (req, res) => {
+  try {
+    const coin   = String(req.body.coin || '').toUpperCase();
+    const amount = parseFloat(req.body.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return res.json({ error: 'Укажи количество больше нуля' });
+
+    const doc = await db.prices.findOne({ coin });
+    if (!doc) return res.json({ error: 'Неизвестная монета' });
+    const vaultRemaining = doc.vaultRemaining || 0;
+    if (amount > vaultRemaining) {
+      return res.json({ error: `В хранилище только ${vaultRemaining.toLocaleString('ru')} ${coin}` });
+    }
+
+    await db.prices.update({ coin }, { $inc: { vaultRemaining: -amount } });
+    await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { [coin]: amount } });
+
+    const ev = { ts: Date.now(), text: `Админ выпустил из хранилища на биржу: ${amount.toLocaleString('ru')} ${coin}` };
+    await db.events.insert(ev);
+    const io = req.app.get('io');
+    io.emit('newEvent', ev);
+    res.json({ ok: true, vaultRemaining: vaultRemaining - amount });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 router.post('/admin/coin/create', auth, adminOnly, async (req, res) => {
   try {
     let { ticker, name, price, vol, drift, supply, icon } = req.body;
@@ -889,15 +928,22 @@ router.post('/admin/coin/create', auth, adminOnly, async (req, res) => {
     const startSupply = Math.max(1, parseFloat(supply) || (baseMeta?.supply ?? 1000000));
     const coinName    = name  || (baseMeta?.name  ?? ticker);
     const startIcon   = sanitizeIconUrl(icon);
-    await db.prices.insert({ coin: ticker, price: startPrice, basePrice: startPrice, vol: startVol, drift: startDrift, supply: startSupply, icon: startIcon });
-    await db.wallets.update({}, { $set: { [ticker]: 0 } }, { multi: true });
-    if (!isBase) await db.customCoins.insert({ ticker, name: coinName, createdAt: Date.now() });
 
     // Выдаём бирже начальный запас новой монеты — не больше заявленного
     // supply (иначе биржа может продать игрокам больше монет, чем вообще
     // существует: баг, из-за которого при supply=50 удавалось скупить
-    // сотни штук — резерв биржи раньше не зависел от supply вообще).
+    // сотни штук — резерв биржи раньше не зависел от supply вообще). Остаток
+    // оседает в хранилище — ГМ сможет позже довыпустить его на биржу через
+    // /admin/coin/release-vault, если торговля застоится.
     const exchangeReserve = Math.min(startSupply, EXCHANGE_CUSTOM_COIN_SUPPLY);
+    const vaultRemaining  = startSupply - exchangeReserve;
+
+    await db.prices.insert({
+      coin: ticker, price: startPrice, basePrice: startPrice, vol: startVol, drift: startDrift,
+      supply: startSupply, icon: startIcon, vaultRemaining,
+    });
+    await db.wallets.update({}, { $set: { [ticker]: 0 } }, { multi: true });
+    if (!isBase) await db.customCoins.insert({ ticker, name: coinName, createdAt: Date.now() });
     await db.wallets.update({ username: EXCHANGE_USERNAME }, { $set: { [ticker]: exchangeReserve } });
 
     // Записываем первую точку в историю цен

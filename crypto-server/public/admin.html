@@ -595,7 +595,8 @@
       <div class="lbl" style="margin-top:8px">
         🔵 <b>Волатильность</b> — разброс цены за тик.&nbsp;&nbsp;
         🟢 <b>Тренд</b> — постоянный рост или падение.&nbsp;&nbsp;
-        ⚪ <b>Supply</b> — изменение сохраняет капитализацию.&nbsp;&nbsp;
+        ⚪ <b>Max Supply</b> — общий тираж (изменение сохраняет капитализацию).&nbsp;&nbsp;
+        🏦 <b>Хранилище</b> — часть Max Supply, ещё не выпущенная на биржу; выпускай постепенно, если торговля застаивается.&nbsp;&nbsp;
         🗑️ Удалить можно <b>любую</b> монету; базовые (BTC, ETH...) можно потом создать заново через форму ниже.
       </div>
     </div>
@@ -623,8 +624,8 @@
           <label class="fld">Тренд (%)
             <input id="newDrift" type="number" min="-10" max="10" step="0.1" value="0">
           </label>
-          <label class="fld">Supply
-            <input id="newSupply" type="number" min="1" step="1" value="1000000">
+          <label class="fld">Max Supply
+            <input id="newSupply" type="number" min="1" step="1" value="1000000" title="Общий тираж — на биржу сразу попадёт лишь часть, остальное осядет в хранилище и выпускается позже">
           </label>
           <label class="fld">Иконка (URL)
             <input id="newIcon" type="url" placeholder="https://.../icon.png" maxlength="500">

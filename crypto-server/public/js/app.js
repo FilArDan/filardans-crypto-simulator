@@ -499,7 +499,7 @@ function renderAssetList() {
   const market = markets.find(m => m.id === currentMarket) || markets[0];
   if (title) title.textContent = `📊 Активы рынка — ${market ? market.name.replace(/^[^\s]+\s/, '') : ''}`;
   if (!market || !market.assets.length) {
-    body.innerHTML = '<tr><td colspan="7" style="color:var(--mu);text-align:center;padding:16px">На этом рынке пока нет активов</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" style="color:var(--mu);text-align:center;padding:16px">На этом рынке пока нет активов</td></tr>';
     return;
   }
 
@@ -509,12 +509,13 @@ function renderAssetList() {
       ticker: a.ticker,
       name: a.name,
       price: prices[a.ticker] || 0,
-      change1:   stats.change1   != null ? stats.change1   : null,
-      change10:  stats.change10  != null ? stats.change10  : null,
-      marketCap: stats.marketCap != null ? stats.marketCap : null,
-      volume:    stats.volume10  != null ? stats.volume10  : null,
-      supply:    stats.supply    != null ? stats.supply    : null,
-      icon:      stats.icon      || null,
+      change1:     stats.change1     != null ? stats.change1     : null,
+      change10:    stats.change10    != null ? stats.change10    : null,
+      marketCap:   stats.marketCap   != null ? stats.marketCap   : null,
+      volume:      stats.volume10    != null ? stats.volume10    : null,
+      circulating: stats.circulating != null ? stats.circulating : null,
+      supply:      stats.supply      != null ? stats.supply      : null,
+      icon:        stats.icon        || null,
     };
   }).sort(compareAssetRows);
 
@@ -532,6 +533,7 @@ function renderAssetList() {
       <td>${pctHtml(a.change10)}</td>
       <td>${a.marketCap != null ? fmtRef(a.marketCap, 0) : '<span class="muted">—</span>'}</td>
       <td>${a.volume != null ? fmtRef(a.volume, 0) : '<span class="muted">—</span>'}</td>
+      <td>${a.circulating != null ? fmt(a.circulating, 0) : '<span class="muted">—</span>'}</td>
       <td>${a.supply != null ? fmt(a.supply, 0) : '<span class="muted">—</span>'}</td>
     </tr>`;
   }).join('');

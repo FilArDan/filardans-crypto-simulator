@@ -30,13 +30,20 @@ async function getMarketStats() {
     const cur    = n > 0 ? hist[n - 1] : null;
     const prev1  = n > 1 ? hist[n - 2] : null;
     const prev10 = n > 1 ? hist[Math.max(0, n - 11)] : null;
+    // circulating = max supply минус то, что ещё осело в хранилище и никогда
+    // не попадало на биржу/к игрокам (см. /admin/coin/release-vault) —
+    // честная цифра "в обращении", а не голый max supply. Market Cap теперь
+    // считается от неё, как на реальных крипто-трекерах.
+    const maxSupply   = d.supply || 0;
+    const circulating = Math.max(0, maxSupply - (d.vaultRemaining || 0));
     stats[d.coin] = {
-      supply:    d.supply || 0,
-      marketCap: (d.supply || 0) * d.price,
-      change1:   (cur != null && prev1  > 0) ? (cur - prev1)  / prev1  * 100 : null,
-      change10:  (cur != null && prev10 > 0 && n >= 3) ? (cur - prev10) / prev10 * 100 : null,
-      volume10:  getVolume(d.coin),
-      icon:      d.icon || null,
+      supply:      maxSupply,
+      circulating,
+      marketCap:   circulating * d.price,
+      change1:     (cur != null && prev1  > 0) ? (cur - prev1)  / prev1  * 100 : null,
+      change10:    (cur != null && prev10 > 0 && n >= 3) ? (cur - prev10) / prev10 * 100 : null,
+      volume10:    getVolume(d.coin),
+      icon:        d.icon || null,
     };
   }
   return stats;

@@ -86,10 +86,17 @@ const DEAD_MARKET_NOISE_MULT = 0.12;
 // P2P-сделки МЕЖДУ существующими держателями по-прежнему двигают цену через
 // свой собственный механизм (nudgePriceTowardTrade в orders.js) — заморожен
 // только фоновый шум/дрейф самого тика, а не реальные сделки.
+// Порог "нулевого" остатка — после тысяч $inc-сделок баланс биржи по монете
+// накапливает пренебрежимо малый мусор плавающей точки (например, 3e-13
+// вместо ровного 0), который на экране округляется до "0,00", но без этого
+// порога проходил бы проверку exchangeReserve <= 0 как положительный запас —
+// рынок в такой ситуации выглядел бы выкупленным, а на деле не замирал.
+const RESERVE_EPS = 1e-6;
+
 async function isMonopolized(coin) {
   const exch = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
   const exchangeReserve = (exch && exch[coin]) || 0;
-  return exchangeReserve <= 0;
+  return exchangeReserve <= RESERVE_EPS;
 }
 
 async function tick(io) {

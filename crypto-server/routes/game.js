@@ -54,6 +54,34 @@ async function getSpreads() {
   return obj;
 }
 
+// Сводка для сортировки/отображения в списке активов: изменение цены за
+// последний тик и за последние 10 тиков (из db.priceHistory — реальные
+// сохранённые точки, а не всё, что долетает клиенту между тиками), Market
+// Cap и Circulating supply (прямо из db.prices) и объём торгов за последние
+// 10 тиков (game/volume.js).
+async function getMarketStats() {
+  const { getVolume } = require('../game/volume');
+  const docs  = await db.prices.find({});
+  const stats = {};
+  for (const d of docs) {
+    // hist[0] — самая свежая сохранённая точка истории (последний тик),
+    // hist[10] — 10 тиков назад; сравниваем именно сохранённые точки между
+    // собой (не с "живой" ценой), чтобы Δ1/Δ10 были посчитаны консистентно.
+    const hist    = await db.priceHistory.find({ coin: d.coin }).sort({ ts: -1 }).limit(11);
+    const cur     = hist[0] ? hist[0].price : null;
+    const prev1   = hist[1] ? hist[1].price : null;
+    const prev10  = hist.length > 1 ? hist[hist.length - 1].price : null;
+    stats[d.coin] = {
+      supply:    d.supply || 0,
+      marketCap: (d.supply || 0) * d.price,
+      change1:   (cur != null && prev1  > 0) ? (cur - prev1)  / prev1  * 100 : null,
+      change10:  (cur != null && prev10 > 0 && hist.length >= 3) ? (cur - prev10) / prev10 * 100 : null,
+      volume10:  getVolume(d.coin),
+    };
+  }
+  return stats;
+}
+
 // Валюта государства — чисто отображаемый «скин» над общим расчётным юнитом.
 // Пока ГМ не задал свою — используется дефолт без видимых отличий.
 const DEFAULT_CURRENCY = { code: 'USC', name: 'Единый кредит', symbol: 'USC ', rate: 1 };
@@ -152,6 +180,7 @@ router.get('/state', auth, async (req, res) => {
     // если у игрока нет доступа к соответствующей компании).
     const allCompanies   = await db.companies.find({});
     const companyTickers = allCompanies.map(c => c.ticker);
+    const marketStats    = await getMarketStats();
 
     res.json({
       prices, basePrices, spreads, wallet, loans, events, players, coins: allCoins, paused,
@@ -161,6 +190,7 @@ router.get('/state', auth, async (req, res) => {
       lockedCoins: orders.lockedCoins,
       maxOpenOrders: MAX_OPEN_ORDERS,
       companyTickers,
+      marketStats,
     });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -205,6 +235,7 @@ router.post('/trade', auth, async (req, res) => {
       // Игрок платит USD → биржа; биржа отдаёт монеты → игрок
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: -cost,   [coin]: +amount } });
       await db.wallets.update({ username: reserveAccount },       { $inc: { usd: +cost,   [coin]: -amount } });
+      require('../game/volume').recordTrade(coin, baseValue);
 
       const newCoinPrice  = await applyTradePressure(coin, amount, action);
       const updatedPrices = await getAllPrices();
@@ -235,6 +266,7 @@ router.post('/trade', auth, async (req, res) => {
       // Игрок отдаёт монеты → биржа; биржа платит USD → игрок
       await db.wallets.update({ username: req.session.username }, { $inc: { usd: +proceeds, [coin]: -amount } });
       await db.wallets.update({ username: reserveAccount },       { $inc: { usd: -proceeds, [coin]: +amount } });
+      require('../game/volume').recordTrade(coin, baseValue);
 
       const newCoinPrice  = await applyTradePressure(coin, amount, action);
       const updatedPrices = await getAllPrices();

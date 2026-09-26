@@ -4,6 +4,11 @@ let myProfile = { displayName: '', avatarUrl: null, uiMode: 'full' };
 let prices = {};
 let basePrices = {};
 let currentCoins = [];
+let marketStats = {}; // ticker -> { supply, marketCap, change1, change10, volume10 } — из /api/state
+
+// ── Сортировка списка активов ─────────────────────────────────────────────────
+let assetSortKey = 'name';
+let assetSortDir = 1; // 1 = по возрастанию, -1 = по убыванию
 
 let lastPlayers   = null;
 let lastWallet    = null;
@@ -452,28 +457,76 @@ function renderMarketNav() {
   ).join('');
 }
 
+// Переключение сортировки списка активов — повторный клик по той же колонке
+// меняет направление. По умолчанию имя — по алфавиту, всё остальное — от
+// большего к меньшему (крупнейший маркеткап/объём/рост первым).
+function setAssetSort(key) {
+  if (assetSortKey === key) {
+    assetSortDir *= -1;
+  } else {
+    assetSortKey = key;
+    assetSortDir = key === 'name' ? 1 : -1;
+  }
+  renderAssetList();
+}
+
+// null (нет данных, напр. у только что созданной монеты) всегда уходит в
+// конец списка независимо от направления сортировки — иначе "нет данных"
+// выглядело бы как "самое большое падение" при сортировке по убыванию.
+function compareAssetRows(a, b) {
+  if (assetSortKey === 'name') return assetSortDir * a.ticker.localeCompare(b.ticker);
+  const av = a[assetSortKey], bv = b[assetSortKey];
+  if (av == null && bv == null) return 0;
+  if (av == null) return 1;
+  if (bv == null) return -1;
+  return assetSortDir * (av - bv);
+}
+
 function renderAssetList() {
   const body  = document.getElementById('assetListBody');
   const title = document.getElementById('assetListTitle');
   if (!body) return;
+
+  document.querySelectorAll('.sort-arrow').forEach(el => {
+    el.textContent = el.dataset.key === assetSortKey ? (assetSortDir === 1 ? '▲' : '▼') : '';
+  });
+
   const markets = computeMarkets();
   const market = markets.find(m => m.id === currentMarket) || markets[0];
   if (title) title.textContent = `📊 Активы рынка — ${market ? market.name.replace(/^[^\s]+\s/, '') : ''}`;
   if (!market || !market.assets.length) {
-    body.innerHTML = '<tr><td colspan="3" style="color:var(--mu);text-align:center;padding:16px">На этом рынке пока нет активов</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" style="color:var(--mu);text-align:center;padding:16px">На этом рынке пока нет активов</td></tr>';
     return;
   }
-  body.innerHTML = market.assets.map(a => {
-    const price  = prices[a.ticker] || 0;
-    const dec    = price < 1 ? 4 : 2;
-    const change = pctChange(a.ticker);
-    const changeHtml = change == null
-      ? '<span class="muted">—</span>'
-      : `<span class="${change > 0 ? 'up' : change < 0 ? 'dn' : ''}">${change > 0 ? '▲' : change < 0 ? '▼' : ''} ${fmt(Math.abs(change), 2)}%</span>`;
+
+  const rows = market.assets.map(a => {
+    const stats = marketStats[a.ticker] || {};
+    return {
+      ticker: a.ticker,
+      name: a.name,
+      price: prices[a.ticker] || 0,
+      change1:   stats.change1   != null ? stats.change1   : null,
+      change10:  stats.change10  != null ? stats.change10  : null,
+      marketCap: stats.marketCap != null ? stats.marketCap : null,
+      volume:    stats.volume10  != null ? stats.volume10  : null,
+      supply:    stats.supply    != null ? stats.supply    : null,
+    };
+  }).sort(compareAssetRows);
+
+  const pctHtml = (v) => v == null
+    ? '<span class="muted">—</span>'
+    : `<span class="${v > 0 ? 'up' : v < 0 ? 'dn' : ''}">${v > 0 ? '▲' : v < 0 ? '▼' : ''} ${fmt(Math.abs(v), 2)}%</span>`;
+
+  body.innerHTML = rows.map(a => {
+    const dec = a.price < 1 ? 4 : 2;
     return `<tr class="asset-row" data-asset="${a.ticker}">
       <td><strong>${a.ticker}</strong>${a.name ? `<div class="muted" style="font-size:11px">${a.name}</div>` : ''}</td>
-      <td>${fmtRef(price, dec)}</td>
-      <td>${changeHtml}</td>
+      <td>${fmtRef(a.price, dec)}</td>
+      <td>${pctHtml(a.change1)}</td>
+      <td>${pctHtml(a.change10)}</td>
+      <td>${a.marketCap != null ? fmtRef(a.marketCap, 0) : '<span class="muted">—</span>'}</td>
+      <td>${a.volume != null ? fmtRef(a.volume, 0) : '<span class="muted">—</span>'}</td>
+      <td>${a.supply != null ? fmt(a.supply, 0) : '<span class="muted">—</span>'}</td>
     </tr>`;
   }).join('');
 }
@@ -1063,6 +1116,7 @@ async function loadState() {
   }
   if (data.basePrices) basePrices = data.basePrices;
   if (data.spreads) spreads = data.spreads;
+  if (data.marketStats) marketStats = data.marketStats;
   if (Array.isArray(data.companyTickers)) allCompanyTickers = data.companyTickers;
 
   lastPlayers     = data.players;

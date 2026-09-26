@@ -40,6 +40,10 @@ async function syncExchange(action, usdAmount, coin, coinAmt) {
     { username: EXCHANGE_USERNAME },
     { $inc: inc }
   );
+
+  // Единая точка входа для ВСЕХ сделок ботов (bull/fox/croc/fan) — удобно
+  // учитывать объём торгов здесь один раз, а не в каждом пресете отдельно.
+  require('./volume').recordTrade(coin, usdAmount);
 }
 
 function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }

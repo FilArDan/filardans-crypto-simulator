@@ -124,6 +124,10 @@ async function tick(io) {
 
   if (io) io.emit('priceUpdate', updatedPrices);
 
+  // Снимок объёма торгов за этот тик (боты + матчинг лимитных ордеров уже
+  // отработали выше) — в скользящее окно последних тиков для списка активов.
+  require('./volume').rotateTick(coins);
+
   await accrueInterest(io, updatedPrices, priceHistory);
 
   // Выплата дивидендов держателям акций государственных компаний

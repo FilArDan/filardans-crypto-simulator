@@ -222,6 +222,9 @@ h1{font-size:clamp(18px,2.5vw,24px);font-weight:800;letter-spacing:-.5px;}
 table{width:100%;border-collapse:collapse;font-size:12px;}
 th,td{padding:7px 8px;text-align:left;border-bottom:1px solid var(--bd);}
 th{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--mu);font-weight:600;}
+th.sortable{cursor:pointer;user-select:none;white-space:nowrap;transition:color .15s;}
+th.sortable:hover{color:var(--pri);}
+.sort-arrow{display:inline-block;width:8px;color:var(--pri);}
 tr:last-child td{border-bottom:none;}
 .rank{font-size:15px;}
 .inv-name{font-weight:600;}

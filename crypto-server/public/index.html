@@ -110,10 +110,20 @@
     <!-- Asset list -->
     <div class="card section-gap">
       <h2 id="assetListTitle">📊 Активы рынка</h2>
-      <table>
-        <thead><tr><th>Актив</th><th>Цена</th><th>Изменение</th></tr></thead>
-        <tbody id="assetListBody"></tbody>
-      </table>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th class="sortable" onclick="setAssetSort('name')">Актив <span class="sort-arrow" data-key="name"></span></th>
+            <th class="sortable" onclick="setAssetSort('price')">Цена <span class="sort-arrow" data-key="price"></span></th>
+            <th class="sortable" onclick="setAssetSort('change1')">Δ 1 тик <span class="sort-arrow" data-key="change1"></span></th>
+            <th class="sortable" onclick="setAssetSort('change10')">Δ 10 тиков <span class="sort-arrow" data-key="change10"></span></th>
+            <th class="sortable" onclick="setAssetSort('marketCap')">Market Cap <span class="sort-arrow" data-key="marketCap"></span></th>
+            <th class="sortable" onclick="setAssetSort('volume')">Volume <span class="sort-arrow" data-key="volume"></span></th>
+            <th class="sortable" onclick="setAssetSort('supply')">Supply <span class="sort-arrow" data-key="supply"></span></th>
+          </tr></thead>
+          <tbody id="assetListBody"></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Main grid: 3 columns -->

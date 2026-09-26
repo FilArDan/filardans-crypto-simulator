@@ -82,6 +82,7 @@ async function settleP2P(bid, ask, qty, execPrice, coin, reserveAccount) {
   // Комиссии обеих сторон — маркет-мейкеру этого тикера (бирже или резерву союза)
   await db.wallets.update({ username: reserveAccount }, { $inc: { usd: +(feeBuy + feeSell) } });
 
+  require('./volume').recordTrade(coin, gross);
   return gross;
 }
 
@@ -102,6 +103,7 @@ async function settleWithExchange(order, qty, execPrice, coin, reserveAccount) {
 
   order.filled += qty;
   order.execUsd = (order.execUsd || 0) + gross;
+  require('./volume').recordTrade(coin, gross);
   return gross;
 }
 

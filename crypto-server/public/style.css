@@ -146,6 +146,8 @@ h1{font-size:clamp(18px,2.5vw,24px);font-weight:800;letter-spacing:-.5px;}
 /* ===== СТРАНИЦА АКТИВА ===== */
 .asset-header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;}
 .asset-title{font-size:clamp(22px,3vw,30px);font-weight:800;letter-spacing:-.5px;}
+.asset-title-row{display:flex;align-items:center;gap:10px;}
+.asset-icon-lg{width:clamp(24px,3vw,32px);height:clamp(24px,3vw,32px);border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--sf2);}
 .asset-header-right{text-align:right;}
 .asset-price-big{font-size:clamp(20px,2.6vw,26px);font-weight:800;font-variant-numeric:tabular-nums;}
 .asset-change-big{font-size:14px;font-weight:700;}

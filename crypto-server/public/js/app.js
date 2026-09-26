@@ -640,9 +640,15 @@ function renderAssetHeader() {
   const subEl   = document.getElementById('assetSubtitle');
   const priceEl = document.getElementById('assetPriceBig');
   const changeEl = document.getElementById('assetChangeBig');
+  const iconEl  = document.getElementById('assetIcon');
 
   if (titleEl) titleEl.textContent = ticker;
   if (subEl)   subEl.textContent   = name || '';
+  if (iconEl) {
+    const icon = (marketStats[ticker] || {}).icon;
+    if (icon) { iconEl.src = icon; iconEl.classList.remove('hidden'); iconEl.onerror = () => iconEl.classList.add('hidden'); }
+    else      { iconEl.classList.add('hidden'); iconEl.removeAttribute('src'); }
+  }
   if (priceEl) priceEl.textContent = fmtRef(price, dec);
   if (changeEl) {
     changeEl.textContent = change == null ? '' : `${change > 0 ? '▲' : change < 0 ? '▼' : ''} ${fmt(Math.abs(change), 2)}%`;
@@ -1304,6 +1310,7 @@ socket.on('priceUpdate', p => {
 socket.on('marketStats', s => {
   marketStats = s;
   renderAssetList();
+  if (currentAsset) renderAssetHeader();
 });
 
 socket.on('orderUpdate', ({ username }) => {

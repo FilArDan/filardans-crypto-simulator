@@ -25,9 +25,16 @@ const priceHistory = {};
 let selectedCoin = 'BTC';
 let chart        = null;
 let seriesMap     = {}; // coin -> ISeriesApi (одна серия на монету, живёт постоянно)
-let chartMode    = 'line'; // 'line' | 'candles'
+let chartMode    = 'line'; // 'line' | 'candles' | 'compare'
 let chartCoins   = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 let tooltipEl    = null;
+
+// ── Режим «Сравнение» ──────────────────────────────────────────────────────────
+// Несколько монет на одном графике, нормализованные к 100% от первой точки
+// загруженной истории — так сравнивается изменение в процентах, а не
+// абсолютная цена (иначе BTC по $40000 визуально задавил бы DOGE по $0,07).
+let compareCoins     = new Set();
+let compareBaselines = {}; // coin -> цена первой точки, зафиксированная на момент rebuild
 
 function updateChartCoins(coins) {
   const prev = chartCoins;
@@ -85,30 +92,56 @@ function handlePriceHistoryCleared(coin) {
 }
 
 // ── Табы монет (выше графика) ──────────────────────────────────────────────────
+// В режиме «Сравнение» табы работают как чекбоксы (мультивыбор), а не
+// переключатель одной активной монеты.
 function renderChartTabs() {
   const legend = document.getElementById('chartLegend');
   if (!legend) return;
-  const coinBtns = chartCoins.map(c =>
-    `<button class="ctab${c === selectedCoin ? ' on' : ''}" data-coin="${c}" onclick="selectCoin('${c}')">${c}</button>`
-  ).join('');
+  const compare = chartMode === 'compare';
+  // Табы монет раньше были всегда скрыты (страница актива держит фокус на
+  // одной монете) — единственный режим, где выбор нескольких монет вообще
+  // имеет смысл, это сравнение, поэтому показываем панель только тогда.
+  legend.style.display = compare ? '' : 'none';
+  const coinBtns = chartCoins.map(c => {
+    const on      = compare ? compareCoins.has(c) : c === selectedCoin;
+    const handler = compare ? `toggleCompareCoin('${c}')` : `selectCoin('${c}')`;
+    return `<button class="ctab${on ? ' on' : ''}" data-coin="${c}" onclick="${handler}">${c}</button>`;
+  }).join('');
   legend.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px">${coinBtns}</div>`;
 }
 
-// ── Переключатель режима (Линия / Свечи) ──────────────────────────────────────
+// ── Переключатель режима (Линия / Свечи / Сравнение) ──────────────────────────
 function renderChartModeToggle() {
   const wrap = document.getElementById('chartModeToggle');
   if (!wrap) return;
   wrap.innerHTML = `
     <button class="chart-mode-btn${chartMode === 'line' ? ' on' : ''}" onclick="setChartMode('line')">Линия</button>
     <button class="chart-mode-btn${chartMode === 'candles' ? ' on' : ''}" onclick="setChartMode('candles')">Свечи</button>
+    <button class="chart-mode-btn${chartMode === 'compare' ? ' on' : ''}" onclick="setChartMode('compare')">Сравнение</button>
   `;
 }
 
 function setChartMode(mode) {
   if (mode === chartMode) return;
   chartMode = mode;
+  if (mode === 'compare' && compareCoins.size === 0) compareCoins.add(selectedCoin);
   renderChartModeToggle();
+  renderChartTabs(); // смысл "on"/клика на табах меняется вместе с режимом
   createChartInstance(); // пересоздаём все серии, т.к. тип серии зависит от режима
+}
+
+// ── Переключение монеты в режиме «Сравнение»: мультивыбор, минимум одна ──────
+function toggleCompareCoin(coin) {
+  if (compareCoins.has(coin)) {
+    if (compareCoins.size <= 1) return; // держим на графике хотя бы одну монету
+    compareCoins.delete(coin);
+  } else {
+    compareCoins.add(coin);
+  }
+  renderChartTabs();
+  Object.entries(seriesMap).forEach(([c, s]) => s.applyOptions({ visible: compareCoins.has(c) }));
+  rebuildAllSeriesData(); // набор монет поменялся — пересчитываем нормализацию
+  updateInfoLabel();
 }
 
 async function initChart() {
@@ -213,7 +246,7 @@ function createChartInstance() {
     timeScale: {
       borderColor: gc,
       timeVisible: true,
-      secondsVisible: chartMode === 'line',
+      secondsVisible: chartMode !== 'candles',
       tickMarkFormatter: (time) => {
         const d = new Date(time * 1000);
         return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
@@ -252,6 +285,22 @@ function ensureAllSeries() {
 
 function createSeriesForCoin(c) {
   const col = coinColor(c);
+
+  if (chartMode === 'compare') {
+    const percentFormat = {
+      type: 'custom',
+      formatter: (v) => (v - 100 >= 0 ? '+' : '') + (v - 100).toFixed(2) + '%',
+    };
+    return chart.addSeries(LightweightCharts.LineSeries, {
+      visible: compareCoins.has(c),
+      color: col,
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      priceFormat: percentFormat,
+    });
+  }
+
   const visible = c === selectedCoin;
   const priceFormat = {
     type: 'custom',
@@ -282,6 +331,22 @@ function createSeriesForCoin(c) {
 
 // ── Полная перезаливка данных во все серии (редкая операция) ─────────────────
 function rebuildAllSeriesData() {
+  if (chartMode === 'compare') {
+    compareBaselines = {};
+    chartCoins.forEach(c => {
+      const s = seriesMap[c];
+      if (!s) return;
+      const hist = getHistory(c);
+      const baseline = hist.length ? hist[0].price : 0;
+      if (!(baseline > 0)) { s.setData([]); return; }
+      compareBaselines[c] = baseline;
+      const points = hist.map(d => ({ time: toLwcTime(d.ts), value: (d.price / baseline) * 100 }));
+      s.setData(dedupAscending(points));
+    });
+    if (chart) chart.timeScale().fitContent();
+    return;
+  }
+
   chartCoins.forEach(c => {
     const s = seriesMap[c];
     if (!s) return;
@@ -304,6 +369,13 @@ function updateLiveSeries() {
     if (!hist.length) return;
     const last = hist[hist.length - 1];
 
+    if (chartMode === 'compare') {
+      const baseline = compareBaselines[c];
+      if (!(baseline > 0)) return; // серии ещё не хватило точки для нормализации
+      s.update({ time: toLwcTime(last.ts), value: (last.price / baseline) * 100 });
+      return;
+    }
+
     if (chartMode === 'candles') {
       const bucketStart = Math.floor(last.ts / CANDLE_INTERVAL_MS) * CANDLE_INTERVAL_MS;
       const time = toLwcTime(bucketStart);
@@ -325,6 +397,21 @@ function updateLiveSeries() {
 function updateInfoLabel() {
   const info = document.getElementById('cinfo');
   if (!info) return;
+
+  if (chartMode === 'compare') {
+    const parts = [...compareCoins].map(c => {
+      const baseline = compareBaselines[c];
+      const hist = getHistory(c);
+      if (!(baseline > 0) || !hist.length) return null;
+      const pct = (hist[hist.length - 1].price / baseline - 1) * 100;
+      return `${c} ${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+    }).filter(Boolean);
+    info.textContent = parts.length
+      ? parts.join(' · ') + ' · от начала загруженной истории'
+      : 'Выбери монеты для сравнения (клик по тикеру выше)';
+    return;
+  }
+
   const hist = getHistory(selectedCoin);
   const last = hist.length ? hist[hist.length - 1] : null;
   info.textContent = last != null
@@ -348,6 +435,27 @@ function setupTooltip(container, dark, gc) {
   `;
 
   chart.subscribeCrosshairMove(param => {
+    if (chartMode === 'compare') {
+      if (!param.point || !param.time) { tooltipEl.style.display = 'none'; return; }
+      const timeStr = formatTickTime(param.time * 1000);
+      const rows = [];
+      compareCoins.forEach(c => {
+        const s = seriesMap[c];
+        const data = s && param.seriesData.get(s);
+        if (!data || data.value == null) return;
+        const pct = data.value - 100;
+        rows.push(`<span style="color:${coinColor(c)}">${c} ${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</span>`);
+      });
+      if (!rows.length) { tooltipEl.style.display = 'none'; return; }
+      tooltipEl.innerHTML = rows.join('<br>') + `<div style="opacity:.65;font-weight:400;margin-top:3px">${timeStr}</div>`;
+      tooltipEl.style.display = 'block';
+      const x = Math.min(Math.max(param.point.x, 0), container.clientWidth - tooltipEl.offsetWidth - 10);
+      const y = Math.max(param.point.y - 40, 0);
+      tooltipEl.style.left = x + 'px';
+      tooltipEl.style.top  = y + 'px';
+      return;
+    }
+
     const activeSeries = seriesMap[selectedCoin];
     if (!param.point || !param.time || !activeSeries) {
       tooltipEl.style.display = 'none';

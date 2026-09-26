@@ -1274,7 +1274,16 @@ document.getElementById('buyAllBtn').addEventListener('click', async () => {
   if (usd < 0.01) { err.textContent = 'Недостаточно резервов'; return; }
 
   const askPrice = price * (1 + spreadFor(coin));
-  const amount   = usd / (askPrice * (1 + TRADE_FEE));
+  let amount = usd / (askPrice * (1 + TRADE_FEE));
+
+  // "Весь резерв → актив" — это buy-all, а не точный ввод количества:
+  // если биржа физически не располагает столькими монетами, покупаем
+  // сколько есть, а не падаем с ошибкой "биржа не располагает запасом".
+  const available = marketStats[coin]?.exchangeReserve;
+  if (available != null && amount > available) {
+    if (available <= 0) { err.textContent = `Биржа сейчас не располагает запасом ${coin}`; return; }
+    amount = available;
+  }
 
   const res = await api('POST', '/api/trade', { coin, amount, action: 'buy' });
   if (res.error) { err.textContent = res.error; return; }

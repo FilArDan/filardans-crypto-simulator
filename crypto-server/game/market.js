@@ -76,6 +76,26 @@ const VOL_MAX_MULT       = 3;
 // а сильно уменьшаем его.
 const DEAD_MARKET_NOISE_MULT = 0.12;
 
+// Полная монополизация актива — на бирже больше нечего продавать (резерв
+// биржи == 0), и среди игроков/ботов не осталось второго держателя, у
+// которого монополист мог бы перекупить ещё. В этом случае двигать цену
+// вообще нечем (ни рынка, ни возможного контрагента для сделки), поэтому
+// котировка буквально замирает — не просто гасится шум (как для мёртвого,
+// но не монополизированного рынка), а не меняется совсем, пока расклад не
+// изменится (ГМ выпустит ещё из хранилища, или монополист что-то продаст).
+async function isMonopolized(coin) {
+  const exch = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+  const exchangeReserve = (exch && exch[coin]) || 0;
+  if (exchangeReserve > 0) return false;
+
+  const [wallets, bots] = await Promise.all([
+    db.wallets.find({ [coin]: { $gt: 0 }, username: { $ne: EXCHANGE_USERNAME } }),
+    db.bots.find({ [`held.${coin}`]: { $gt: 0 } }),
+  ]);
+  const holderCount = wallets.filter(w => !w.username.startsWith('UNION_')).length + bots.length;
+  return holderCount <= 1;
+}
+
 async function tick(io) {
   const coins  = await getAllCoins();
   const prices = {};
@@ -83,6 +103,12 @@ async function tick(io) {
   for (const coin of coins) {
     const doc = await db.prices.findOne({ coin });
     if (!doc) continue;
+
+    if (await isMonopolized(coin)) {
+      prices[coin] = doc.price; // торговать нечем — цена замирает как есть
+      continue;
+    }
+
     const baseVol = doc.vol       || 0.04;  // базовая нестабильность (задаётся ГМом)
     const drift   = doc.drift     || 0;     // тренд развития
     const base    = doc.basePrice || doc.price; // базовая стоимость

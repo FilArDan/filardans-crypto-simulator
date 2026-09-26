@@ -197,6 +197,102 @@ document.querySelectorAll('.ui-mode-btn').forEach(btn => {
   });
 });
 
+// ── УВЕДОМЛЕНИЯ ───────────────────────────────────────────────────────────────
+// Персональная лента: те же события общего фида (ts+text), отфильтрованные по
+// упоминанию моего логина — своя сделка/перевод/кредит/дефолт и т.п. Хранится
+// только в памяти вкладки (сбрасывается перезагрузкой/логаутом), т.к. это
+// уведомление о недавней активности, а не постоянный журнал.
+let myNotifications = [];
+let notifSeeded = false;
+const notifSeenKeys = new Set();
+
+function isMyNotification(text) {
+  if (!myUsername || !text) return false;
+  // Сравниваем целыми словами (юникод-safe разбивка), а не подстрокой —
+  // иначе логин одного игрока мог бы случайно совпасть с частью чужого текста.
+  return text.split(/[^\p{L}\p{N}_]+/u).includes(myUsername);
+}
+
+function notifKey(ev) { return ev.ts + '|' + ev.text; }
+
+function seedNotifications(events) {
+  if (notifSeeded || !Array.isArray(events)) return;
+  notifSeeded = true;
+  events.forEach(ev => { // приходит отсортированным от новых к старым
+    if (!isMyNotification(ev.text)) return;
+    const key = notifKey(ev);
+    if (notifSeenKeys.has(key)) return;
+    notifSeenKeys.add(key);
+    myNotifications.push(ev);
+  });
+  renderNotifBadge();
+}
+
+function addNotification(ev) {
+  if (!isMyNotification(ev.text)) return;
+  const key = notifKey(ev);
+  if (notifSeenKeys.has(key)) return;
+  notifSeenKeys.add(key);
+  myNotifications.unshift(ev);
+  if (myNotifications.length > 100) myNotifications.length = 100;
+  renderNotifBadge();
+
+  const panel = document.getElementById('notifPanel');
+  const list  = document.getElementById('notifList');
+  if (panel && list && !panel.classList.contains('hidden')) {
+    // Точечная вставка вместо renderNotifList() — не сбрасывает скролл,
+    // если ГМ в этот момент листает более старые уведомления.
+    if (list.querySelector('.notif-empty')) list.innerHTML = '';
+    list.insertAdjacentHTML('afterbegin', notifItemHtml(ev));
+  }
+}
+
+function notifItemHtml(ev) {
+  const t = new Date(ev.ts);
+  const time = t.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return `<div class="feed-item"><span>${ev.text}</span><span class="feed-time">${time}</span></div>`;
+}
+
+function renderNotifBadge() {
+  const badge = document.getElementById('notifBadge');
+  if (!badge) return;
+  const n = myNotifications.length;
+  badge.classList.toggle('hidden', n === 0);
+  badge.textContent = n > 5 ? '5+' : String(n);
+}
+
+function renderNotifList() {
+  const list = document.getElementById('notifList');
+  if (!list) return;
+  if (!myNotifications.length) {
+    list.innerHTML = '<div class="notif-empty">Уведомлений пока нет</div>';
+    return;
+  }
+  list.innerHTML = myNotifications.map(notifItemHtml).join('');
+}
+
+function toggleNotifPanel(forceOpen) {
+  const panel = document.getElementById('notifPanel');
+  if (!panel) return;
+  const willOpen = forceOpen !== undefined ? forceOpen : panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !willOpen);
+  if (willOpen) renderNotifList();
+}
+
+document.getElementById('notifBtn')?.addEventListener('click', e => {
+  e.stopPropagation();
+  toggleNotifPanel();
+});
+document.getElementById('notifClearBtn')?.addEventListener('click', e => {
+  e.stopPropagation();
+  myNotifications = [];
+  notifSeenKeys.clear();
+  renderNotifBadge();
+  renderNotifList();
+});
+document.getElementById('notifPanel')?.addEventListener('click', e => e.stopPropagation());
+document.addEventListener('click', () => toggleNotifPanel(false));
+
 // ── РЕНДЕР ────────────────────────────────────────────────────────────────────
 function renderTicker(p, prev) {
   prices = p;
@@ -977,6 +1073,7 @@ async function loadState() {
   renderTicker(data.prices);
   renderPortfolio(data.wallet, data.coins);
   renderFeed(data.events || []);
+  seedNotifications(data.events || []);
   renderLeaderboard(data.players, data.prices);
   renderTransferSelect(data.players);
   renderMarketNav();
@@ -1162,6 +1259,7 @@ socket.on('newEvent', ev => {
   feed.insertAdjacentHTML('afterbegin',
     `<div class="feed-item"><span>${ev.text}</span><span class="feed-time">${time}</span></div>`);
   if (feed.children.length > 40) feed.lastChild.remove();
+  addNotification(ev);
 });
 
 socket.on('walletUpdate', data => {

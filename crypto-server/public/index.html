@@ -65,6 +65,19 @@
         <span id="profileAvatarFallback" class="avatar avatar-sm avatar-fallback"></span>
         <span id="playerName" style="font-weight:600"></span>
       </button>
+      <div class="notif-wrap">
+        <button class="tbtn" id="notifBtn" title="Уведомления">
+          🔔
+          <span id="notifBadge" class="notif-badge hidden">0</span>
+        </button>
+        <div id="notifPanel" class="notif-panel hidden">
+          <div class="notif-panel-header">
+            <span>Уведомления</span>
+            <button class="btn btn-secondary btn-sm" id="notifClearBtn">Очистить</button>
+          </div>
+          <div id="notifList" class="notif-list"></div>
+        </div>
+      </div>
       <button class="tbtn" id="themeBtn" title="Сменить тему">☀️</button>
       <button class="btn btn-secondary btn-sm" id="logoutBtn">Выйти</button>
     </div>

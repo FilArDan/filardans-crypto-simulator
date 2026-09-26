@@ -55,27 +55,35 @@ async function getSpreads() {
 }
 
 // Сводка для сортировки/отображения в списке активов: изменение цены за
-// последний тик и за последние 10 тиков (из db.priceHistory — реальные
-// сохранённые точки, а не всё, что долетает клиенту между тиками), Market
-// Cap и Circulating supply (прямо из db.prices) и объём торгов за последние
-// 10 тиков (game/volume.js).
+// последний тик и за последние 10 тиков, Market Cap и Circulating supply
+// (прямо из db.prices) и объём торгов за последние 10 тиков (game/volume.js).
+//
+// Δ1/Δ10 читаются из уже существующего in-memory кэша последних тиковых
+// цен (game/bots.js#priceHistory — тот же, которым пользуются сами боты для
+// своих скользящих средних, обновляется ровно раз за тик в market.js#tick()).
+// РАНЬШЕ здесь был db.priceHistory.find({coin}).sort({ts:-1}).limit(11) —
+// при разработке казалось безобидным, но на реальной базе (814k+ записей
+// истории цен, накопленных за долгую игру) это полное сканирование+сортировка
+// в JS (у NeDB нет настоящего B-tree индекса по ts) на каждый /api/state,
+// умноженное на число монет — легло сервером на ~3-4с каждые несколько
+// секунд (открытые вкладки игроков шлют этот запрос ~15 раз в минуту).
+// Кэш в памяти убирает обращение к БД для этой метрики вовсе.
 async function getMarketStats() {
   const { getVolume } = require('../game/volume');
+  const { priceHistory: recentHist } = require('../game/bots');
   const docs  = await db.prices.find({});
   const stats = {};
   for (const d of docs) {
-    // hist[0] — самая свежая сохранённая точка истории (последний тик),
-    // hist[10] — 10 тиков назад; сравниваем именно сохранённые точки между
-    // собой (не с "живой" ценой), чтобы Δ1/Δ10 были посчитаны консистентно.
-    const hist    = await db.priceHistory.find({ coin: d.coin }).sort({ ts: -1 }).limit(11);
-    const cur     = hist[0] ? hist[0].price : null;
-    const prev1   = hist[1] ? hist[1].price : null;
-    const prev10  = hist.length > 1 ? hist[hist.length - 1].price : null;
+    const hist = recentHist[d.coin] || []; // цены за последние тики, от старых к новым
+    const n    = hist.length;
+    const cur    = n > 0 ? hist[n - 1] : null;
+    const prev1  = n > 1 ? hist[n - 2] : null;
+    const prev10 = n > 1 ? hist[Math.max(0, n - 11)] : null;
     stats[d.coin] = {
       supply:    d.supply || 0,
       marketCap: (d.supply || 0) * d.price,
       change1:   (cur != null && prev1  > 0) ? (cur - prev1)  / prev1  * 100 : null,
-      change10:  (cur != null && prev10 > 0 && hist.length >= 3) ? (cur - prev10) / prev10 * 100 : null,
+      change10:  (cur != null && prev10 > 0 && n >= 3) ? (cur - prev10) / prev10 * 100 : null,
       volume10:  getVolume(d.coin),
     };
   }

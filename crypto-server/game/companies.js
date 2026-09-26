@@ -5,7 +5,7 @@
  * новой строчки в матчинге. db.companies хранит только то, чего у монет нет:
  * государство-учредителя и доход, который компания приносит держателям акций.
  */
-const { db, getAllCoins, EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY, sanitizeIconUrl } = require('../db');
+const { db, getAllCoins, EXCHANGE_USERNAME, sanitizeIconUrl } = require('../db');
 
 function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 
@@ -39,7 +39,12 @@ async function createCompany({ ticker, name, ownerNation, totalShares, startPric
   if (stateShares > 0) {
     await db.wallets.update({ username: owner }, { $inc: { [cleanTicker]: stateShares } });
   }
-  await db.wallets.update({ username: EXCHANGE_USERNAME }, { $set: { [cleanTicker]: exchangeShares || EXCHANGE_CUSTOM_COIN_SUPPLY } });
+  // exchangeShares уже посчитан как shares - stateShares (0, если ГМ оставил
+  // государству все 100% акций) — раньше здесь была подстраховка
+  // "|| EXCHANGE_CUSTOM_COIN_SUPPLY", которая при exchangeShares===0
+  // подменяла честный ноль на 1 000 000: биржа могла продать акции сверх
+  // totalShares компании, которых физически не существовало.
+  await db.wallets.update({ username: EXCHANGE_USERNAME }, { $set: { [cleanTicker]: exchangeShares } });
 
   await db.priceHistory.insert({ coin: cleanTicker, price, ts: Date.now() });
 

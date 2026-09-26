@@ -796,6 +796,16 @@ router.post('/admin/coin/params', auth, adminOnly, async (req, res) => {
       patch.price  = Math.max(0.0001, oldMcap / newSupply);
     }
     await db.prices.update({ coin }, { $set: patch });
+
+    // Если supply уменьшили — резерв биржи не должен остаться больше нового
+    // supply, иначе биржа продолжит продавать монеты сверх заявленного лимита.
+    if (patch.supply != null) {
+      const exch = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+      const curReserve = (exch && exch[coin]) || 0;
+      if (curReserve > patch.supply) {
+        await db.wallets.update({ username: EXCHANGE_USERNAME }, { $set: { [coin]: patch.supply } });
+      }
+    }
     const updatedPrices = await getAllPrices();
     const parts = [];
     if (patch.vol       != null) parts.push(`vol=${(patch.vol*100).toFixed(1)}%`);
@@ -831,8 +841,11 @@ router.post('/admin/coin/create', auth, adminOnly, async (req, res) => {
     await db.wallets.update({}, { $set: { [ticker]: 0 } }, { multi: true });
     if (!isBase) await db.customCoins.insert({ ticker, name: coinName, createdAt: Date.now() });
 
-    // Выдаём бирже начальный запас новой монеты
-    const exchangeReserve = EXCHANGE_CUSTOM_COIN_SUPPLY;
+    // Выдаём бирже начальный запас новой монеты — не больше заявленного
+    // supply (иначе биржа может продать игрокам больше монет, чем вообще
+    // существует: баг, из-за которого при supply=50 удавалось скупить
+    // сотни штук — резерв биржи раньше не зависел от supply вообще).
+    const exchangeReserve = Math.min(startSupply, EXCHANGE_CUSTOM_COIN_SUPPLY);
     await db.wallets.update({ username: EXCHANGE_USERNAME }, { $set: { [ticker]: exchangeReserve } });
 
     // Записываем первую точку в историю цен

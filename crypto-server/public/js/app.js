@@ -671,6 +671,27 @@ function openAsset(ticker) {
   updateTradeHint();
   updateOrderHint();
   loadOrderBook();
+  loadTopHolders(ticker);
+}
+
+async function loadTopHolders(ticker) {
+  const body = document.getElementById('topHoldersBody');
+  if (!body) return;
+  try {
+    const res = await fetch(`/api/holders?coin=${encodeURIComponent(ticker)}`);
+    const data = await res.json();
+    const holders = Array.isArray(data) ? data : [];
+    if (!holders.length) {
+      body.innerHTML = '<tr><td colspan="3" style="color:var(--mu);text-align:center;padding:16px">Держателей пока нет</td></tr>';
+      return;
+    }
+    const dec = (prices[ticker] || 0) < 1 ? 4 : 2;
+    body.innerHTML = holders.map((h, i) => `<tr>
+      <td>${i + 1}</td>
+      <td>${h.isBot ? '🤖 ' : ''}${h.username}</td>
+      <td>${fmt(h.amount, dec)}</td>
+    </tr>`).join('');
+  } catch (_) { /* нет доступа — оставляем как было */ }
 }
 
 function renderFeed(events) {
@@ -955,6 +976,7 @@ document.getElementById('orderForm')?.addEventListener('submit', async e => {
   updateOrderHint();
   await Promise.all([loadOrders(), loadOrderBook()]);
   loadState();
+  if (currentAsset === coin) loadTopHolders(coin);
 });
 
 document.getElementById('ordersBody')?.addEventListener('click', async e => {
@@ -1218,6 +1240,7 @@ document.getElementById('tradeForm').addEventListener('submit', async e => {
   if (res.error) { err.textContent = res.error; return; }
   renderPortfolio(res.wallet);
   loadState();
+  if (currentAsset === coin) loadTopHolders(coin);
 });
 
 // ── КУПИТЬ ВСЁ ────────────────────────────────────────────────────────────────
@@ -1239,6 +1262,7 @@ document.getElementById('buyAllBtn').addEventListener('click', async () => {
   if (res.error) { err.textContent = res.error; return; }
   renderPortfolio(res.wallet);
   loadState();
+  loadTopHolders(coin);
 });
 
 // ── ПРОДАТЬ ВСЁ ───────────────────────────────────────────────────────────────
@@ -1255,6 +1279,7 @@ document.getElementById('sellAllBtn').addEventListener('click', async () => {
   if (res.error) { err.textContent = res.error; return; }
   renderPortfolio(res.wallet);
   loadState();
+  loadTopHolders(coin);
 });
 
 // ── ПЕРЕВОД ───────────────────────────────────────────────────────────────────
@@ -1303,7 +1328,7 @@ socket.on('priceUpdate', p => {
   updateBookMid(p);
   updateOrderHint();
   renderAssetList();
-  if (currentAsset) renderAssetHeader();
+  if (currentAsset) { renderAssetHeader(); loadTopHolders(currentAsset); }
   if (myProfile.uiMode === 'simple') renderSimpleAssetList();
 });
 

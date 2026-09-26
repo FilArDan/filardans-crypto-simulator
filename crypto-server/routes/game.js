@@ -111,6 +111,36 @@ router.get('/price-history', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── ТОП ДЕРЖАТЕЛЕЙ АКТИВА ────────────────────────────────────────────────────
+// Игроки + боты, у кого положительный баланс тикера (монета, компания или
+// союзный токен — все они технически один и тот же тип поля в db.wallets/
+// db.bots.held). Резервные кошельки (биржа, союзы) не игроки — не показываем.
+router.get('/holders', auth, async (req, res) => {
+  try {
+    const coin = (req.query.coin || '').toUpperCase();
+    if (!coin) return res.json([]);
+    const allCoins = await getAllCoins();
+    if (!allCoins.includes(coin)) return res.json([]);
+
+    const [wallets, bots] = await Promise.all([
+      db.wallets.find({ [coin]: { $gt: 0 } }),
+      db.bots.find({ [`held.${coin}`]: { $gt: 0 } }),
+    ]);
+
+    const holders = [];
+    wallets.forEach(w => {
+      if (w.username === EXCHANGE_USERNAME || w.username.startsWith('UNION_')) return;
+      holders.push({ username: w.username, amount: w[coin] || 0, isBot: false });
+    });
+    bots.forEach(b => {
+      holders.push({ username: b.name, amount: (b.held && b.held[coin]) || 0, isBot: true });
+    });
+
+    holders.sort((a, b) => b.amount - a.amount);
+    res.json(holders.slice(0, 10));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── СОСТОЯНИЕ ──────────────────────────────────────────────────────────────────
 router.get('/state', auth, async (req, res) => {
   try {

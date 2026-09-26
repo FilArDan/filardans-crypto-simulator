@@ -1,6 +1,7 @@
 const { db, getAllCoins, EXCHANGE_USERNAME, DEFAULT_LIQUIDITY } = require('../db');
 const { updatePriceHistory, botTick, priceHistory, getBotStats } = require('./bots');
 const { accrueInterest } = require('./bank');
+const { getMarketStats } = require('./marketStats');
 
 function roundPrice(p) {
   if (p >= 1000) return Math.round(p * 100)   / 100;
@@ -123,6 +124,13 @@ async function tick(io) {
   }
 
   if (io) io.emit('priceUpdate', updatedPrices);
+
+  // Δ1/Δ10/marketCap/volume в списке активов раньше пересчитывались у
+  // клиента только при вызове /api/state (по клику игрока) — сама цена уже
+  // обновлялась каждый тик через priceUpdate, а Δ так и оставалась
+  // «замороженной» до следующего действия игрока. Шлём отдельным событием
+  // на каждый тик — так же, как выше price/bank/players.
+  if (io) io.emit('marketStats', await getMarketStats());
 
   // Снимок объёма торгов за этот тик (боты + матчинг лимитных ордеров уже
   // отработали выше) — в скользящее окно последних тиков для списка активов.

@@ -1295,6 +1295,11 @@ socket.on('priceUpdate', p => {
   if (myProfile.uiMode === 'simple') renderSimpleAssetList();
 });
 
+socket.on('marketStats', s => {
+  marketStats = s;
+  renderAssetList();
+});
+
 socket.on('orderUpdate', ({ username }) => {
   if (username !== myUsername) return;
   refreshOrders();

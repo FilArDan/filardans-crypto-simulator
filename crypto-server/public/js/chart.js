@@ -7,8 +7,24 @@ const BASE_COIN_COLORS = {
   DOGE: '#c2a633'
 };
 
-const CANDLE_INTERVAL_MS = 30_000;
-const MAX_HISTORY_POINTS = 3000;
+const CANDLE_INTERVAL_MS  = 30_000; // минимальный размер свечи — для "живых", ещё не прореженных тиков
+const TARGET_CANDLE_COUNT = 200;    // сколько свечей хотим видеть на загруженном диапазоне
+const MAX_HISTORY_POINTS  = 3000;
+let candleIntervalByCoin  = {}; // coin -> текущий размер свечи (px live-апдейт должен совпадать с setData)
+
+// Размер свечи по факту загруженного диапазона, а не фиксированные 30с:
+// после прореживания истории (/api/price-history) точки могут быть разнесены
+// на минуты/часы — с фиксированным 30-секундным окном почти каждая свеча
+// получала бы ровно одну точку (open=high=low=close), а на графике это
+// выглядело бы как разрозненные точки со сбитыми, будто перепутанными
+// метками времени на оси (на самом деле метки верные, просто без даты и с
+// огромными реальными разрывами между ними).
+function dynamicCandleIntervalMs(hist) {
+  if (!hist || hist.length < 2) return CANDLE_INTERVAL_MS;
+  const span = hist[hist.length - 1].ts - hist[0].ts;
+  if (!(span > 0)) return CANDLE_INTERVAL_MS;
+  return Math.max(CANDLE_INTERVAL_MS, Math.ceil(span / TARGET_CANDLE_COUNT));
+}
 
 function coinColor(ticker) {
   if (BASE_COIN_COLORS[ticker]) return BASE_COIN_COLORS[ticker];
@@ -299,9 +315,21 @@ function createChartInstance() {
       // при истории в тысячи точек (см. прореживание в /api/price-history)
       // это мешает раззумиться и увидеть её целиком одним экраном.
       minBarSpacing: 0.02,
-      tickMarkFormatter: (time) => {
+      // Раньше формат игнорировал tickMarkType и всегда показывал только
+      // ЧЧ:ММ — если загруженный диапазон растянут на несколько дней
+      // (после прореживания длинной истории), одинаковые ЧЧ:ММ с разных
+      // дней подряд на оси выглядели как перепутанные метки, хотя по сути
+      // были верны, просто без даты.
+      tickMarkFormatter: (time, tickMarkType) => {
         const d = new Date(time * 1000);
-        return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+        const hh = d.getHours().toString().padStart(2, '0');
+        const mm = d.getMinutes().toString().padStart(2, '0');
+        if (tickMarkType === LightweightCharts.TickMarkType.Year)  return d.getFullYear().toString();
+        if (tickMarkType === LightweightCharts.TickMarkType.Month) return d.toLocaleString('ru-RU', { month: 'short' });
+        if (tickMarkType === LightweightCharts.TickMarkType.DayOfMonth) {
+          return d.getDate().toString().padStart(2, '0') + '.' + (d.getMonth() + 1).toString().padStart(2, '0');
+        }
+        return hh + ':' + mm;
       },
     },
     crosshair: {
@@ -407,7 +435,9 @@ function rebuildAllSeriesData() {
     if (!s) return;
     const hist = getHistory(c);
     if (chartMode === 'candles') {
-      s.setData(aggregateCandles(hist, CANDLE_INTERVAL_MS));
+      const intervalMs = dynamicCandleIntervalMs(hist);
+      candleIntervalByCoin[c] = intervalMs; // live-апдейт должен бакетировать так же
+      s.setData(aggregateCandles(hist, intervalMs));
     } else {
       s.setData(dedupAscending(hist.map(d => ({ time: toLwcTime(d.ts), value: d.price }))));
     }
@@ -434,9 +464,10 @@ function updateLiveSeries() {
     }
 
     if (chartMode === 'candles') {
-      const bucketStart = Math.floor(last.ts / CANDLE_INTERVAL_MS) * CANDLE_INTERVAL_MS;
+      const intervalMs = candleIntervalByCoin[c] || CANDLE_INTERVAL_MS;
+      const bucketStart = Math.floor(last.ts / intervalMs) * intervalMs;
       const time = toLwcTime(bucketStart);
-      const inBucket = hist.filter(d => Math.floor(d.ts / CANDLE_INTERVAL_MS) * CANDLE_INTERVAL_MS === bucketStart);
+      const inBucket = hist.filter(d => Math.floor(d.ts / intervalMs) * intervalMs === bucketStart);
       s.update({
         time,
         open: inBucket[0].price,

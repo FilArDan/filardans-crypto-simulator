@@ -116,22 +116,26 @@ router.get('/price-history', auth, async (req, res) => {
       // прямо в MongoDB через агрегацию: наружу уходит максимум `limit`
       // документов, а не вся история целиком (сотни тысяч точек) с
       // последующим отбрасыванием 99% из них в Node.
-      const [firstDoc] = await db.priceHistory.find({ coin }).sort({ ts: 1 }).limit(1);
-      const [lastDoc]  = await db.priceHistory.find({ coin }).sort({ ts: -1 }).limit(1);
-      const firstTs = firstDoc.ts;
-      const lastTs  = lastDoc.ts;
-      // Бакет по РАВНЫМ отрезкам времени (а не по количеству точек) —
-      // если скорость тика меняли или была долгая пауза, выборка всё
-      // равно остаётся равномерной по оси времени, а не по числу тиков.
-      const bucketMs = Math.max(1, Math.ceil((lastTs - firstTs) / limit));
-
+      //
+      // РАНЬШЕ бакеты были по равным отрезкам ВРЕМЕНИ — это ломалось, если
+      // тики шли крайне неравномерно (быстрый всплеск в начале, потом
+      // долгая пауза/простой): почти вся плотная история сжималась в
+      // считанные бакеты у левого края (визуально — "шумный всплеск"),
+      // а разреженный хвост растягивался на весь остаток графика. Реальные
+      // трейдинговые графики штатно решают это через равное КОЛИЧЕСТВО
+      // баров, а не равные интервалы часов — $bucketAuto делает ровно
+      // это: примерно равное число тиков в каждом бакете, независимо от
+      // того, насколько неравномерно они распределены по факту во времени.
       docs = await db.priceHistory.raw.aggregate([
         { $match: { coin } },
-        { $sort: { ts: 1 } }, // порядок важен для корректного $last внутри $group
-        { $addFields: { bucket: { $floor: { $divide: [{ $subtract: ['$ts', firstTs] }, bucketMs] } } } },
-        { $group: { _id: '$bucket', price: { $last: '$price' }, ts: { $last: '$ts' } } },
-        { $sort: { _id: 1 } },
+        { $sort: { ts: 1 } },
+        { $bucketAuto: {
+            groupBy: '$ts',
+            buckets: limit,
+            output: { price: { $last: '$price' }, ts: { $last: '$ts' } },
+        } },
         { $project: { _id: 0, price: 1, ts: 1 } },
+        { $sort: { ts: 1 } },
       ]).toArray();
     }
 

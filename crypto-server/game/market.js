@@ -182,4 +182,4 @@ async function applyTradePressure(coin, amount, action) {
   return newPrice;
 }
 
-module.exports = { tick, applyTradePressure, deleteCoinHistory };
+module.exports = { tick, applyTradePressure, deleteCoinHistory, roundPrice };

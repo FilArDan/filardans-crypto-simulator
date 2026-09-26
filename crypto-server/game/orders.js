@@ -11,7 +11,7 @@
  *         если лимит игрока это позволяет и у биржи хватает запаса.
  *  • Исполнение всегда по цене не хуже лимита: разница возвращается игроку.
  */
-const { db, getAllCoins, DEFAULT_SPREAD } = require('../db');
+const { db, getAllCoins, DEFAULT_SPREAD, DEFAULT_LIQUIDITY } = require('../db');
 
 const TRADE_FEE       = 0.004;   // 0.4% комиссия (синхронизировано с routes/game.js)
 const MAX_OPEN_ORDERS = 20;      // максимум активных ордеров на игрока
@@ -61,6 +61,33 @@ async function persistOrder(order) {
   } });
 }
 
+// ── Сдвиг официальной цены к цене реальной сделки ────────────────────────────
+// P2P-сделки (см. settleP2P ниже) раньше вообще не трогали db.prices.price —
+// два игрока могли договориться о любой цене (например, монополист продаёт
+// последний NANO за $20 000), деньги и монеты честно переходили из рук в
+// руки, а график и «текущая цена» этого не замечали. Двигаем цену к execPrice
+// не мгновенно на всю разницу (иначе сговорившиеся игроки одной wash-сделкой
+// нарисовали бы любую цену), а тем же impact-лимитом от объёма/supply, что и
+// обычные рыночные сделки (applyTradePressure) — крупная/повторная торговля
+// по новому уровню дотягивает цену до него за несколько сделок.
+async function nudgePriceTowardTrade(coin, execPrice, qty) {
+  const doc = await db.prices.findOne({ coin });
+  if (!doc || !doc.supply || doc.supply <= 0 || !doc.price || !(execPrice > 0)) return;
+  const diff = execPrice - doc.price;
+  if (diff === 0) return;
+
+  const liquidity = doc.liquidity > 0 ? doc.liquidity : DEFAULT_LIQUIDITY;
+  const rawImpact = (qty / doc.supply) * 100;
+  const impact    = Math.min(Math.log1p(rawImpact) * (0.015 / liquidity), 0.20);
+  const maxStep   = doc.price * impact;
+  if (maxStep <= 0) return;
+
+  const delta    = Math.sign(diff) * Math.min(Math.abs(diff), maxStep);
+  const { roundPrice } = require('./market');
+  const newPrice = roundPrice(Math.max(0.0001, doc.price + delta));
+  await db.prices.update({ coin }, { $set: { price: newPrice } });
+}
+
 // ── Сделка между двумя игроками ──────────────────────────────────────────────
 async function settleP2P(bid, ask, qty, execPrice, coin, reserveAccount) {
   const gross   = execPrice * qty;
@@ -83,6 +110,7 @@ async function settleP2P(bid, ask, qty, execPrice, coin, reserveAccount) {
   await db.wallets.update({ username: reserveAccount }, { $inc: { usd: +(feeBuy + feeSell) } });
 
   require('./volume').recordTrade(coin, gross);
+  await nudgePriceTowardTrade(coin, execPrice, qty);
   return gross;
 }
 

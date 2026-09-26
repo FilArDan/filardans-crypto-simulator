@@ -1,4 +1,4 @@
-const { db } = require('../db');
+const { db, EXCHANGE_USERNAME } = require('../db');
 const { priceHistory } = require('./bots');
 const { getVolume } = require('./volume');
 
@@ -22,7 +22,10 @@ const { getVolume } = require('./volume');
 // ~3-4с каждые несколько секунд. Кэш в памяти убирает обращение к БД для
 // этой метрики вовсе.
 async function getMarketStats() {
-  const docs  = await db.prices.find({});
+  const [docs, exchWallet] = await Promise.all([
+    db.prices.find({}),
+    db.wallets.findOne({ username: EXCHANGE_USERNAME }),
+  ]);
   const stats = {};
   for (const d of docs) {
     const hist = priceHistory[d.coin] || []; // цены за последние тики, от старых к новым
@@ -39,6 +42,10 @@ async function getMarketStats() {
     stats[d.coin] = {
       supply:      maxSupply,
       circulating,
+      // Сколько актива реально можно купить прямо сейчас — фактический
+      // резерв биржи (не путать с circulating/max supply, см. запрос
+      // игроков: "показать сколько валюты можно купить в принципе").
+      exchangeReserve: (exchWallet && exchWallet[d.coin]) || 0,
       marketCap:   circulating * d.price,
       change1:     (cur != null && prev1  > 0) ? (cur - prev1)  / prev1  * 100 : null,
       change10:    (cur != null && prev10 > 0 && n >= 3) ? (cur - prev10) / prev10 * 100 : null,

@@ -674,6 +674,19 @@ function openAsset(ticker) {
   updateOrderHint();
   loadOrderBook();
   loadTopHolders(ticker);
+  renderExchangeReserve();
+}
+
+// Сколько актива реально можно купить прямо сейчас — фактический резерв
+// биржи (не max supply и не circulating — игроки прямо просили именно эту
+// цифру: "сколько валюты доступно на бирже на данный момент для покупки").
+function renderExchangeReserve() {
+  const el = document.getElementById('exchangeReserveInfo');
+  if (!el || !currentAsset) return;
+  const stats = marketStats[currentAsset];
+  if (!stats || stats.exchangeReserve == null) { el.textContent = ''; return; }
+  const dec = (prices[currentAsset] || 0) < 1 ? 4 : 2;
+  el.textContent = `Доступно на бирже сейчас: ${fmt(stats.exchangeReserve, dec)} ${currentAsset}`;
 }
 
 async function loadTopHolders(ticker) {
@@ -1171,7 +1184,7 @@ async function loadState() {
   renderTransferSelect(data.players);
   renderMarketNav();
   renderAssetList();
-  if (currentAsset) renderAssetHeader();
+  if (currentAsset) { renderAssetHeader(); renderExchangeReserve(); }
   if (myProfile.uiMode === 'simple') renderSimpleAssetList();
   renderLoanInfo(loanInfo);
   addPricePoint(data.prices);
@@ -1340,7 +1353,7 @@ socket.on('priceUpdate', p => {
 socket.on('marketStats', s => {
   marketStats = s;
   renderAssetList();
-  if (currentAsset) renderAssetHeader();
+  if (currentAsset) { renderAssetHeader(); renderExchangeReserve(); }
 });
 
 socket.on('orderUpdate', ({ username }) => {

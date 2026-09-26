@@ -807,6 +807,7 @@ router.get('/admin/coins', auth, adminOnly, async (req, res) => {
     const docs   = await db.prices.find({});
     const custom = await db.customCoins.find({});
     const customTickers = new Set(custom.map(c => c.ticker));
+    const exchWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
     const meta = {};
     docs.forEach(d => {
       const isBase = COINS.includes(d.coin);
@@ -819,7 +820,8 @@ router.get('/admin/coins', auth, adminOnly, async (req, res) => {
         spread:    d.spread > 0 ? d.spread : DEFAULT_SPREAD,
         liquidity: d.liquidity > 0 ? d.liquidity : DEFAULT_LIQUIDITY,
         icon:      d.icon || null,
-        vaultRemaining: d.vaultRemaining || 0,
+        vaultRemaining:  d.vaultRemaining || 0,
+        exchangeReserve: (exchWallet && exchWallet[d.coin]) || 0,
         isCustom:  customTickers.has(d.coin),
         isBase,
         name:  isBase ? (COIN_META[d.coin]?.name  || d.coin) : (custom.find(c => c.ticker === d.coin)?.name  || d.coin),
@@ -910,6 +912,36 @@ router.post('/admin/coin/release-vault', auth, adminOnly, async (req, res) => {
     const io = req.app.get('io');
     io.emit('newEvent', ev);
     res.json({ ok: true, vaultRemaining: vaultRemaining - amount });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Обратная операция: снять монеты с резерва биржи обратно в хранилище —
+// сузить доступный флоат, если ГМ решил, что торговля стала слишком лёгкой.
+// Можно отозвать только то, что физически ещё лежит на бирже нераспроданным
+// (exchangeReserve) — то, что уже купили игроки/боты, не трогаем.
+router.post('/admin/coin/recall-vault', auth, adminOnly, async (req, res) => {
+  try {
+    const coin   = String(req.body.coin || '').toUpperCase();
+    const amount = parseFloat(req.body.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return res.json({ error: 'Укажи количество больше нуля' });
+
+    const doc = await db.prices.findOne({ coin });
+    if (!doc) return res.json({ error: 'Неизвестная монета' });
+
+    const exch = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+    const exchangeReserve = (exch && exch[coin]) || 0;
+    if (amount > exchangeReserve) {
+      return res.json({ error: `На бирже нераспроданными сейчас только ${exchangeReserve.toLocaleString('ru')} ${coin}` });
+    }
+
+    await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { [coin]: -amount } });
+    await db.prices.update({ coin }, { $inc: { vaultRemaining: amount } });
+
+    const ev = { ts: Date.now(), text: `Админ отозвал с биржи в хранилище: ${amount.toLocaleString('ru')} ${coin}` };
+    await db.events.insert(ev);
+    const io = req.app.get('io');
+    io.emit('newEvent', ev);
+    res.json({ ok: true, vaultRemaining: (doc.vaultRemaining || 0) + amount });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -363,8 +363,9 @@ function renderCoinParams() {
     const isOpen   = expandedCoinParams.has(coin);
     const iconUrl  = m.icon || '';
     const iconImg  = iconUrl ? `<img src="${escapeAttr(iconUrl)}" class="coin-icon" onerror="this.style.display='none'">` : '';
-    const vaultRemaining = m.vaultRemaining || 0;
-    const circulating    = Math.max(0, supply - vaultRemaining);
+    const vaultRemaining  = m.vaultRemaining || 0;
+    const circulating     = Math.max(0, supply - vaultRemaining);
+    const exchangeReserve = m.exchangeReserve || 0;
 
     return `<div class="coin-card" id="coin-row-${coin}">
       <div class="coin-card-summary" onclick="toggleCoinCard('${coin}')">
@@ -431,12 +432,16 @@ function renderCoinParams() {
         <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:10px 0;border-top:1px dashed var(--bd);margin-top:4px">
           <div class="lbl" style="margin:0">
             🏦 В хранилище: <b>${fmt(vaultRemaining, 0)}</b> из ${fmt(supply, 0)}
-            <div class="muted" style="font-size:11px">В обращении сейчас: ${fmt(circulating, 0)}</div>
+            <div class="muted" style="font-size:11px">На бирже нераспродано: ${fmt(exchangeReserve, 0)} · в обращении всего: ${fmt(circulating, 0)}</div>
           </div>
           <label class="fld" style="margin:0">Выпустить на биржу
             <input type="number" class="coin-input" id="vault-release-${coin}" min="0" max="${vaultRemaining}" step="any" placeholder="0" style="width:120px">
           </label>
           <button class="btn btn-secondary btn-sm" onclick="releaseFromVault('${coin}')" ${vaultRemaining > 0 ? '' : 'disabled'}>Выпустить</button>
+          <label class="fld" style="margin:0">Отозвать с биржи
+            <input type="number" class="coin-input" id="vault-recall-${coin}" min="0" max="${exchangeReserve}" step="any" placeholder="0" style="width:120px">
+          </label>
+          <button class="btn btn-dan btn-sm" onclick="recallToVault('${coin}')" ${exchangeReserve > 0 ? '' : 'disabled'}>Отозвать</button>
         </div>
 
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -481,6 +486,16 @@ async function releaseFromVault(coin) {
   if (!Number.isFinite(amount) || amount <= 0) { alert('Укажи количество больше нуля'); return; }
 
   const res = await api('POST', '/api/admin/coin/release-vault', { coin, amount });
+  if (res.error) { alert(res.error); return; }
+  await loadAdminData();
+}
+
+async function recallToVault(coin) {
+  const input = document.getElementById(`vault-recall-${coin}`);
+  const amount = input ? parseFloat(input.value) : NaN;
+  if (!Number.isFinite(amount) || amount <= 0) { alert('Укажи количество больше нуля'); return; }
+
+  const res = await api('POST', '/api/admin/coin/recall-vault', { coin, amount });
   if (res.error) { alert(res.error); return; }
   await loadAdminData();
 }

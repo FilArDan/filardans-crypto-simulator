@@ -295,6 +295,10 @@ function createChartInstance() {
       borderColor: gc,
       timeVisible: true,
       secondsVisible: chartMode !== 'candles',
+      // По умолчанию Lightweight Charts не даёт сжать бары уже 0.5px —
+      // при истории в тысячи точек (см. прореживание в /api/price-history)
+      // это мешает раззумиться и увидеть её целиком одним экраном.
+      minBarSpacing: 0.02,
       tickMarkFormatter: (time) => {
         const d = new Date(time * 1000);
         return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');

@@ -104,23 +104,38 @@ router.get('/price-history', auth, async (req, res) => {
     const total = await db.priceHistory.count({ coin });
     let docs;
     if (total <= limit) {
-      // Вся история умещается в лимит — отдаём как есть, по возрастанию.
-      docs = await db.priceHistory.find({ coin }).sort({ ts: 1 });
+      // Вся история умещается в лимит — отдаём как есть, только нужные поля.
+      docs = await db.priceHistory.raw
+        .find({ coin }, { projection: { _id: 0, price: 1, ts: 1 } })
+        .sort({ ts: 1 })
+        .toArray();
     } else {
       // История длиннее лимита — не отрезаем старое (тогда график всегда
       // показывал бы только последнее окно, будто хранилище само себя
-      // стирает), а равномерно прореживаем ВЕСЬ диапазон от создания
-      // актива до сейчас, чтобы уложиться в лимит точек. Индекс
-      // {coin:1, ts:-1} делает даже сортировку сотен тысяч строк дешёвой,
-      // проредить в Node после этого — уже мелочь.
-      const all  = await db.priceHistory.find({ coin }).sort({ ts: 1 });
-      const step = Math.ceil(all.length / limit);
-      docs = all.filter((_, i) => i % step === 0);
-      const last = all[all.length - 1];
-      if (docs[docs.length - 1] !== last) docs.push(last); // текущая цена всегда точна
+      // стирает), а прореживаем ВЕСЬ диапазон от создания актива до сейчас
+      // прямо в MongoDB через агрегацию: наружу уходит максимум `limit`
+      // документов, а не вся история целиком (сотни тысяч точек) с
+      // последующим отбрасыванием 99% из них в Node.
+      const [firstDoc] = await db.priceHistory.find({ coin }).sort({ ts: 1 }).limit(1);
+      const [lastDoc]  = await db.priceHistory.find({ coin }).sort({ ts: -1 }).limit(1);
+      const firstTs = firstDoc.ts;
+      const lastTs  = lastDoc.ts;
+      // Бакет по РАВНЫМ отрезкам времени (а не по количеству точек) —
+      // если скорость тика меняли или была долгая пауза, выборка всё
+      // равно остаётся равномерной по оси времени, а не по числу тиков.
+      const bucketMs = Math.max(1, Math.ceil((lastTs - firstTs) / limit));
+
+      docs = await db.priceHistory.raw.aggregate([
+        { $match: { coin } },
+        { $sort: { ts: 1 } }, // порядок важен для корректного $last внутри $group
+        { $addFields: { bucket: { $floor: { $divide: [{ $subtract: ['$ts', firstTs] }, bucketMs] } } } },
+        { $group: { _id: '$bucket', price: { $last: '$price' }, ts: { $last: '$ts' } } },
+        { $sort: { _id: 1 } },
+        { $project: { _id: 0, price: 1, ts: 1 } },
+      ]).toArray();
     }
 
-    res.json(docs.map(d => ({ price: d.price, ts: d.ts })));
+    res.json(docs);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

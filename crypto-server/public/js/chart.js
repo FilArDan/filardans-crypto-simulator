@@ -8,7 +8,7 @@ const BASE_COIN_COLORS = {
 };
 
 const CANDLE_INTERVAL_MS = 30_000;
-const MAX_HISTORY_POINTS = 1000;
+const MAX_HISTORY_POINTS = 7500;
 
 function coinColor(ticker) {
   if (BASE_COIN_COLORS[ticker]) return BASE_COIN_COLORS[ticker];

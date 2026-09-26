@@ -98,7 +98,7 @@ async function emitPlayersUpdate(io) {
 router.get('/price-history', auth, async (req, res) => {
   try {
     const coin  = (req.query.coin || '').toUpperCase();
-    const limit = Math.min(Math.max(parseInt(req.query.limit) || 1000, 1), 1000);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 1000, 1), 7500);
     if (!coin) return res.json([]);
 
     // Просто последние `limit` тиков — без прореживания/агрегации всей

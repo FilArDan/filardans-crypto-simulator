@@ -4,8 +4,8 @@ const session = require('express-session');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-const NeDB = require('@seald-io/nedb');
-const { initDb } = require('./db');
+const { MongoStore } = require('connect-mongo');
+const { initDb, closeDb, MONGODB_URI, MONGODB_DB_NAME } = require('./db');
 const { tick } = require('./game/market');
 
 const app = express();
@@ -76,7 +76,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ── Защита от NoSQL-инъекций ───────────────────────────────────────────────
-// В проекте нет SQL (хранилище — NeDB), поэтому классической SQL-инъекции
+// В проекте нет SQL (хранилище — MongoDB), поэтому классической SQL-инъекции
 // тут просто неоткуда взяться. Но у NoSQL то же самое семейство атак
 // работает иначе: везде, где значение из тела запроса или query-параметра
 // напрямую попадает в фильтр вида db.users.findOne({ username }) — то есть
@@ -110,51 +110,10 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── NeDB Session Store ────────────────────────────────────────────────────────
-// Хранит сессии в файле — переживают перезапуск сервера.
-// Не требует доп. зависимостей: используем тот же @seald-io/nedb что и везде.
-const Store = session.Store;
-
-class NeDBSessionStore extends Store {
-  constructor(opts = {}) {
-    super();
-    this.db = new NeDB({ filename: opts.filename, autoload: true });
-    // Чистим протухшие сессии каждые 10 минут
-    setInterval(() => {
-      this.db.remove({ expiresAt: { $lt: Date.now() } }, { multi: true });
-    }, 10 * 60 * 1000).unref();
-  }
-
-  get(sid, cb) {
-    this.db.findOne({ _id: sid, expiresAt: { $gt: Date.now() } }, (err, doc) => {
-      if (err) return cb(err);
-      cb(null, doc ? doc.session : null);
-    });
-  }
-
-  set(sid, sess, cb) {
-    const maxAge  = (sess.cookie && sess.cookie.maxAge) ? sess.cookie.maxAge : 8 * 60 * 60 * 1000;
-    const expires = Date.now() + maxAge;
-    this.db.update(
-      { _id: sid },
-      { _id: sid, session: sess, expiresAt: expires },
-      { upsert: true },
-      cb || (() => {})
-    );
-  }
-
-  destroy(sid, cb) {
-    this.db.remove({ _id: sid }, {}, cb || (() => {}));
-  }
-
-  touch(sid, sess, cb) {
-    const maxAge  = (sess.cookie && sess.cookie.maxAge) ? sess.cookie.maxAge : 8 * 60 * 60 * 1000;
-    const expires = Date.now() + maxAge;
-    this.db.update({ _id: sid }, { $set: { expiresAt: expires, session: sess } }, {}, cb || (() => {}));
-  }
-}
-
 // ── Сессия ────────────────────────────────────────────────────────────────────
+// Хранилище сессий — та же MongoDB, отдельная коллекция 'sessions'. Сессии
+// эфемерны (maxAge 8ч), поэтому при переходе с NeDB на Mongo старые сессии
+// намеренно не переносятся — игрокам достаточно один раз перелогиниться.
 // sameSite:'none' + secure:true обязательны чтобы кука работала
 // когда сайт открыт в iframe (Foundry).
 const isProduction = process.env.NODE_ENV === 'production';
@@ -162,8 +121,11 @@ app.use(session({
   secret: process.env.SECRET || 'crypto-dev-secret-2025',
   resave: false,
   saveUninitialized: false,
-  store: new NeDBSessionStore({
-    filename: path.join(__dirname, 'data', 'sessions.db'),
+  store: MongoStore.create({
+    mongoUrl: MONGODB_URI,
+    dbName: MONGODB_DB_NAME,
+    collectionName: 'sessions',
+    ttl: 8 * 60 * 60, // секунды, синхронизировано с cookie.maxAge ниже
   }),
   cookie: {
     maxAge: 8 * 60 * 60 * 1000,
@@ -220,9 +182,8 @@ initDb().then(() => {
 });
 
 // ── Корректная остановка ────────────────────────────────────────────────────
-// Останавливаем тик и дожидаемся, пока текущие операции NeDB допишутся на
-// диск, вместо мгновенного убийства процесса (которое может оборвать запись
-// файла БД посередине).
+// Останавливаем тик и закрываем соединение с MongoDB после того, как http-
+// сервер перестал принимать новые запросы, а не мгновенно убиваем процесс.
 let shuttingDown = false;
 function shutdown(signal) {
   if (shuttingDown) return;
@@ -230,8 +191,9 @@ function shutdown(signal) {
   console.log(`\n⏹️  ${signal} получен — останавливаю тик и завершаю текущие операции...`);
   clearInterval(marketTimer);
   io.close();
-  httpServer.close(() => {
-    console.log('✅ Сервер остановлен, данные сохранены на диск.');
+  httpServer.close(async () => {
+    await closeDb().catch(() => {});
+    console.log('✅ Сервер остановлен, соединение с MongoDB закрыто.');
   });
   // Подстраховка на случай, если что-то держит процесс живым дольше нормы
   setTimeout(() => {

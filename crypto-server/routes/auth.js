@@ -14,7 +14,7 @@ router.post('/login', async (req, res) => {
     req.session.username = user.username;
     req.session.role = user.role;
     // Ждём записи сессии в store перед ответом — иначе /auth/me может
-    // получить пустую сессию если store (NeDB) ещё не успел сохранить.
+    // получить пустую сессию если store (MongoDB) ещё не успел сохранить.
     req.session.save(err => {
       if (err) return res.status(500).json({ error: 'Ошибка сессии' });
       res.json({

@@ -21,7 +21,10 @@
   <link rel="stylesheet" href="/style.css" />
   <style>
     .coin-slider { width: 110px; accent-color: var(--pri); }
-    .coin-input  { width: 130px; }
+    /* input.coin-input (не просто .coin-input) — иначе проигрывает по
+       специфичности глобальному input[type=number]{width:100%} из style.css,
+       и поля без inline-ширины (Supply, Базовая цена) схлопываются в auto-таблице */
+    input.coin-input { width: 130px; }
     .drift-lbl   { min-width: 44px; font-size: 12px; font-variant-numeric: tabular-nums; }
     .vol-lbl     { min-width: 36px; font-size: 12px; font-variant-numeric: tabular-nums; }
     .create-grid {

@@ -36,6 +36,39 @@ let tooltipEl    = null;
 let compareCoins     = new Set();
 let compareBaselines = {}; // coin -> цена первой точки, зафиксированная на момент rebuild
 
+// ── Инструменты рисования (линия тренда, горизонтальная линия) ───────────────
+// Lightweight Charts (в отличие от платной TradingView Charting Library) не
+// даёт готовых инструментов рисования "из коробки" — рисуем сами: отдельный
+// прозрачный canvas поверх графика, координаты переводим через встроенные
+// series.priceToCoordinate()/chart.timeScale().timeToCoordinate() и обратно.
+// Хранится в localStorage (per-браузер, per-монета) — переживает перезагрузку
+// страницы, но не синхронизируется между игроками (это личная разметка).
+const DRAW_STORAGE_KEY = 'cryptoSimDrawings_v1';
+let drawings      = loadDrawingsFromStorage(); // coin -> [{type:'trend',p1:{ts,price},p2:{ts,price}} | {type:'hline',price}]
+let drawTool      = null;   // null (курсор) | 'trend' | 'hline' | 'erase'
+let pendingPoint  = null;   // первая точка линии тренда, ждём вторую
+let hoverPoint     = null;  // текущая позиция мыши над графиком (для резинки/подсветки ластика)
+let overlayCanvas = null;
+let overlayCtx    = null;
+let overlayResizeObserver = null;
+
+function loadDrawingsFromStorage() {
+  try {
+    const raw = localStorage.getItem(DRAW_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch (_) { return {}; }
+}
+
+function saveDrawingsToStorage() {
+  try { localStorage.setItem(DRAW_STORAGE_KEY, JSON.stringify(drawings)); } catch (_) { /* приватный режим/квота — просто не сохраняем */ }
+}
+
+function drawingsFor(coin) {
+  if (!drawings[coin]) drawings[coin] = [];
+  return drawings[coin];
+}
+
 function updateChartCoins(coins) {
   const prev = chartCoins;
   chartCoins = coins;
@@ -144,6 +177,7 @@ function setChartMode(mode) {
   if (mode === chartMode) return;
   chartMode = mode;
   if (mode === 'compare' && compareCoins.size === 0) compareCoins.add(selectedCoin);
+  if (mode === 'compare') { drawTool = null; cancelPendingDrawing(); } // рисование недоступно в "Сравнении"
   renderChartModeToggle();
   renderChartTabs(); // смысл "on"/клика на табах меняется вместе с режимом
   createChartInstance(); // пересоздаём все серии, т.к. тип серии зависит от режима
@@ -182,6 +216,9 @@ function selectCoin(coin) {
 
   if (chart) chart.timeScale().fitContent();
   updateInfoLabel();
+  cancelPendingDrawing();
+  renderDrawToolbar();
+  redrawOverlay();
 }
 
 function getHistory(coin) {
@@ -284,6 +321,8 @@ function createChartInstance() {
   ensureAllSeries();
   rebuildAllSeriesData();
   setupTooltip(container, dark, gc);
+  setupDrawing(container);
+  renderDrawToolbar();
   updateInfoLabel();
 }
 
@@ -363,6 +402,7 @@ function rebuildAllSeriesData() {
       s.setData(dedupAscending(points));
     });
     if (chart) chart.timeScale().fitContent();
+    redrawOverlay();
     return;
   }
 
@@ -377,6 +417,7 @@ function rebuildAllSeriesData() {
     }
   });
   if (chart) chart.timeScale().fitContent();
+  redrawOverlay();
 }
 
 // ── Точечное обновление всех серий на каждый тик (дёшево, без setData) ───────
@@ -411,6 +452,7 @@ function updateLiveSeries() {
     }
   });
   updateInfoLabel();
+  redrawOverlay();
 }
 
 function updateInfoLabel() {
@@ -500,4 +542,264 @@ function setupTooltip(container, dark, gc) {
     tooltipEl.style.left = x + 'px';
     tooltipEl.style.top  = y + 'px';
   });
+}
+
+// ── ИНСТРУМЕНТЫ РИСОВАНИЯ ────────────────────────────────────────────────────
+// В режиме "Сравнение" рисование отключено — там серия в процентах от
+// базовой точки, а не в абсолютной цене, привязка линий к цене там не имеет
+// смысла (и меняется от состава/порядка выбранных монет).
+const DRAW_HIT_PX = 6; // порог "попадания" ластиком по линии, в пикселях
+
+function drawingModeAvailable() {
+  return chartMode !== 'compare';
+}
+
+function armTool(tool) {
+  drawTool = (drawTool === tool) ? null : tool;
+  pendingPoint = null;
+  hoverPoint = null;
+  if (overlayCanvas) overlayCanvas.style.pointerEvents = drawTool ? 'auto' : 'none';
+  renderDrawToolbar();
+  redrawOverlay();
+}
+
+function cancelPendingDrawing() {
+  pendingPoint = null;
+  hoverPoint = null;
+}
+
+function clearCurrentDrawings() {
+  if (!drawingModeAvailable()) return;
+  if (!drawingsFor(selectedCoin).length) return;
+  if (!confirm(`Стереть все линии для ${selectedCoin}? Это нельзя отменить.`)) return;
+  drawings[selectedCoin] = [];
+  saveDrawingsToStorage();
+  redrawOverlay();
+}
+
+function renderDrawToolbar() {
+  const wrap = document.getElementById('drawToolbar');
+  if (!wrap) return;
+  if (!drawingModeAvailable()) { wrap.innerHTML = ''; return; }
+  const btn = (tool, label, title) =>
+    `<button type="button" class="draw-tool-btn${drawTool === tool ? ' on' : ''}" title="${title}" onclick="armTool('${tool}')">${label}</button>`;
+  wrap.innerHTML = [
+    btn('trend', '／ Линия тренда', 'Провести линию тренда: клик — первая точка, клик — вторая'),
+    btn('hline', '─ Горизонталь', 'Поставить горизонтальный уровень: один клик'),
+    btn('erase', '🩹 Ластик', 'Клик по линии — удалить её'),
+    `<button type="button" class="draw-tool-btn" title="Стереть все линии для ${selectedCoin}" onclick="clearCurrentDrawings()">🗑️ Очистить</button>`,
+  ].join('');
+}
+
+// ── Overlay-canvas поверх графика ─────────────────────────────────────────────
+function setupDrawing(container) {
+  ensureOverlayCanvas(container);
+  chart.timeScale().subscribeVisibleTimeRangeChange(redrawOverlay);
+}
+
+function ensureOverlayCanvas(container) {
+  if (overlayResizeObserver) { overlayResizeObserver.disconnect(); overlayResizeObserver = null; }
+  // createChartInstance() пересоздаёт весь график (в т.ч. при смене режима
+  // Линия/Свечи/Сравнение) — chart.remove() чистит только сам чарт, наш
+  // canvas в него не входит и без явного удаления копился бы поверх старого.
+  if (overlayCanvas && overlayCanvas.parentNode) overlayCanvas.parentNode.removeChild(overlayCanvas);
+
+  overlayCanvas = document.createElement('canvas');
+  overlayCanvas.className = 'draw-overlay';
+  overlayCanvas.style.pointerEvents = drawTool ? 'auto' : 'none';
+  container.style.position = 'relative';
+  container.appendChild(overlayCanvas);
+  overlayCtx = overlayCanvas.getContext('2d');
+
+  resizeOverlayCanvas(container);
+  overlayResizeObserver = new ResizeObserver(() => { resizeOverlayCanvas(container); redrawOverlay(); });
+  overlayResizeObserver.observe(container);
+
+  overlayCanvas.addEventListener('click', onOverlayClick);
+  overlayCanvas.addEventListener('mousemove', onOverlayMouseMove);
+  overlayCanvas.addEventListener('mouseleave', () => { hoverPoint = null; redrawOverlay(); });
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && (drawTool || pendingPoint)) {
+    armTool(null);
+  }
+});
+
+function resizeOverlayCanvas(container) {
+  if (!overlayCanvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  overlayCanvas.width  = Math.max(1, Math.round(w * dpr));
+  overlayCanvas.height = Math.max(1, Math.round(h * dpr));
+  overlayCanvas.style.width  = w + 'px';
+  overlayCanvas.style.height = h + 'px';
+  if (overlayCtx) overlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+// (time_ms, price) -> координаты канваса, или null если точка сейчас не видна
+function pointToCoords(ts, price) {
+  const s = seriesMap[selectedCoin];
+  if (!chart || !s) return null;
+  const x = chart.timeScale().timeToCoordinate(toLwcTime(ts));
+  const y = s.priceToCoordinate(price);
+  if (x == null || y == null) return null;
+  return { x, y };
+}
+
+// Только цена -> y. В отличие от pointToCoords не зависит от того, видно ли
+// сейчас конкретное время — горизонтальная линия висит на всей ширине
+// графика независимо от того, куда игрок проскроллил ось времени, и не
+// должна исчезать только потому, что "сейчас" (или момент проведения линии)
+// временно не в кадре.
+function priceToY(price) {
+  const s = seriesMap[selectedCoin];
+  if (!chart || !s) return null;
+  return s.priceToCoordinate(price);
+}
+
+// координаты канваса -> (time_ms, price), или null вне графика/шкалы
+function coordsToPoint(x, y) {
+  const s = seriesMap[selectedCoin];
+  if (!chart || !s) return null;
+  const t = chart.timeScale().coordinateToTime(x);
+  const price = s.coordinateToPrice(y);
+  if (t == null || price == null) return null;
+  return { ts: t * 1000, price };
+}
+
+function mousePos(e) {
+  const rect = overlayCanvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function onOverlayMouseMove(e) {
+  if (!drawTool) return;
+  const { x, y } = mousePos(e);
+  hoverPoint = { x, y };
+  redrawOverlay();
+}
+
+function onOverlayClick(e) {
+  if (!drawTool || !drawingModeAvailable()) return;
+  const { x, y } = mousePos(e);
+
+  if (drawTool === 'erase') {
+    const idx = hitTestDrawing(x, y);
+    if (idx >= 0) {
+      drawingsFor(selectedCoin).splice(idx, 1);
+      saveDrawingsToStorage();
+      redrawOverlay();
+    }
+    return;
+  }
+
+  const point = coordsToPoint(x, y);
+  if (!point) return;
+
+  if (drawTool === 'hline') {
+    drawingsFor(selectedCoin).push({ type: 'hline', price: point.price });
+    saveDrawingsToStorage();
+    armTool('hline'); // возвращаемся к курсору — один клик и готово
+    return;
+  }
+
+  if (drawTool === 'trend') {
+    if (!pendingPoint) {
+      pendingPoint = point;
+    } else {
+      drawingsFor(selectedCoin).push({ type: 'trend', p1: pendingPoint, p2: point });
+      saveDrawingsToStorage();
+      pendingPoint = null;
+      armTool('trend'); // завершили линию — возвращаемся к курсору
+    }
+    redrawOverlay();
+  }
+}
+
+// Расстояние от точки (px,py) до отрезка (x1,y1)-(x2,y2)
+function distToSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  let t = lenSq > 0 ? ((px - x1) * dx + (py - y1) * dy) / lenSq : 0;
+  t = Math.max(0, Math.min(1, t));
+  const cx = x1 + t * dx, cy = y1 + t * dy;
+  return Math.hypot(px - cx, py - cy);
+}
+
+function hitTestDrawing(x, y) {
+  const list = drawingsFor(selectedCoin);
+  for (let i = list.length - 1; i >= 0; i--) {
+    const d = list[i];
+    if (d.type === 'hline') {
+      const ly = priceToY(d.price);
+      if (ly != null && Math.abs(y - ly) <= DRAW_HIT_PX) return i;
+    } else if (d.type === 'trend') {
+      const c1 = pointToCoords(d.p1.ts, d.p1.price);
+      const c2 = pointToCoords(d.p2.ts, d.p2.price);
+      if (c1 && c2 && distToSegment(x, y, c1.x, c1.y, c2.x, c2.y) <= DRAW_HIT_PX) return i;
+    }
+  }
+  return -1;
+}
+
+function redrawOverlay() {
+  if (!overlayCtx || !overlayCanvas) return;
+  const w = overlayCanvas.clientWidth;
+  const h = overlayCanvas.clientHeight;
+  overlayCtx.clearRect(0, 0, w, h);
+  if (!drawingModeAvailable()) return;
+
+  const cs = getComputedStyle(document.documentElement);
+  const lineColor  = cs.getPropertyValue('--pri').trim() || '#3b82f6';
+  const eraseColor = cs.getPropertyValue('--dan').trim() || '#ef5350';
+
+  const list = drawingsFor(selectedCoin);
+  const hoverIdx = (drawTool === 'erase' && hoverPoint) ? hitTestDrawing(hoverPoint.x, hoverPoint.y) : -1;
+
+  list.forEach((d, i) => {
+    const highlighted = i === hoverIdx;
+    overlayCtx.strokeStyle = highlighted ? eraseColor : lineColor;
+    overlayCtx.lineWidth   = highlighted ? 2.5 : 1.5;
+    overlayCtx.setLineDash(d.type === 'hline' ? [5, 4] : []);
+
+    if (d.type === 'hline') {
+      const ly = priceToY(d.price);
+      if (ly == null) return;
+      overlayCtx.beginPath();
+      overlayCtx.moveTo(0, ly);
+      overlayCtx.lineTo(w, ly);
+      overlayCtx.stroke();
+    } else if (d.type === 'trend') {
+      const c1 = pointToCoords(d.p1.ts, d.p1.price);
+      const c2 = pointToCoords(d.p2.ts, d.p2.price);
+      if (!c1 || !c2) return;
+      overlayCtx.beginPath();
+      overlayCtx.moveTo(c1.x, c1.y);
+      overlayCtx.lineTo(c2.x, c2.y);
+      overlayCtx.stroke();
+      [c1, c2].forEach(c => {
+        overlayCtx.beginPath();
+        overlayCtx.arc(c.x, c.y, 3, 0, Math.PI * 2);
+        overlayCtx.fillStyle = highlighted ? eraseColor : lineColor;
+        overlayCtx.fill();
+      });
+    }
+  });
+
+  // Резинка — линия тренда в процессе рисования, от первой точки до курсора
+  if (drawTool === 'trend' && pendingPoint && hoverPoint) {
+    const c1 = pointToCoords(pendingPoint.ts, pendingPoint.price);
+    if (c1) {
+      overlayCtx.setLineDash([4, 4]);
+      overlayCtx.strokeStyle = lineColor;
+      overlayCtx.lineWidth = 1.5;
+      overlayCtx.beginPath();
+      overlayCtx.moveTo(c1.x, c1.y);
+      overlayCtx.lineTo(hoverPoint.x, hoverPoint.y);
+      overlayCtx.stroke();
+    }
+  }
+  overlayCtx.setLineDash([]);
 }

@@ -6,7 +6,7 @@ const { db, EXCHANGE_USERNAME } = require('../db');
 // торгуют почти на каждом тике и составляют основной объём сделок, поэтому
 // заниженная комиссия здесь была главной причиной вымывания казны биржи.
 const FEE = 0.004;
-const BOT_EMOJI = { bull: '\uD83D\uDC02', fox: '\uD83E\uDD8A', croc: '\uD83D\uDC0A' };
+const BOT_EMOJI = { bull: '\uD83D\uDC02', fox: '\uD83E\uDD8A', croc: '\uD83D\uDC0A', fan: '\uD83E\uDD29' };
 const HIST_LEN = 30;
 const priceHistory = {};
 
@@ -47,7 +47,7 @@ function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 function sanitizeBot(bot) {
   return {
     name:   String(bot.name || '').trim(),
-    type:   ['bull','fox','croc'].includes(bot.type) ? bot.type : 'fox',
+    type:   ['bull','fox','croc','fan'].includes(bot.type) ? bot.type : 'fox',
     usd:    Number(bot.usd)  || 0,
     held:   (bot.held   && typeof bot.held   === 'object') ? bot.held   : {},
     avgP:   (bot.avgP   && typeof bot.avgP   === 'object') ? bot.avgP   : {},
@@ -380,6 +380,58 @@ async function crocTick(bot, coins, prices) {
   }
 }
 
+// ── 🤩 Фанат ─────────────────────────────────────────────────────────────────────────────────────────
+// В отличие от bull/fox/croc (mean-reversion: покупают дешевле среднего,
+// продают дороже среднего — тем самым гасят тренд), фанат — momentum-
+// трейдер: покупает НА росте (короткая средняя заметно выше длинной —
+// гонится за хайпом) и панически продаёт всё на развороте вниз. Такое
+// поведение усиливает и продлевает тренды вместо того, чтобы их давить,
+// поэтому у графика появляется реальная инерция, которую стоит читать.
+async function fanTick(bot, coins, prices) {
+  const coin = coins[Math.floor(Math.random() * coins.length)];
+  const price = prices[coin];
+  if (!price) return;
+
+  const shortAvg = getAvgPrice(coin, 5)  || price;
+  const longAvg  = getAvgPrice(coin, 20) || price;
+  const uptrend   = shortAvg > longAvg * 1.005;
+  const downtrend = shortAvg < longAvg * 0.995;
+  const roll = Math.random();
+
+  if (uptrend && roll < 0.75) {
+    const spend = bot.usd * (0.20 + Math.random() * 0.30);
+    if (spend < 1) return;
+    const amt  = spend / price;
+    const cost = amt * price * (1 + FEE);
+    if (cost > bot.usd) return;
+
+    // Проверяем запас биржи
+    const exchWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+    if (!exchWallet || (exchWallet[coin] || 0) < amt) return;
+
+    const prevTotal = (bot.held[coin] || 0) * (bot.avgP[coin] || 0);
+    bot.usd -= cost;
+    bot.held[coin] = (bot.held[coin] || 0) + amt;
+    bot.avgP[coin] = (prevTotal + amt * price) / bot.held[coin];
+    await syncExchange('buy', cost, coin, amt);
+    prices[coin] = await applyTP(coin, amt, 'buy');
+  } else if (downtrend && (bot.held[coin] || 0) > 0 && roll < 0.85) {
+    // Паническая распродажа — фанат теряет веру резко и полностью
+    const amt      = bot.held[coin];
+    const proceeds = amt * price * (1 - FEE);
+
+    // Проверяем резерв USD у биржи — без этого казна может уйти в минус
+    const exchWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+    if (!exchWallet || (exchWallet.usd || 0) < proceeds) return;
+
+    bot.usd += proceeds;
+    bot.held[coin] = 0;
+    bot.avgP[coin] = 0;
+    await syncExchange('sell', proceeds, coin, amt);
+    prices[coin] = await applyTP(coin, amt, 'sell');
+  }
+}
+
 // ── DB helpers ────────────────────────────────────────────────────────────────────────────────────
 function listBotsRaw() {
   return db.bots.find({});
@@ -430,6 +482,7 @@ async function botTick(io, currentPrices) {
       if      (b.type === 'bull') await bullTick(b, coins, prices);
       else if (b.type === 'fox')  await foxTick (b, coins, prices);
       else if (b.type === 'croc') await crocTick(b, coins, prices);
+      else if (b.type === 'fan')  await fanTick (b, coins, prices);
       await replaceBotState(b.name, b);
     } catch (_) {}
   }
@@ -459,7 +512,7 @@ async function getBotStats(prices) {
 async function createBot({ name, type, usd }) {
   const cleanName = String(name || '').trim();
   if (!cleanName) throw new Error('Укажите имя бота');
-  if (!['bull','fox','croc'].includes(type)) throw new Error('Неизвестный пресет');
+  if (!['bull','fox','croc','fan'].includes(type)) throw new Error('Неизвестный пресет');
   const exists = await db.bots.findOne({ name: cleanName });
   if (exists) throw new Error('Бот с таким именем уже существует');
   const bot = sanitizeBot({ name: cleanName, type, usd: Number(usd) || 0, held: {}, avgP: {}, target: {} });
@@ -497,7 +550,7 @@ async function setBotHoldings(name, held) {
 
 async function updateBotPreset(name, type) {
   const n = String(name || '').trim();
-  if (!['bull','fox','croc'].includes(type)) throw new Error('Неизвестный пресет');
+  if (!['bull','fox','croc','fan'].includes(type)) throw new Error('Неизвестный пресет');
   await db.bots.update({ name: n }, { $set: { type, target: {} } });
   return db.bots.findOne({ name: n });
 }

@@ -28,6 +28,7 @@ let seriesMap     = {}; // coin -> ISeriesApi (одна серия на моне
 let chartMode    = 'line'; // 'line' | 'candles' | 'compare'
 let chartCoins   = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 let tooltipEl    = null;
+let refreshLegendBox = null; // выставляется в setupTooltip(), дёргается из updateLiveSeries()
 
 // ── Режим «Сравнение» ──────────────────────────────────────────────────────────
 // Несколько монет на одном графике, нормализованные к 100% от первой точки
@@ -219,6 +220,7 @@ function selectCoin(coin) {
   cancelPendingDrawing();
   renderDrawToolbar();
   redrawOverlay();
+  if (refreshLegendBox) refreshLegendBox();
 }
 
 function getHistory(coin) {
@@ -310,10 +312,9 @@ function createChartInstance() {
     },
     crosshair: {
       mode: LightweightCharts.CrosshairMode.Normal,
-      // Свой тултип уже показывает цену серии в точке — встроенный лейбл
-      // на оси дублирует его, но по Y-координате курсора (не по кривой),
-      // из-за чего числа расходятся и выглядят как баг.
-      horzLine: { labelVisible: false },
+      // Цена показывается штатной плашкой на ценовой оси справа (как в
+      // TradingView/CMC) — не плавающей подсказкой за курсором.
+      horzLine: { labelVisible: true },
     },
     autoSize: true,
   });
@@ -403,6 +404,7 @@ function rebuildAllSeriesData() {
     });
     if (chart) chart.timeScale().fitContent();
     redrawOverlay();
+    if (refreshLegendBox) refreshLegendBox();
     return;
   }
 
@@ -418,6 +420,7 @@ function rebuildAllSeriesData() {
   });
   if (chart) chart.timeScale().fitContent();
   redrawOverlay();
+  if (refreshLegendBox) refreshLegendBox();
 }
 
 // ── Точечное обновление всех серий на каждый тик (дёшево, без setData) ───────
@@ -453,6 +456,7 @@ function updateLiveSeries() {
   });
   updateInfoLabel();
   redrawOverlay();
+  if (refreshLegendBox) refreshLegendBox();
 }
 
 function updateInfoLabel() {
@@ -481,67 +485,75 @@ function updateInfoLabel() {
 }
 
 // ── Тултип поверх canvas ───────────────────────────────────────────────────────
+// ── Легенда в углу графика (не следует за курсором) ──────────────────────────
+// Раньше цена/OHLC показывались плавающей подсказкой прямо у курсора — как
+// в TradingView/CMC, переносим это в закреплённую плашку в углу (обновляется
+// при наведении, а без наведения показывает последние данные) и отдаём
+// цену под курсором штатной плашке на ценовой оси (crosshair.horzLine).
 function setupTooltip(container, dark, gc) {
   if (!tooltipEl || !container.contains(tooltipEl)) {
     tooltipEl = document.createElement('div');
     tooltipEl.id = 'lwcTooltip';
-    container.style.position = 'relative';
+    tooltipEl.className = 'chart-compare-box';
     container.appendChild(tooltipEl);
   }
-  tooltipEl.style.cssText = `
-    position:absolute; display:none; pointer-events:none; z-index:20;
-    padding:8px 10px; border-radius:8px; font-size:13px; font-weight:700;
-    background:${dark ? '#23211f' : '#fff'}; color:${dark ? '#cdccca' : '#28251d'};
-    border:1px solid ${gc}; box-shadow:0 4px 12px rgba(0,0,0,.15);
-  `;
+  tooltipEl.style.background = dark ? '#23211f' : '#fff';
+  tooltipEl.style.color      = dark ? '#cdccca' : '#28251d';
+  tooltipEl.style.border     = `1px solid ${gc}`;
+  tooltipEl.style.boxShadow  = '0 4px 12px rgba(0,0,0,.15)';
 
-  chart.subscribeCrosshairMove(param => {
+  const fmtPrice = v => Number(v).toLocaleString('ru', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  function renderLegend(param) {
+    const hovering = !!(param && param.point && param.time);
+
     if (chartMode === 'compare') {
-      if (!param.point || !param.time) { tooltipEl.style.display = 'none'; return; }
-      const timeStr = formatTickTime(param.time * 1000);
       const rows = [];
       compareCoins.forEach(c => {
         const s = seriesMap[c];
-        const data = s && param.seriesData.get(s);
-        if (!data || data.value == null) return;
-        const pct = data.value - 100;
+        const data = hovering && s ? param.seriesData.get(s) : null;
+        const pct = data && data.value != null
+          ? data.value - 100
+          : (compareBaselines[c] > 0 && getHistory(c).length
+              ? (getHistory(c)[getHistory(c).length - 1].price / compareBaselines[c] - 1) * 100
+              : null);
+        if (pct == null) return;
         rows.push(`<span style="color:${coinColor(c)}">${c} ${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</span>`);
       });
       if (!rows.length) { tooltipEl.style.display = 'none'; return; }
-      tooltipEl.innerHTML = rows.join('<br>') + `<div style="opacity:.65;font-weight:400;margin-top:3px">${timeStr}</div>`;
+      const timeStr = hovering ? formatTickTime(param.time * 1000) : '';
+      tooltipEl.innerHTML = rows.join('<br>') + (timeStr ? `<div style="opacity:.65;font-weight:400;margin-top:3px">${timeStr}</div>` : '');
       tooltipEl.style.display = 'block';
-      const x = Math.min(Math.max(param.point.x, 0), container.clientWidth - tooltipEl.offsetWidth - 10);
-      const y = Math.max(param.point.y - 40, 0);
-      tooltipEl.style.left = x + 'px';
-      tooltipEl.style.top  = y + 'px';
       return;
     }
 
     const activeSeries = seriesMap[selectedCoin];
-    if (!param.point || !param.time || !activeSeries) {
-      tooltipEl.style.display = 'none';
-      return;
-    }
-    const data = param.seriesData.get(activeSeries);
-    if (!data) { tooltipEl.style.display = 'none'; return; }
+    const hist = getHistory(selectedCoin);
+    const hoverData = hovering && activeSeries ? param.seriesData.get(activeSeries) : null;
 
-    const timeStr = formatTickTime(param.time * 1000);
+    if (!hoverData && !hist.length) { tooltipEl.style.display = 'none'; return; }
+
+    const timeStr = hovering ? formatTickTime(param.time * 1000) : '';
     let text;
     if (chartMode === 'candles') {
-      const fmt = v => Number(v).toLocaleString('ru', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      text = `${selectedCoin} · O ${fmt(data.open)} H ${fmt(data.high)} L ${fmt(data.low)} C ${fmt(data.close)} · ${timeStr}`;
+      const last = hist[hist.length - 1];
+      const bucket = hoverData || (last && { open: last.price, high: last.price, low: last.price, close: last.price });
+      if (!bucket) { tooltipEl.style.display = 'none'; return; }
+      text = `<strong>${selectedCoin}</strong><br>O ${fmtPrice(bucket.open)} H ${fmtPrice(bucket.high)} L ${fmtPrice(bucket.low)} C ${fmtPrice(bucket.close)}`
+        + (timeStr ? `<div style="opacity:.65;font-weight:400;margin-top:3px">${timeStr}</div>` : '');
     } else {
-      const price = data.value !== undefined ? data.value : data.close;
-      text = `${selectedCoin} · USC ${Number(price).toLocaleString('ru',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${timeStr}`;
+      const price = hoverData ? (hoverData.value !== undefined ? hoverData.value : hoverData.close) : (hist.length ? hist[hist.length - 1].price : null);
+      if (price == null) { tooltipEl.style.display = 'none'; return; }
+      text = `<strong>${selectedCoin}</strong> · USC ${fmtPrice(price)}`
+        + (timeStr ? `<div style="opacity:.65;font-weight:400;margin-top:3px">${timeStr}</div>` : '');
     }
     tooltipEl.innerHTML = text;
     tooltipEl.style.display = 'block';
+  }
 
-    const x = Math.min(Math.max(param.point.x, 0), container.clientWidth - tooltipEl.offsetWidth - 10);
-    const y = Math.max(param.point.y - 40, 0);
-    tooltipEl.style.left = x + 'px';
-    tooltipEl.style.top  = y + 'px';
-  });
+  chart.subscribeCrosshairMove(renderLegend);
+  refreshLegendBox = () => renderLegend(null); // для вызова из updateLiveSeries() на каждый тик
+  renderLegend(null); // сразу показать последние данные, не дожидаясь наведения
 }
 
 // ── ИНСТРУМЕНТЫ РИСОВАНИЯ ────────────────────────────────────────────────────

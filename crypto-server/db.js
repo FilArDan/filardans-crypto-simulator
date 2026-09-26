@@ -104,6 +104,7 @@ let mongoClient = null;
 const COLLECTION_NAMES = [
   'users', 'wallets', 'loans', 'events', 'prices', 'customCoins', 'bots',
   'priceHistory', 'orders', 'companies', 'currencies', 'unions', 'tradeRestrictions',
+  'settings',
 ];
 
 const DEFAULT_BOTS = [

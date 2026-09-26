@@ -5,7 +5,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const { MongoStore } = require('connect-mongo');
-const { initDb, closeDb, MONGODB_URI, MONGODB_DB_NAME } = require('./db');
+const { db, initDb, closeDb, MONGODB_URI, MONGODB_DB_NAME } = require('./db');
 const { tick } = require('./game/market');
 
 const app = express();
@@ -152,14 +152,26 @@ app.set('setPaused',  (val) => {
 const marketTick = () => { if (!paused) tick(io); };
 app.set('marketTick', marketTick);
 
-let tickSpeedMs = 25000;
-let marketTimer = setInterval(marketTick, tickSpeedMs);
+// Скорость тика переживает рестарт сервера — хранится в db.settings
+// (единственный документ с _id 'tickSpeedMs'), читается один раз при
+// старте после подключения к MongoDB (см. initDb().then() ниже) и
+// перезаписывается при каждом изменении через админку.
+const DEFAULT_TICK_SPEED_MS = 25000;
+let tickSpeedMs  = DEFAULT_TICK_SPEED_MS;
+let marketTimer  = null;
+
+function startMarketTimer() {
+  if (marketTimer) clearInterval(marketTimer);
+  marketTimer = setInterval(marketTick, tickSpeedMs);
+}
 
 app.set('setTickSpeed', (ms) => {
-  clearInterval(marketTimer);
   tickSpeedMs = ms;
-  marketTimer = setInterval(marketTick, tickSpeedMs);
+  startMarketTimer();
   io.emit('tickSpeedChanged', { ms: tickSpeedMs });
+  db.settings
+    .update({ _id: 'tickSpeedMs' }, { _id: 'tickSpeedMs', value: ms }, { upsert: true })
+    .catch(err => console.error('Не удалось сохранить скорость тика:', err.message));
 });
 app.set('getTickSpeed', () => tickSpeedMs);
 
@@ -170,7 +182,13 @@ io.on('connection', socket => {
 });
 
 const PORT = process.env.PORT || 3000;
-initDb().then(() => {
+initDb().then(async () => {
+  const savedSpeed = await db.settings.findOne({ _id: 'tickSpeedMs' });
+  if (savedSpeed && Number.isFinite(savedSpeed.value) && savedSpeed.value > 0) {
+    tickSpeedMs = savedSpeed.value;
+  }
+  startMarketTimer();
+
   httpServer.listen(PORT, () => {
     console.log('\n✅ Сервер запущен: http://localhost:' + PORT);
     console.log('   Игроки: http://localhost:' + PORT + '/');

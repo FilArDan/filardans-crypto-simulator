@@ -686,11 +686,14 @@ async function loadTopHolders(ticker) {
       return;
     }
     const dec = (prices[ticker] || 0) < 1 ? 4 : 2;
-    body.innerHTML = holders.map((h, i) => `<tr>
-      <td>${i + 1}</td>
-      <td>${h.isBot ? '🤖 ' : ''}${h.username}</td>
-      <td>${fmt(h.amount, dec)}</td>
-    </tr>`).join('');
+    body.innerHTML = holders.map((h, i) => {
+      const pctStr = h.pct != null ? ` <span class="muted">(${fmt(h.pct, h.pct < 1 ? 2 : 1)}%)</span>` : '';
+      return `<tr>
+        <td>${i + 1}</td>
+        <td>${h.isBot ? '🤖 ' : ''}${h.username}</td>
+        <td>${fmt(h.amount, dec)}${pctStr}</td>
+      </tr>`;
+    }).join('');
   } catch (_) { /* нет доступа — оставляем как было */ }
 }
 

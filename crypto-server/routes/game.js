@@ -13,7 +13,7 @@ const {
   createUnion, addMember, removeMember, addBotMember, removeBotMember, deleteUnion,
   addCompanyUnionListing, removeCompanyUnionListing,
   banAsset, unbanAsset, listRestrictions,
-  listUnions, listUnionsAdmin,
+  listUnions, listUnionsAdmin, returnHoldingsToReserve,
 } = require('../game/unions');
 const { getMarketStats } = require('../game/marketStats');
 
@@ -635,6 +635,19 @@ router.delete('/admin/player/:username', auth, adminOnly, async (req, res) => {
     // Сначала снимаем ордера — резервы вернутся в кошелёк, который удаляется следом
     await cancelOrdersForUser(username, req.app.get('io'));
     await db.orders.remove({ username }, { multi: true });
+
+    // Активы (монеты, акции компаний, союзные токены) возвращаются на резерв
+    // биржи, а не пропадают вместе с удалённым аккаунтом — иначе холдинг
+    // навсегда выпадает из обращения для активов с ограниченным supply.
+    const wallet = await db.wallets.findOne({ username });
+    if (wallet) {
+      const holdings = { ...wallet };
+      delete holdings._id;
+      delete holdings.username;
+      delete holdings.usd;
+      await returnHoldingsToReserve(holdings);
+    }
+
     await db.users.remove({ username }, {});
     await db.wallets.remove({ username }, {});
     await db.loans.remove({ username }, { multi: true });

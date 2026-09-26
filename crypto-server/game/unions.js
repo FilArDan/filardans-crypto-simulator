@@ -156,6 +156,22 @@ async function resolveReserveAccount(ticker) {
   return EXCHANGE_USERNAME;
 }
 
+// ── Возврат активов на резерв (удаление игрока/бота) ─────────────────────────
+// При удалении аккаунта его баланс просто стирался вместе с записью — монеты
+// и акции компаний исчезали насовсем, а не возвращались в оборот. Для
+// активов с ограниченным supply (см. фикс "резерв биржи не должен продавать
+// сверх supply") это означало, что удалённый холдинг навсегда выпадает из
+// обращения. holdings — плоская карта {тикер: количество} (поля кошелька
+// игрока за вычетом usd/_id/username, либо bot.held).
+async function returnHoldingsToReserve(holdings) {
+  if (!holdings) return;
+  for (const [ticker, amount] of Object.entries(holdings)) {
+    if (!(amount > 0)) continue;
+    const reserveAccount = await resolveReserveAccount(ticker);
+    await db.wallets.update({ username: reserveAccount }, { $inc: { [ticker]: amount } });
+  }
+}
+
 async function canTrade(username, ticker) {
   const banned = await db.tradeRestrictions.findOne({ username, ticker });
   if (banned) return { ok: false, reason: 'Торговля этим активом вам запрещена' };
@@ -224,6 +240,7 @@ module.exports = {
   unbanAsset,
   listRestrictions,
   resolveReserveAccount,
+  returnHoldingsToReserve,
   canTrade,
   canBotTrade,
   listUnions,

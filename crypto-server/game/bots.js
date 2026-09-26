@@ -525,9 +525,19 @@ async function createBot({ name, type, usd }) {
 }
 
 async function deleteBot(name) {
+  const cleanName = String(name || '').trim();
   // При удалении бота гасим его кредиты (списываем)
-  await db.loans.remove({ username: String(name || '').trim(), isBot: true }, { multi: true });
-  return db.bots.remove({ name: String(name || '').trim() }, {});
+  await db.loans.remove({ username: cleanName, isBot: true }, { multi: true });
+
+  // Активы бота (монеты, акции компаний) возвращаются на резерв биржи, а не
+  // пропадают вместе с удалённым ботом — см. ту же логику при удалении игрока.
+  const bot = await db.bots.findOne({ name: cleanName });
+  if (bot && bot.held) {
+    const { returnHoldingsToReserve } = require('./unions');
+    await returnHoldingsToReserve(bot.held);
+  }
+
+  return db.bots.remove({ name: cleanName }, {});
 }
 
 async function setBotCash(name, usd) {

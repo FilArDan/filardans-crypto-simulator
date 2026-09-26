@@ -702,7 +702,11 @@ async function loadTopHolders(ticker) {
     }
     const dec = (prices[ticker] || 0) < 1 ? 4 : 2;
     body.innerHTML = holders.map((h, i) => {
-      const pctStr = h.pct != null ? ` <span class="muted">(${fmt(h.pct, h.pct < 1 ? 2 : 1)}%)</span>` : '';
+      // Основной процент — доля от Circulating Supply (совпадает с тем, от
+      // чего считается Market Cap); доля от Max Supply — мелко рядом, в title.
+      const pctStr = h.pct != null
+        ? ` <span class="muted" title="${h.pctOfMax != null ? fmt(h.pctOfMax, h.pctOfMax < 1 ? 2 : 1) + '% от Max Supply' : ''}">(${fmt(h.pct, h.pct < 1 ? 2 : 1)}%)</span>`
+        : '';
       return `<tr>
         <td>${i + 1}</td>
         <td>${h.isBot ? '🤖 ' : ''}${h.username}</td>

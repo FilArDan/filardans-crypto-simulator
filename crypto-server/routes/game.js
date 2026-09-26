@@ -127,7 +127,11 @@ router.get('/holders', auth, async (req, res) => {
       db.bots.find({ [`held.${coin}`]: { $gt: 0 } }),
       db.prices.findOne({ coin }),
     ]);
-    const supply = (priceDoc && priceDoc.supply > 0) ? priceDoc.supply : 0;
+    const maxSupply   = (priceDoc && priceDoc.supply > 0) ? priceDoc.supply : 0;
+    // Доля держателя — от Circulating Supply (max supply минус то, что ещё
+    // осело в хранилище), а не от голого max supply: то же самое, от чего
+    // теперь считается Market Cap в game/marketStats.js, для единообразия.
+    const circulating = Math.max(0, maxSupply - ((priceDoc && priceDoc.vaultRemaining) || 0));
 
     const holders = [];
     wallets.forEach(w => {
@@ -141,7 +145,8 @@ router.get('/holders', auth, async (req, res) => {
     holders.sort((a, b) => b.amount - a.amount);
     const top = holders.slice(0, 10).map(h => ({
       ...h,
-      pct: supply > 0 ? (h.amount / supply) * 100 : null,
+      pct:      circulating > 0 ? (h.amount / circulating) * 100 : null,
+      pctOfMax: maxSupply   > 0 ? (h.amount / maxSupply)   * 100 : null,
     }));
     res.json(top);
   } catch(e) { res.status(500).json({ error: e.message }); }

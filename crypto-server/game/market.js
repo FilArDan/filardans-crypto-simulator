@@ -2,6 +2,7 @@ const { db, getAllCoins, EXCHANGE_USERNAME, DEFAULT_LIQUIDITY } = require('../db
 const { updatePriceHistory, botTick, priceHistory, getBotStats } = require('./bots');
 const { accrueInterest } = require('./bank');
 const { getMarketStats } = require('./marketStats');
+const { getVolume } = require('./volume');
 
 function roundPrice(p) {
   if (p >= 1000) return Math.round(p * 100)   / 100;
@@ -72,6 +73,13 @@ const VOL_CLUSTER_DECAY  = 0.85;
 const VOL_SHOCK_GAIN     = 2.2;
 const VOL_MIN_MULT       = 0.3;
 const VOL_MAX_MULT       = 3;
+// Если по активу не было ни одной сделки за последнее окно объёма
+// (game/volume.js, 10 тиков) — цена всё равно не должна блуждать так,
+// будто рынок живой: движение цены должно быть следствием сделок, а не
+// идти само по себе. Не гасим шум полностью (совсем плоский график
+// выглядел бы подозрительно и терял инерцию/кластеризацию волатильности),
+// а сильно уменьшаем его.
+const DEAD_MARKET_NOISE_MULT = 0.12;
 
 async function tick(io) {
   const coins  = await getAllCoins();
@@ -85,7 +93,8 @@ async function tick(io) {
     const base    = doc.basePrice || doc.price; // базовая стоимость
 
     const prevVolState = doc.volState > 0 ? doc.volState : baseVol;
-    const rawNoise = (Math.random() - 0.5) * prevVolState;
+    const noiseMult = getVolume(coin) > 0 ? 1 : DEAD_MARKET_NOISE_MULT;
+    const rawNoise = (Math.random() - 0.5) * prevVolState * noiseMult;
     const momentum = (doc.momentum || 0) * MOMENTUM + rawNoise * (1 - MOMENTUM);
 
     const pull  = (base - doc.price) / base * 0.002;

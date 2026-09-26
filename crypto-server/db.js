@@ -265,8 +265,19 @@ async function closeDb() {
   if (mongoClient) await mongoClient.close();
 }
 
+// Иконка актива (монеты или компании — обе хранятся тикером в db.prices) —
+// задаётся ГМом ссылкой на картинку. Разрешаем только http(s)/data:image,
+// чтобы через это поле нельзя было протащить javascript: и подобное — оно
+// уходит в src="..." на экране у всех игроков, не только у ГМа.
+function sanitizeIconUrl(url) {
+  const trimmed = String(url || '').trim().slice(0, 500);
+  if (!trimmed) return null;
+  if (!/^https?:\/\//i.test(trimmed) && !/^data:image\//i.test(trimmed)) return null;
+  return trimmed;
+}
+
 module.exports = {
-  db, initDb, closeDb, COINS, COIN_META, getAllCoins,
+  db, initDb, closeDb, COINS, COIN_META, getAllCoins, sanitizeIconUrl,
   EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY, DEFAULT_SPREAD, DEFAULT_LIQUIDITY,
   MONGODB_URI, MONGODB_DB_NAME,
 };

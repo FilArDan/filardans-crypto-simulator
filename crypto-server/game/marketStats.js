@@ -36,6 +36,7 @@ async function getMarketStats() {
       change1:   (cur != null && prev1  > 0) ? (cur - prev1)  / prev1  * 100 : null,
       change10:  (cur != null && prev10 > 0 && n >= 3) ? (cur - prev10) / prev10 * 100 : null,
       volume10:  getVolume(d.coin),
+      icon:      d.icon || null,
     };
   }
   return stats;

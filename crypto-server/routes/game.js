@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt  = require('bcryptjs');
 const router  = express.Router();
-const { db, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY, DEFAULT_SPREAD, DEFAULT_LIQUIDITY } = require('../db');
+const { db, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY, DEFAULT_SPREAD, DEFAULT_LIQUIDITY, sanitizeIconUrl } = require('../db');
 const { tick, applyTradePressure, deleteCoinHistory } = require('../game/market');
 const { getBotStats, priceHistory, listBotsRaw, createBot, deleteBot, setBotCash, setBotHoldings, updateBotPreset } = require('../game/bots');
 const {
@@ -766,6 +766,7 @@ router.get('/admin/coins', auth, adminOnly, async (req, res) => {
         supply:    d.supply,
         spread:    d.spread > 0 ? d.spread : DEFAULT_SPREAD,
         liquidity: d.liquidity > 0 ? d.liquidity : DEFAULT_LIQUIDITY,
+        icon:      d.icon || null,
         isCustom:  customTickers.has(d.coin),
         isBase,
         name:  isBase ? (COIN_META[d.coin]?.name  || d.coin) : (custom.find(c => c.ticker === d.coin)?.name  || d.coin),
@@ -777,7 +778,7 @@ router.get('/admin/coins', auth, adminOnly, async (req, res) => {
 
 router.post('/admin/coin/params', auth, adminOnly, async (req, res) => {
   try {
-    const { coin, vol, drift, supply, basePrice, spread, liquidity } = req.body;
+    const { coin, vol, drift, supply, basePrice, spread, liquidity, icon } = req.body;
     const allCoins = await getAllCoins();
     if (!allCoins.includes(coin)) return res.json({ error: 'Неизвестная монета' });
     const doc   = await db.prices.findOne({ coin });
@@ -787,6 +788,7 @@ router.post('/admin/coin/params', auth, adminOnly, async (req, res) => {
     if (basePrice != null) patch.basePrice = Math.max(0.0001, parseFloat(basePrice));
     if (spread    != null) patch.spread    = Math.max(0, Math.min(0.20, parseFloat(spread)));
     if (liquidity != null) patch.liquidity = Math.max(0.05, Math.min(20, parseFloat(liquidity)));
+    if (icon      != null) patch.icon      = sanitizeIconUrl(icon);
     if (supply != null && parseFloat(supply) > 0) {
       const oldMcap   = doc.price * (doc.supply || 1);
       const newSupply = parseFloat(supply);
@@ -812,7 +814,7 @@ router.post('/admin/coin/params', auth, adminOnly, async (req, res) => {
 
 router.post('/admin/coin/create', auth, adminOnly, async (req, res) => {
   try {
-    let { ticker, name, price, vol, drift, supply } = req.body;
+    let { ticker, name, price, vol, drift, supply, icon } = req.body;
     ticker = (ticker || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
     if (!ticker || ticker.length < 1) return res.json({ error: 'Укажи тикер (1–8 букв/цифр)' });
     const allCoins = await getAllCoins();
@@ -824,7 +826,8 @@ router.post('/admin/coin/create', auth, adminOnly, async (req, res) => {
     const startDrift  = Math.max(-0.10, Math.min(0.10, parseFloat(drift) || 0));
     const startSupply = Math.max(1, parseFloat(supply) || (baseMeta?.supply ?? 1000000));
     const coinName    = name  || (baseMeta?.name  ?? ticker);
-    await db.prices.insert({ coin: ticker, price: startPrice, basePrice: startPrice, vol: startVol, drift: startDrift, supply: startSupply });
+    const startIcon   = sanitizeIconUrl(icon);
+    await db.prices.insert({ coin: ticker, price: startPrice, basePrice: startPrice, vol: startVol, drift: startDrift, supply: startSupply, icon: startIcon });
     await db.wallets.update({}, { $set: { [ticker]: 0 } }, { multi: true });
     if (!isBase) await db.customCoins.insert({ ticker, name: coinName, createdAt: Date.now() });
 
@@ -918,8 +921,8 @@ router.post('/admin/company/create', auth, adminOnly, async (req, res) => {
 
 router.post('/admin/company/params', auth, adminOnly, async (req, res) => {
   try {
-    const { ticker, revenuePerTick, ownerNation } = req.body;
-    const company = await updateCompany(ticker, { revenuePerTick, ownerNation });
+    const { ticker, revenuePerTick, ownerNation, icon } = req.body;
+    const company = await updateCompany(ticker, { revenuePerTick, ownerNation, icon });
     const ev = { ts: Date.now(), text: `Админ изменил параметры компании ${company.ticker}` };
     await db.events.insert(ev);
     req.app.get('io').emit('newEvent', ev);

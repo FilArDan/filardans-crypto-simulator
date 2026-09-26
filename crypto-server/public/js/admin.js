@@ -10,6 +10,12 @@ let dealCount  = 0;
 let COINS      = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 const BASE_COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 
+// Иконки активов — URL задаёт ГМ и он уходит в src="..." всем игрокам, а не
+// только автору, поэтому кавычки/скобки экранируем перед вставкой в атрибут.
+function escapeAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 const PRESET_INFO = {
   bull: { label: '🐂 Агрессор',    desc: 'Крупные сделки, высокий риск' },
   fox:  { label: '🦊 Осторожный',  desc: 'Редкие небольшие сделки' },
@@ -289,6 +295,7 @@ document.getElementById('createCoinForm').addEventListener('submit', async e => 
     vol:    parseFloat(document.getElementById('newVol').value)   / 100,
     drift:  parseFloat(document.getElementById('newDrift').value) / 100,
     supply: parseFloat(document.getElementById('newSupply').value),
+    icon:   document.getElementById('newIcon').value.trim() || undefined,
   };
 
   const res = await api('POST', '/api/admin/coin/create', body);
@@ -371,10 +378,12 @@ function renderCoinParams() {
       ? `<strong>${coin}</strong>`
       : `${coin} <span class="tag-custom">custom</span>`;
     const isOpen   = expandedCoinParams.has(coin);
+    const iconUrl  = m.icon || '';
+    const iconImg  = iconUrl ? `<img src="${escapeAttr(iconUrl)}" class="coin-icon" onerror="this.style.display='none'">` : '';
 
     return `<div class="coin-card" id="coin-row-${coin}">
       <div class="coin-card-summary" onclick="toggleCoinCard('${coin}')">
-        <div class="coin-card-title">${label}</div>
+        <div class="coin-card-title">${iconImg}${label}</div>
         <div class="coin-card-price">$${fmt(prices[coin] || 0, priceDec(coin))}</div>
         <div class="coin-card-quick">
           <span>🔵 ${volPct}%</span>
@@ -427,6 +436,11 @@ function renderCoinParams() {
             <input type="number" class="coin-input" id="liquidity-${coin}"
               value="${liquidity}" min="0.05" max="20" step="0.05" placeholder="1" title="Множитель глубины рынка: больше — слабее реагирует на объём сделок">
           </label>
+
+          <label class="fld">Иконка (URL)
+            <input type="url" class="coin-input" id="icon-${coin}"
+              value="${escapeAttr(iconUrl)}" maxlength="500" placeholder="https://.../icon.png">
+          </label>
         </div>
 
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -455,8 +469,9 @@ async function saveCoinParams(coin) {
   const baseVal     = parseFloat(document.getElementById(`base-${coin}`).value);
   const spreadVal   = parseFloat(document.getElementById(`spread-${coin}`).value);
   const liquidityVal = parseFloat(document.getElementById(`liquidity-${coin}`).value);
+  const iconVal      = document.getElementById(`icon-${coin}`).value.trim();
 
-  const body = { coin, vol, drift };
+  const body = { coin, vol, drift, icon: iconVal };
   if (!isNaN(supplyVal)    && supplyVal    > 0) body.supply    = supplyVal;
   if (!isNaN(baseVal)      && baseVal      > 0) body.basePrice = baseVal;
   if (!isNaN(spreadVal)    && spreadVal    >= 0) body.spread    = spreadVal / 100;
@@ -690,9 +705,14 @@ function renderPlayers() {
         ${debt > 0 ? 'Долг $' + fmt(debt) : 'OK ✓'}
       </span></td>
       <td>${isSystem ? '' : `
-        <button class="btn btn-secondary btn-sm" onclick="togglePlayerWallet('${safeId}')" title="Редактировать активы">Активы</button>
-        <button class="btn btn-secondary btn-sm" onclick="resetPlayerPassword('${w.username}')" title="Сменить пароль">🔑</button>
-        <button class="btn btn-dan btn-sm" onclick="deletePlayer('${w.username}')" title="Удалить аккаунт">🗑️</button>
+        <div class="row-menu-wrap">
+          <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();togglePlayerMenu('${safeId}')" title="Действия">⋮</button>
+          <div class="row-menu ${openPlayerMenu === safeId ? '' : 'hidden'}" id="player-menu-${safeId}" onclick="event.stopPropagation()">
+            <button class="row-menu-item" onclick="closePlayerMenu();togglePlayerWallet('${safeId}')">💼 Активы</button>
+            <button class="row-menu-item" onclick="closePlayerMenu();resetPlayerPassword('${w.username}')">🔑 Сменить пароль</button>
+            <button class="row-menu-item row-menu-danger" onclick="closePlayerMenu();deletePlayer('${w.username}')">🗑️ Удалить аккаунт</button>
+          </div>
+        </div>
       `}</td>
     </tr>
     ${isSystem ? '' : `
@@ -751,6 +771,24 @@ function togglePlayerWallet(safeId) {
   const row = document.getElementById(`wallet-edit-${safeId}`);
   if (row) row.hidden = !row.hidden;
 }
+
+// Открытое дропдаун-меню действий строки игрока (⋮ Активы/Пароль/Удалить) —
+// по тому же принципу, что и expandedPlayer: переживает перерисовку таблицы.
+let openPlayerMenu = null;
+
+function togglePlayerMenu(safeId) {
+  const willOpen = openPlayerMenu !== safeId;
+  openPlayerMenu = willOpen ? safeId : null;
+  document.querySelectorAll('.row-menu').forEach(el => el.classList.add('hidden'));
+  if (willOpen) document.getElementById(`player-menu-${safeId}`)?.classList.remove('hidden');
+}
+
+function closePlayerMenu() {
+  openPlayerMenu = null;
+  document.querySelectorAll('.row-menu').forEach(el => el.classList.add('hidden'));
+}
+
+document.addEventListener('click', () => closePlayerMenu());
 
 async function saveCurrency(username, safeId) {
   const body = {
@@ -930,8 +968,9 @@ function renderCompanies() {
     const removeBtns = unionCodes.map(code =>
       `<button class="btn btn-dan btn-sm" onclick="removeCompanyListing('${c.ticker}','${code}')" title="Снять с биржи союза ${code}">✕${code}</button>`
     ).join('');
+    const iconImg = c.icon ? `<img src="${escapeAttr(c.icon)}" class="coin-icon" onerror="this.style.display='none'">` : '';
     return `<tr>
-      <td><strong>${c.ticker}</strong></td>
+      <td style="display:flex;align-items:center;gap:8px">${iconImg}<strong>${c.ticker}</strong></td>
       <td>${c.name}</td>
       <td>${c.ownerNation}</td>
       <td>${accessBadge}</td>
@@ -947,6 +986,10 @@ function renderCompanies() {
     </tr>
     <tr>
       <td colspan="8" style="padding-top:0">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0 10px">
+          <span class="lbl-inline">Иконка (URL):</span>
+          <input type="url" class="coin-input" id="company-icon-${c.ticker}" value="${escapeAttr(c.icon || '')}" maxlength="500" placeholder="https://.../logo.png" style="width:220px">
+        </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0 10px">
           <span class="lbl-inline">Листинг на союз:</span>
           <select id="company-union-${c.ticker}" style="width:140px">${unionOptions || '<option disabled>Нет союзов</option>'}</select>
@@ -973,8 +1016,10 @@ async function removeCompanyListing(ticker, unionCode) {
 
 async function saveCompanyParams(ticker) {
   const input = document.getElementById(`company-rev-${ticker}`);
+  const iconInput = document.getElementById(`company-icon-${ticker}`);
   const revenuePerTick = input ? input.value : undefined;
-  const res = await api('POST', '/api/admin/company/params', { ticker, revenuePerTick });
+  const icon = iconInput ? iconInput.value.trim() : undefined;
+  const res = await api('POST', '/api/admin/company/params', { ticker, revenuePerTick, icon });
   if (res.error) { alert(res.error); return; }
   await loadCompaniesData();
 }
@@ -1000,6 +1045,7 @@ document.getElementById('createCompanyForm').addEventListener('submit', async e 
     statePct:       document.getElementById('newCompanyStatePct').value,
     revenuePerTick: document.getElementById('newCompanyRevenue').value,
     vol:            parseFloat(document.getElementById('newCompanyVol').value) / 100,
+    icon:           document.getElementById('newCompanyIcon').value.trim() || undefined,
   };
   const res = await api('POST', '/api/admin/company/create', body);
   if (res.error) {

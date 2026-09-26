@@ -5,12 +5,12 @@
  * новой строчки в матчинге. db.companies хранит только то, чего у монет нет:
  * государство-учредителя и доход, который компания приносит держателям акций.
  */
-const { db, getAllCoins, EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY } = require('../db');
+const { db, getAllCoins, EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY, sanitizeIconUrl } = require('../db');
 
 function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 
 // ── Создание компании ────────────────────────────────────────────────────────
-async function createCompany({ ticker, name, ownerNation, totalShares, startPrice, vol, drift, revenuePerTick, statePct }) {
+async function createCompany({ ticker, name, ownerNation, totalShares, startPrice, vol, drift, revenuePerTick, statePct, icon }) {
   const cleanTicker = String(ticker || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
   if (!cleanTicker) throw new Error('Укажи тикер (1–8 букв/цифр)');
   const allCoins = await getAllCoins();
@@ -30,7 +30,7 @@ async function createCompany({ ticker, name, ownerNation, totalShares, startPric
   const rev    = Math.max(0, Number(revenuePerTick) || 0);
   const pct    = Math.max(0, Math.min(100, Number(statePct) ?? 50));
 
-  await db.prices.insert({ coin: cleanTicker, price, basePrice: price, vol: volume, drift: drft, supply: shares });
+  await db.prices.insert({ coin: cleanTicker, price, basePrice: price, vol: volume, drift: drft, supply: shares, icon: sanitizeIconUrl(icon) });
   await db.wallets.update({}, { $set: { [cleanTicker]: 0 } }, { multi: true });
 
   // Стартовый флоат: доля государства сразу зачисляется владельцу, остаток — в резерв биржи (публичный float)
@@ -57,8 +57,8 @@ async function createCompany({ ticker, name, ownerNation, totalShares, startPric
   return db.companies.findOne({ ticker: cleanTicker });
 }
 
-// ── Правка компании (доход/владелец) ─────────────────────────────────────────
-async function updateCompany(ticker, { revenuePerTick, ownerNation }) {
+// ── Правка компании (доход/владелец/иконка) ──────────────────────────────────
+async function updateCompany(ticker, { revenuePerTick, ownerNation, icon }) {
   const t = String(ticker || '').toUpperCase();
   const company = await db.companies.findOne({ ticker: t });
   if (!company) throw new Error('Компания не найдена');
@@ -76,6 +76,11 @@ async function updateCompany(ticker, { revenuePerTick, ownerNation }) {
     patch.ownerNation = owner;
   }
   if (Object.keys(patch).length) await db.companies.update({ ticker: t }, { $set: patch });
+
+  // Иконка компании — то же поле, что и у монет, живёт в db.prices (общая
+  // модель актива), а не в db.companies (там только метаданные компании).
+  if (icon != null) await db.prices.update({ coin: t }, { $set: { icon: sanitizeIconUrl(icon) } });
+
   return db.companies.findOne({ ticker: t });
 }
 
@@ -99,6 +104,10 @@ async function listCompanies(prices, username) {
     visible = companies.filter((c, i) => checks[i].ok);
   }
 
+  const priceDocs = await db.prices.find({});
+  const iconByTicker = {};
+  priceDocs.forEach(d => { iconByTicker[d.coin] = d.icon || null; });
+
   return visible.map(c => {
     const price = (prices && prices[c.ticker]) || 0;
     return {
@@ -108,6 +117,7 @@ async function listCompanies(prices, username) {
       revenuePerTick: c.revenuePerTick,
       visibility:     c.visibility || 'public',
       unionCodes:     c.unionCodes || [],
+      icon:           iconByTicker[c.ticker] || null,
       price,
       myShares:       wallet ? (wallet[c.ticker] || 0) : 0,
     };

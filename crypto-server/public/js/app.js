@@ -4,7 +4,11 @@ let myProfile = { displayName: '', avatarUrl: null, uiMode: 'full' };
 let prices = {};
 let basePrices = {};
 let currentCoins = [];
-let marketStats = {}; // ticker -> { supply, marketCap, change1, change10, volume10 } — из /api/state
+let marketStats = {}; // ticker -> { supply, marketCap, change1, change10, volume10, icon } — из /api/state и сокета marketStats
+
+function escapeAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 // ── Сортировка списка активов ─────────────────────────────────────────────────
 let assetSortKey = 'name';
@@ -510,6 +514,7 @@ function renderAssetList() {
       marketCap: stats.marketCap != null ? stats.marketCap : null,
       volume:    stats.volume10  != null ? stats.volume10  : null,
       supply:    stats.supply    != null ? stats.supply    : null,
+      icon:      stats.icon      || null,
     };
   }).sort(compareAssetRows);
 
@@ -519,8 +524,9 @@ function renderAssetList() {
 
   body.innerHTML = rows.map(a => {
     const dec = a.price < 1 ? 4 : 2;
+    const iconImg = a.icon ? `<img src="${escapeAttr(a.icon)}" class="asset-icon" onerror="this.style.display='none'">` : '';
     return `<tr class="asset-row" data-asset="${a.ticker}">
-      <td><strong>${a.ticker}</strong>${a.name ? `<div class="muted" style="font-size:11px">${a.name}</div>` : ''}</td>
+      <td><div style="display:flex;align-items:center;gap:8px">${iconImg}<div><strong>${a.ticker}</strong>${a.name ? `<div class="muted" style="font-size:11px">${a.name}</div>` : ''}</div></div></td>
       <td>${fmtRef(a.price, dec)}</td>
       <td>${pctHtml(a.change1)}</td>
       <td>${pctHtml(a.change10)}</td>

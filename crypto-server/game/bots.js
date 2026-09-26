@@ -128,11 +128,51 @@ async function tryBotLoan(botName, currentUsd, requestAmount) {
   return payout;
 }
 
+// ── Дефолт бота (аналог executeDefault для игрока в game/bank.js) ───────────
+// Принудительно реализует все активы бота на биржу и гасит долг настолько,
+// насколько хватает вырученного + имеющегося USD.
+async function executeBotDefault(botName, bot, loanDue, prices, io) {
+  let proceeds = 0;
+  const held = { ...(bot.held || {}) };
+  for (const [coin, amt] of Object.entries(held)) {
+    const price = prices[coin] || 0;
+    if (amt > 0 && price > 0) {
+      const coinProceeds = amt * price * (1 - FEE);
+      proceeds += coinProceeds;
+      held[coin] = 0;
+      await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { [coin]: +amt, usd: -coinProceeds } });
+    }
+  }
+  const usdAfterSale = (Number(bot.usd) || 0) + proceeds;
+  await db.bots.update({ name: botName }, { $set: { usd: usdAfterSale, held } });
+
+  const pay = Math.min(usdAfterSale, loanDue);
+  if (pay > 0) {
+    await db.bots.update({ name: botName }, { $inc: { usd: -pay } });
+    await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: +pay } });
+  }
+  const remaining = Math.max(0, loanDue - pay);
+  await db.loans.update(
+    { username: botName, paid: { $ne: true } },
+    { $set: remaining < 0.01 ? { due: 0, paid: true } : { due: remaining } }
+  );
+
+  const ev = {
+    ts: Date.now(),
+    text: `⚠️ ДЕФОЛТ БОТА! ${botName} не смог обслуживать кредит — активы принудительно реализованы ($${proceeds.toFixed(2)}). Остаток задолженности: $${remaining.toFixed(2)}`,
+  };
+  await db.events.insert(ev);
+  if (io) io.emit('newEvent', ev);
+}
+
 /**
  * Начисляет проценты по кредитам ботов и пополняет казну банка.
- * Вызывается из botTick() после всех сделок.
+ * Вызывается из botTick() после всех сделок. Если долговая нагрузка бота
+ * (due / портфель) достигает MARGIN_THRESHOLD — как и у игрока — бот уходит
+ * в принудительный дефолт вместо бесконечно растущего необслуживаемого долга.
  */
-async function accrueBotsInterest() {
+async function accrueBotsInterest(prices, io) {
+  const { MARGIN_THRESHOLD } = require('./bank');
   const botLoans = await db.loans.find({ isBot: true, paid: { $ne: true } });
   for (const loan of botLoans) {
     const interest = loan.due * (loan.rate || BOT_LOAN_RATE);
@@ -141,9 +181,20 @@ async function accrueBotsInterest() {
     // Банк получает проценты в казну
     await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: interest } });
 
+    const botDoc = await db.bots.findOne({ name: loan.username });
+    if (!botDoc) continue;
+    const bot = sanitizeBot(botDoc);
+
+    const portfolioValue = botPortfolioValue(bot, prices || {});
+    const marginRatio = portfolioValue > 0 ? newDue / portfolioValue : 1;
+
+    if (marginRatio >= MARGIN_THRESHOLD) {
+      await executeBotDefault(loan.username, bot, newDue, prices || {}, io);
+      continue;
+    }
+
     // Авто-погашение: если у бота накопилось достаточно USD — гасим долг
-    const bot = await db.bots.findOne({ name: loan.username });
-    if (bot && (Number(bot.usd) || 0) >= newDue * 1.5) {
+    if ((Number(bot.usd) || 0) >= newDue * 1.5) {
       const repay = Math.min(Number(bot.usd) * 0.4, newDue);
       await db.bots.update({ name: loan.username }, { $inc: { usd: -repay } });
       await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: repay } });
@@ -349,7 +400,7 @@ async function botTick(io, currentPrices) {
   }
 
   // Начисляем проценты по кредитам ботов и возвращаем деньги в казну
-  try { await accrueBotsInterest(); } catch (_) {}
+  try { await accrueBotsInterest(prices, io); } catch (_) {}
 }
 
 // ── Статистика ──────────────────────────────────────────────────────────────────────────────────────

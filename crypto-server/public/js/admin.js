@@ -324,23 +324,6 @@ async function deleteCoin(ticker) {
   await loadAdminData();
 }
 
-// ── ОЧИСТКА ИСТОРИИ ЦЕН ──────────────────────────────────────────────────────
-async function clearCoinHistory(ticker) {
-  if (!confirm(`Очистить историю цен для ${ticker}?\nЧарт этой монеты обнулится у всех игроков.`)) return;
-  const r = await fetch(`/api/admin/price-history/${encodeURIComponent(ticker)}`, { method: 'DELETE' });
-  const data = await r.json();
-  if (data.error) { alert(data.error); return; }
-}
-
-async function clearAllHistory() {
-  if (!confirm('Очистить историю цен ВСЕХ монет?\n\nЧарты обнулятся у всех игроков. Это действие нельзя отменить.')) return;
-  const btn = document.getElementById('clearAllHistoryBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
-  const r = await fetch('/api/admin/price-history', { method: 'DELETE' });
-  const data = await r.json();
-  if (data.error) { alert(data.error); }
-  if (btn) { btn.disabled = false; btn.textContent = '🗑️ Очистить всю историю цен'; }
-}
 
 // ── ПАРАМЕТРЫ МОНЕТ ──────────────────────────────────────────────────────────
 // Раскрытые карточки (по тикеру) — сохраняем между перерисовками, иначе
@@ -445,21 +428,11 @@ function renderCoinParams() {
 
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-secondary btn-sm" onclick="saveCoinParams('${coin}')">Сохранить</button>
-          <button class="btn btn-warn btn-sm" onclick="clearCoinHistory('${coin}')">📉 Очистить историю</button>
           <button class="btn btn-dan btn-sm" onclick="deleteCoin('${coin}')">🗑️ Удалить монету</button>
         </div>
       </div>
     </div>`;
   }).join('');
-
-  // Кнопка глобальной очистки (рендерим под списком если её ещё нет)
-  const wrap = document.getElementById('coinParamsWrap');
-  if (wrap && !document.getElementById('clearAllHistoryBtn')) {
-    const div = document.createElement('div');
-    div.style.cssText = 'margin-top:12px;display:flex;justify-content:flex-end';
-    div.innerHTML = `<button id="clearAllHistoryBtn" class="btn btn-dan" onclick="clearAllHistory()">🗑️ Очистить всю историю цен</button>`;
-    wrap.appendChild(div);
-  }
 }
 
 async function saveCoinParams(coin) {

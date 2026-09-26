@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt  = require('bcryptjs');
 const router  = express.Router();
 const { db, COINS, COIN_META, getAllCoins, EXCHANGE_USERNAME, EXCHANGE_CUSTOM_COIN_SUPPLY, DEFAULT_SPREAD, DEFAULT_LIQUIDITY, sanitizeIconUrl } = require('../db');
-const { tick, applyTradePressure, deleteCoinHistory } = require('../game/market');
+const { tick, applyTradePressure } = require('../game/market');
 const { getBotStats, priceHistory, listBotsRaw, createBot, deleteBot, setBotCash, setBotHoldings, updateBotPreset } = require('../game/bots');
 const {
   placeOrder, cancelOrder, listUserOrders, getOrderBook,
@@ -926,7 +926,9 @@ async function buybackAndRemoveAsset(ticker, io, fundingAccount = EXCHANGE_USERN
   await db.wallets.update({ username: fundingAccount }, { $set: { [ticker]: 0 } });
   await db.prices.remove({ coin: ticker }, {});
   await db.customCoins.remove({ ticker }, {});
-  await deleteCoinHistory(ticker);
+  // История цен (db.priceHistory) сознательно НЕ трогается — она никогда не
+  // удаляется, даже при удалении самого актива. Если тикер потом создадут
+  // заново, его старый график никуда не денется.
   return true;
 }
 
@@ -1119,30 +1121,9 @@ router.delete('/admin/restriction/:id', auth, adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── АДМИН: очистка истории цен ─────────────────────────────────────────────────
-router.delete('/admin/price-history/:coin', auth, adminOnly, async (req, res) => {
-  try {
-    const coin = (req.params.coin || '').toUpperCase();
-    if (!coin) return res.status(400).json({ error: 'Укажи тикер монеты' });
-    await deleteCoinHistory(coin);
-    const ev = { ts: Date.now(), text: `Админ очистил историю цен: ${coin}` };
-    await db.events.insert(ev);
-    req.app.get('io').emit('newEvent', ev);
-    req.app.get('io').emit('priceHistoryCleared', { coin });
-    res.json({ ok: true, coin });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-router.delete('/admin/price-history', auth, adminOnly, async (req, res) => {
-  try {
-    await db.priceHistory.remove({}, { multi: true });
-    const ev = { ts: Date.now(), text: 'Админ очистил историю цен всех монет 🗑️' };
-    await db.events.insert(ev);
-    req.app.get('io').emit('newEvent', ev);
-    req.app.get('io').emit('priceHistoryCleared', { coin: null });
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+// История цен (db.priceHistory) больше не удаляется никаким путём — ни при
+// удалении самой монеты (см. buybackAndRemoveAsset выше), ни вручную из
+// админки: соответствующие эндпоинты очистки истории убраны намеренно.
 
 // ── АДМИН: тик, скорость ───────────────────────────────────────────────────────
 router.post('/admin/tick', auth, adminOnly, async (req, res) => {

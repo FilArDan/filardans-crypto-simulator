@@ -52,11 +52,6 @@ async function savePriceHistoryTick(prices) {
   }
 }
 
-// Удаляет историю актива (при удалении актива или по запросу ГМ)
-async function deleteCoinHistory(coin) {
-  await db.priceHistory.remove({ coin }, { multi: true });
-}
-
 // ── Моментум и кластеризация волатильности ────────────────────────────────────
 // Раньше шум каждого тика был независим от предыдущего — на графике не было
 // вообще никакой инерции, поэтому любые "паттерны" (флаги, клинья) были чистой
@@ -188,4 +183,4 @@ async function applyTradePressure(coin, amount, action) {
   return newPrice;
 }
 
-module.exports = { tick, applyTradePressure, deleteCoinHistory, roundPrice };
+module.exports = { tick, applyTradePressure, roundPrice };

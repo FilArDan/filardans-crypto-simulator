@@ -134,16 +134,6 @@ async function loadSavedHistory() {
   }
 }
 
-function handlePriceHistoryCleared(coin) {
-  if (coin === null) {
-    chartCoins.forEach(c => { priceHistory[c] = []; });
-  } else {
-    priceHistory[coin] = [];
-  }
-  // Полностью пересобрать серии — здесь setData ок, это редкое разовое действие
-  if (chart) rebuildAllSeriesData();
-}
-
 // ── Табы монет (выше графика) ──────────────────────────────────────────────────
 // В режиме «Сравнение» табы работают как чекбоксы (мультивыбор), а не
 // переключатель одной активной монеты.

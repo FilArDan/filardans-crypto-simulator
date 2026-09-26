@@ -152,9 +152,14 @@ async function executeBotDefault(botName, bot, loanDue, prices, io) {
     await db.wallets.update({ username: EXCHANGE_USERNAME }, { $inc: { usd: +pay } });
   }
   const remaining = Math.max(0, loanDue - pay);
+  // defaulted:true — помечаем как «списано» независимо от того, погашен ли
+  // остаток полностью: у бота больше нет и не может появиться активов (новый
+  // кредит недоступен, пока висит непогашенный, а торговать без стартового
+  // капитала боты не умеют), так что повторный дефолт на каждом следующем
+  // тике ничего не изменит, а только заспамит ленту событий тем же текстом.
   await db.loans.update(
     { username: botName, paid: { $ne: true } },
-    { $set: remaining < 0.01 ? { due: 0, paid: true } : { due: remaining } }
+    { $set: remaining < 0.01 ? { due: 0, paid: true, defaulted: true } : { due: remaining, defaulted: true } }
   );
 
   const ev = {
@@ -173,7 +178,10 @@ async function executeBotDefault(botName, bot, loanDue, prices, io) {
  */
 async function accrueBotsInterest(prices, io) {
   const { MARGIN_THRESHOLD } = require('./bank');
-  const botLoans = await db.loans.find({ isBot: true, paid: { $ne: true } });
+  // Уже дефолтнутые кредиты пропускаем — иначе проценты продолжали бы капать
+  // на списанный долг бота без единого шанса его погасить, и дефолт (с
+  // событием в ленту) заново срабатывал бы на каждом тике.
+  const botLoans = await db.loans.find({ isBot: true, paid: { $ne: true }, defaulted: { $ne: true } });
   for (const loan of botLoans) {
     const interest = loan.due * (loan.rate || BOT_LOAN_RATE);
     const newDue   = loan.due + interest;

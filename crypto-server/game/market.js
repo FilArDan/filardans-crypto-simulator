@@ -2,7 +2,7 @@ const { db, getAllCoins, EXCHANGE_USERNAME, DEFAULT_LIQUIDITY } = require('../db
 const { updatePriceHistory, botTick, priceHistory, getBotStats } = require('./bots');
 const { accrueInterest } = require('./bank');
 const { getMarketStats } = require('./marketStats');
-const { getVolume } = require('./volume');
+const { hasConfirmedNoVolume } = require('./volume');
 
 function roundPrice(p) {
   if (p >= 1000) return Math.round(p * 100)   / 100;
@@ -93,14 +93,20 @@ async function tick(io) {
     const base    = doc.basePrice || doc.price; // базовая стоимость
 
     const prevVolState = doc.volState > 0 ? doc.volState : baseVol;
-    const noiseMult = getVolume(coin) > 0 ? 1 : DEAD_MARKET_NOISE_MULT;
-    const rawNoise = (Math.random() - 0.5) * prevVolState * noiseMult;
-    const momentum = (doc.momentum || 0) * MOMENTUM + rawNoise * (1 - MOMENTUM);
+    // "Истинный" шум — независим от того, торговали активом или нет. Именно
+    // он (а не задавленная версия ниже) должен питать кластеризацию
+    // волатильности (shock/volState) — иначе на мёртвом рынке volState сам
+    // схлопывался бы к минимуму, и подавление на следующих тиках множилось
+    // само на себя (рынок "устаканивался" гораздо сильнее заложенных 12%).
+    const rawNoise = (Math.random() - 0.5) * prevVolState;
+    const noiseMult = hasConfirmedNoVolume(coin) ? DEAD_MARKET_NOISE_MULT : 1;
+    const appliedNoise = rawNoise * noiseMult;
+    const momentum = (doc.momentum || 0) * MOMENTUM + appliedNoise * (1 - MOMENTUM);
 
     const pull  = (base - doc.price) / base * 0.002;
     const newPrice = Math.max(0.0001, roundPrice(doc.price * (1 + momentum + drift + pull)));
 
-    const shock = Math.abs(momentum);
+    const shock = Math.abs(rawNoise);
     let nextVolState = prevVolState * VOL_CLUSTER_DECAY
       + (baseVol * 0.4 + shock * VOL_SHOCK_GAIN) * (1 - VOL_CLUSTER_DECAY);
     nextVolState = Math.min(Math.max(nextVolState, baseVol * VOL_MIN_MULT), baseVol * VOL_MAX_MULT);

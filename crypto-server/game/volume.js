@@ -37,4 +37,15 @@ function getVolume(coin) {
   return arr ? arr.reduce((s, v) => s + v, 0) : 0;
 }
 
-module.exports = { recordTrade, rotateTick, getVolume, WINDOW };
+// "Мёртвый рынок" (см. game/market.js) должен давить шум только когда окно
+// реально ПОЛНОЕ и сумма нулевая — а не сразу после рестарта сервера, когда
+// история просто ещё не набралась (in-memory, обнуляется при каждом
+// перезапуске). Без этого разграничения весь рынок ошибочно выглядел бы
+// мёртвым первые WINDOW тиков (~4 минуты при тике 25с) после любого деплоя.
+function hasConfirmedNoVolume(coin) {
+  const arr = history[coin];
+  if (!arr || arr.length < WINDOW) return false; // окно не набралось — не считаем мёртвым
+  return arr.reduce((s, v) => s + v, 0) === 0;
+}
+
+module.exports = { recordTrade, rotateTick, getVolume, hasConfirmedNoVolume, WINDOW };

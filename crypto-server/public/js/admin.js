@@ -335,13 +335,27 @@ async function clearAllHistory() {
 }
 
 // ── ПАРАМЕТРЫ МОНЕТ ──────────────────────────────────────────────────────────
-function renderCoinParams() {
-  const tbody = document.getElementById('coinParamsBody');
-  if (!tbody) return;
-  if (hasUnsavedEdits(tbody)) return;
-  tbody.dataset.dirty = '';
+// Раскрытые карточки (по тикеру) — сохраняем между перерисовками, иначе
+// открытая карточка схлопывалась бы при каждом debouncedReload().
+const expandedCoinParams = new Set();
 
-  tbody.innerHTML = COINS.map(coin => {
+function toggleCoinCard(coin) {
+  const body = document.getElementById(`coin-body-${coin}`);
+  const btn  = document.getElementById(`coin-toggle-${coin}`);
+  if (!body) return;
+  const willOpen = expandedCoinParams.has(coin) ? false : true;
+  if (willOpen) expandedCoinParams.add(coin); else expandedCoinParams.delete(coin);
+  body.style.display = willOpen ? 'block' : 'none';
+  if (btn) btn.textContent = willOpen ? '▴' : '▾';
+}
+
+function renderCoinParams() {
+  const list = document.getElementById('coinParamsBody');
+  if (!list) return;
+  if (hasUnsavedEdits(list)) return;
+  list.dataset.dirty = '';
+
+  list.innerHTML = COINS.map(coin => {
     const m        = coinMeta[coin] || {};
     const volPct   = +(((m.vol   || 0.04) * 100).toFixed(1));
     const driftPct = +(((m.drift || 0)    * 100).toFixed(1));
@@ -355,65 +369,75 @@ function renderCoinParams() {
     const label    = isBase
       ? `<strong>${coin}</strong>`
       : `${coin} <span class="tag-custom">custom</span>`;
+    const isOpen   = expandedCoinParams.has(coin);
 
-    return `<tr id="coin-row-${coin}">
-      <td>${label}</td>
-      <td style="font-variant-numeric:tabular-nums">$${fmt(prices[coin] || 0, priceDec(coin))}</td>
-
-      <td>
-        <div style="display:flex;align-items:center;gap:6px">
-          <input type="range" min="0.5" max="30" step="0.5" value="${volPct}"
-            class="coin-slider" id="vol-${coin}"
-            oninput="document.getElementById('vol-lbl-${coin}').textContent=this.value+'%'">
-          <span class="vol-lbl" id="vol-lbl-${coin}">${volPct}%</span>
+    return `<div class="coin-card" id="coin-row-${coin}">
+      <div class="coin-card-summary" onclick="toggleCoinCard('${coin}')">
+        <div class="coin-card-title">${label}</div>
+        <div class="coin-card-price">$${fmt(prices[coin] || 0, priceDec(coin))}</div>
+        <div class="coin-card-quick">
+          <span>🔵 ${volPct}%</span>
+          <span style="color:${driftCol}">🟢 ${driftPct > 0 ? '+' : ''}${driftPct}%</span>
         </div>
-      </td>
+        <button type="button" class="coin-card-toggle" id="coin-toggle-${coin}">${isOpen ? '▴' : '▾'}</button>
+      </div>
 
-      <td>
-        <div style="display:flex;align-items:center;gap:6px">
-          <input type="range" min="-10" max="10" step="0.1" value="${driftPct}"
-            class="coin-slider" id="drift-${coin}"
-            oninput="
-              const v=parseFloat(this.value);
-              const lbl=document.getElementById('drift-lbl-${coin}');
-              lbl.textContent=(v>0?'+':'')+v.toFixed(1)+'%';
-              lbl.style.color=v>0?'var(--ok)':v<0?'var(--dan)':'var(--mu)';
-            ">
-          <span class="drift-lbl" id="drift-lbl-${coin}" style="color:${driftCol}">${driftPct > 0 ? '+' : ''}${driftPct}%</span>
+      <div class="coin-card-body" id="coin-body-${coin}" style="display:${isOpen ? 'block' : 'none'}">
+        <div class="create-grid">
+          <label class="fld">Волатильность
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" min="0.5" max="30" step="0.5" value="${volPct}"
+                class="coin-slider" id="vol-${coin}"
+                oninput="document.getElementById('vol-lbl-${coin}').textContent=this.value+'%'">
+              <span class="vol-lbl" id="vol-lbl-${coin}">${volPct}%</span>
+            </div>
+          </label>
+
+          <label class="fld">Тренд (drift)
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" min="-10" max="10" step="0.1" value="${driftPct}"
+                class="coin-slider" id="drift-${coin}"
+                oninput="
+                  const v=parseFloat(this.value);
+                  const lbl=document.getElementById('drift-lbl-${coin}');
+                  lbl.textContent=(v>0?'+':'')+v.toFixed(1)+'%';
+                  lbl.style.color=v>0?'var(--ok)':v<0?'var(--dan)':'var(--mu)';
+                ">
+              <span class="drift-lbl" id="drift-lbl-${coin}" style="color:${driftCol}">${driftPct > 0 ? '+' : ''}${driftPct}%</span>
+            </div>
+          </label>
+
+          <label class="fld">Supply
+            <input type="number" class="coin-input" id="supply-${coin}"
+              value="${supply}" min="1" step="1" placeholder="Supply">
+          </label>
+
+          <label class="fld">Базовая цена
+            <input type="number" class="coin-input" id="base-${coin}"
+              value="${base}" min="0.0001" step="any" placeholder="Базовая цена">
+          </label>
+
+          <label class="fld">Спред
+            <input type="number" class="coin-input" id="spread-${coin}"
+              value="${(spreadPct).toFixed(2)}" min="0" max="20" step="0.01" placeholder="0.15" title="±% между ценой покупки и продажи">
+          </label>
+
+          <label class="fld">Ликвидность
+            <input type="number" class="coin-input" id="liquidity-${coin}"
+              value="${liquidity}" min="0.05" max="20" step="0.05" placeholder="1" title="Множитель глубины рынка: больше — слабее реагирует на объём сделок">
+          </label>
         </div>
-      </td>
 
-      <td>
-        <input type="number" class="coin-input" id="supply-${coin}"
-          value="${supply}" min="1" step="1" placeholder="Supply">
-      </td>
-
-      <td>
-        <input type="number" class="coin-input" id="base-${coin}"
-          value="${base}" min="0.0001" step="any" placeholder="Базовая цена">
-      </td>
-
-      <td>
-        <input type="number" class="coin-input" id="spread-${coin}" style="width:80px"
-          value="${(spreadPct).toFixed(2)}" min="0" max="20" step="0.01" placeholder="0.15" title="±% между ценой покупки и продажи">
-      </td>
-
-      <td>
-        <input type="number" class="coin-input" id="liquidity-${coin}" style="width:80px"
-          value="${liquidity}" min="0.05" max="20" step="0.05" placeholder="1" title="Множитель глубины рынка: больше — слабее реагирует на объём сделок">
-      </td>
-
-      <td style="display:flex;gap:6px;align-items:center">
-        <button class="btn btn-secondary btn-sm" onclick="saveCoinParams('${coin}')">
-          Сохранить
-        </button>
-        <button class="btn btn-warn btn-sm" onclick="clearCoinHistory('${coin}')" title="Очистить историю цен">📉</button>
-        <button class="btn btn-dan btn-sm" onclick="deleteCoin('${coin}')" title="Удалить монету">🗑️</button>
-      </td>
-    </tr>`;
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" onclick="saveCoinParams('${coin}')">Сохранить</button>
+          <button class="btn btn-warn btn-sm" onclick="clearCoinHistory('${coin}')">📉 Очистить историю</button>
+          <button class="btn btn-dan btn-sm" onclick="deleteCoin('${coin}')">🗑️ Удалить монету</button>
+        </div>
+      </div>
+    </div>`;
   }).join('');
 
-  // Кнопка глобальной очистки (рендерим под таблицей если её ещё нет)
+  // Кнопка глобальной очистки (рендерим под списком если её ещё нет)
   const wrap = document.getElementById('coinParamsWrap');
   if (wrap && !document.getElementById('clearAllHistoryBtn')) {
     const div = document.createElement('div');

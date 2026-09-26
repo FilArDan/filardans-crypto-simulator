@@ -21,10 +21,6 @@
   <link rel="stylesheet" href="/style.css" />
   <style>
     .coin-slider { width: 110px; accent-color: var(--pri); }
-    /* input.coin-input (не просто .coin-input) — иначе проигрывает по
-       специфичности глобальному input[type=number]{width:100%} из style.css,
-       и поля без inline-ширины (Supply, Базовая цена) схлопываются в auto-таблице */
-    input.coin-input { width: 130px; }
     .drift-lbl   { min-width: 44px; font-size: 12px; font-variant-numeric: tabular-nums; }
     .vol-lbl     { min-width: 36px; font-size: 12px; font-variant-numeric: tabular-nums; }
     .create-grid {
@@ -118,6 +114,24 @@
     .bot-cash-input { width: 90px; }
     .bots-grid { display: flex; flex-direction: column; gap: 10px; }
     .preset-group { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    /* Параметры монет — карточка на монету вместо тесной таблицы */
+    .coin-params-list { display: flex; flex-direction: column; gap: 10px; }
+    .coin-card { background: var(--sf2); border: 1px solid var(--bd); border-radius: 10px; overflow: hidden; }
+    .coin-card-summary {
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+      padding: 12px 16px; cursor: pointer; user-select: none;
+    }
+    .coin-card-summary:hover { background: var(--sf3); }
+    .coin-card-title { font-weight: 700; font-size: 15px; min-width: 90px; }
+    .coin-card-price { font-variant-numeric: tabular-nums; color: var(--mu); min-width: 90px; }
+    .coin-card-quick { display: flex; gap: 12px; font-size: 12px; flex: 1; }
+    .coin-card-toggle {
+      margin-left: auto; border: 1px solid var(--bd); background: var(--sf);
+      border-radius: 8px; width: 30px; height: 30px; font-size: 14px; cursor: pointer;
+    }
+    .coin-card-toggle:hover { border-color: var(--pri); color: var(--pri); }
+    .coin-card-body { padding: 4px 16px 16px; border-top: 1px solid var(--bd); }
 
     /* Банк */
     .bank-card {
@@ -552,26 +566,9 @@
 
 
     <!-- ПАРАМЕТРЫ МОНЕТ -->
-    <div class="card section-gap">
+    <div class="card section-gap" id="coinParamsWrap">
       <h2>⚙️ Параметры монет</h2>
-      <div style="overflow-x:auto">
-        <table>
-          <thead>
-            <tr>
-              <th>Монета</th>
-              <th>Цена</th>
-              <th>Волатильность</th>
-              <th>Тренд (drift)</th>
-              <th>Supply</th>
-              <th>Базовая цена</th>
-              <th>Спред</th>
-              <th>Ликвидность</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="coinParamsBody"></tbody>
-        </table>
-      </div>
+      <div id="coinParamsBody" class="coin-params-list"></div>
       <div class="lbl" style="margin-top:8px">
         🔵 <b>Волатильность</b> — разброс цены за тик.&nbsp;&nbsp;
         🟢 <b>Тренд</b> — постоянный рост или падение.&nbsp;&nbsp;

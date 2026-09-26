@@ -90,8 +90,12 @@ class Collection {
     return this.count(query);
   }
 
-  async ensureIndex({ fieldName, unique }) {
-    await this.raw.createIndex({ [fieldName]: 1 }, { unique: !!unique });
+  // fields — для составного индекса (например {coin:1, ts:-1}), когда
+  // порядок/направление полей важны для запроса с сортировкой; fieldName —
+  // прежний короткий путь для простого индекса по одному полю.
+  async ensureIndex({ fieldName, fields, unique }) {
+    const spec = fields || { [fieldName]: 1 };
+    await this.raw.createIndex(spec, { unique: !!unique });
   }
 }
 
@@ -182,8 +186,12 @@ async function initDb() {
     db[name] = new Collection(mongoDb.collection(name));
   }
 
-  // Индекс для быстрой фильтрации по монете
-  await db.priceHistory.ensureIndex({ fieldName: 'coin' });
+  // Составной индекс под реальный запрос графика — find({coin}).sort({ts:-1}).
+  // limit(n): без второго поля в индексе (было {coin:1} — только фильтрация)
+  // Mongo пришлось бы сортировать в памяти ВСЮ историю монеты перед
+  // limit(), а история никогда не удаляется и может разрастись до
+  // сотен тысяч записей — тот же класс проблемы, что уже ловили на NeDB.
+  await db.priceHistory.ensureIndex({ fields: { coin: 1, ts: -1 } });
 
   // Индексы стакана лимитных ордеров
   await db.orders.ensureIndex({ fieldName: 'username' });

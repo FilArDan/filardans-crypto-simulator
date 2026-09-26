@@ -98,7 +98,7 @@ async function emitPlayersUpdate(io) {
 router.get('/price-history', auth, async (req, res) => {
   try {
     const coin  = (req.query.coin || '').toUpperCase();
-    const limit = Math.min(Math.max(parseInt(req.query.limit) || 500, 1), 500);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 500, 1), 5000);
     if (!coin) return res.json([]);
     // Сортировка по убыванию + limit — иначе при истории длиннее limit
     // (у любого актива старше ~500 тиков) отдавались бы САМЫЕ СТАРЫЕ точки,

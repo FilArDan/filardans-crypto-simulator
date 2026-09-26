@@ -112,7 +112,7 @@ function addPricePoint(prices) {
 // ── Загрузка сохранённой истории с сервера (одна монета) ─────────────────────
 async function fetchCoinHistory(coin) {
   try {
-    const resp = await fetch(`/api/price-history?coin=${coin}&limit=500`);
+    const resp = await fetch(`/api/price-history?coin=${coin}&limit=${MAX_HISTORY_POINTS}`);
     if (!resp.ok) return null;
     const data = await resp.json();
     if (!Array.isArray(data) || !data.length) return null;

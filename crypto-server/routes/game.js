@@ -10,7 +10,7 @@ const {
 } = require('../game/orders');
 const { createCompany, updateCompany, deleteCompany, listCompanies } = require('../game/companies');
 const {
-  createUnion, addMember, removeMember, deleteUnion,
+  createUnion, addMember, removeMember, addBotMember, removeBotMember, deleteUnion,
   addCompanyUnionListing, removeCompanyUnionListing,
   banAsset, unbanAsset, listRestrictions,
   listUnions, listUnionsAdmin,
@@ -992,6 +992,20 @@ router.post('/admin/union/member', auth, adminOnly, async (req, res) => {
     const ev = {
       ts: Date.now(),
       text: `Админ ${action === 'remove' ? 'исключил' : 'добавил'} ${username} ${action === 'remove' ? 'из' : 'в'} союз ${code}`,
+    };
+    await db.events.insert(ev);
+    req.app.get('io').emit('newEvent', ev);
+    res.json({ ok: true, union });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+router.post('/admin/union/bot-member', auth, adminOnly, async (req, res) => {
+  try {
+    const { code, botName, action } = req.body;
+    const union = action === 'remove' ? await removeBotMember(code, botName) : await addBotMember(code, botName);
+    const ev = {
+      ts: Date.now(),
+      text: `Админ ${action === 'remove' ? 'исключил' : 'добавил'} бота ${botName} ${action === 'remove' ? 'из' : 'в'} союз ${code}`,
     };
     await db.events.insert(ev);
     req.app.get('io').emit('newEvent', ev);

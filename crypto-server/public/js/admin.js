@@ -1035,6 +1035,16 @@ function fillUnionMembersSelect() {
   [...sel.options].forEach(o => { if (prevSelected.has(o.value)) o.selected = true; });
 }
 
+function fillUnionBotMembersSelect() {
+  const sel = document.getElementById('newUnionBotMembers');
+  if (!sel) return;
+  const prevSelected = new Set([...sel.selectedOptions].map(o => o.value));
+  sel.innerHTML = allBots.length
+    ? allBots.map(b => `<option value="${b.username}">${b.username} [${b.botType}]</option>`).join('')
+    : '<option disabled>Ботов пока нет</option>';
+  [...sel.options].forEach(o => { if (prevSelected.has(o.value)) o.selected = true; });
+}
+
 function renderUnions() {
   const tbody = document.getElementById('unionsBody');
   if (!tbody) return;
@@ -1048,26 +1058,42 @@ function renderUnions() {
     .filter(w => w.username !== 'WARDEN' && w.username !== 'EXCHANGE')
     .sort((a, b) => a.username.localeCompare(b.username));
 
-  tbody.innerHTML = allUnions.map(u => `
+  tbody.innerHTML = allUnions.map(u => {
+    const botMembers = u.botMembers || [];
+    const allTags = [
+      ...u.members.map(m => `<span class="tag-custom">${m}</span>`),
+      ...botMembers.map(m => `<span class="tag-custom">🤖${m}</span>`),
+    ].join(' ') || '<span class="muted">нет участников</span>';
+
+    return `
     <tr>
       <td><strong>${u.code}</strong></td>
       <td>${u.name}</td>
-      <td>${u.members.map(m => `<span class="tag-custom">${m}</span>`).join(' ')}</td>
+      <td>${allTags}</td>
       <td><button class="btn btn-dan btn-sm" onclick="deleteUnion('${u.code}')" title="Распустить союз">🗑️</button></td>
     </tr>
     <tr>
       <td colspan="4" style="padding-top:0">
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0 10px">
-          <span class="lbl-inline">Участники:</span>
+          <span class="lbl-inline">Государства:</span>
           <select id="union-member-${u.code}" style="width:160px">
             ${playerOptions.map(w => `<option value="${w.username}">${w.username}</option>`).join('')}
           </select>
           <button class="btn btn-secondary btn-sm" onclick="addUnionMember('${u.code}')">Добавить</button>
           ${u.members.map(m => `<button class="btn btn-dan btn-sm" onclick="removeUnionMember('${u.code}','${m}')" title="Исключить ${m}">✕${m}</button>`).join('')}
         </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0 10px">
+          <span class="lbl-inline">Боты:</span>
+          <select id="union-bot-member-${u.code}" style="width:160px">
+            ${allBots.length ? allBots.map(b => `<option value="${b.username}">${b.username} [${b.botType}]</option>`).join('') : '<option disabled>Ботов пока нет</option>'}
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="addUnionBotMember('${u.code}')" ${allBots.length ? '' : 'disabled'}>Добавить</button>
+          ${botMembers.map(m => `<button class="btn btn-dan btn-sm" onclick="removeUnionBotMember('${u.code}','${m}')" title="Исключить бота ${m}">✕🤖${m}</button>`).join('')}
+        </div>
       </td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
 
 async function addUnionMember(code) {
@@ -1079,6 +1105,19 @@ async function addUnionMember(code) {
 
 async function removeUnionMember(code, username) {
   const res = await api('POST', '/api/admin/union/member', { code, username, action: 'remove' });
+  if (res.error) { alert(res.error); return; }
+  await loadUnionsData();
+}
+
+async function addUnionBotMember(code) {
+  const botName = document.getElementById(`union-bot-member-${code}`).value;
+  const res = await api('POST', '/api/admin/union/bot-member', { code, botName, action: 'add' });
+  if (res.error) { alert(res.error); return; }
+  await loadUnionsData();
+}
+
+async function removeUnionBotMember(code, botName) {
+  const res = await api('POST', '/api/admin/union/bot-member', { code, botName, action: 'remove' });
   if (res.error) { alert(res.error); return; }
   await loadUnionsData();
 }
@@ -1095,11 +1134,13 @@ document.getElementById('createUnionForm')?.addEventListener('submit', async e =
   e.preventDefault();
   const btn = document.getElementById('createUnionBtn');
   btn.disabled = true; btn.textContent = '⏳...';
-  const members = [...document.getElementById('newUnionMembers').selectedOptions].map(o => o.value);
+  const members    = [...document.getElementById('newUnionMembers').selectedOptions].map(o => o.value);
+  const botMembers = [...(document.getElementById('newUnionBotMembers')?.selectedOptions || [])].map(o => o.value);
   const body = {
     code: document.getElementById('newUnionCode').value.trim(),
     name: document.getElementById('newUnionName').value.trim(),
     members,
+    botMembers,
   };
   const res = await api('POST', '/api/admin/union/create', body);
   if (res.error) {
@@ -1172,6 +1213,7 @@ async function loadAdminData() {
   renderBankCard();  // без аргументов — возьмёт из allWallets/allLoans
   await loadExchangeAssets();
   await loadBotsData();
+  fillUnionBotMembersSelect();
   await loadRestrictionsData();
   await loadUnionsData();
   await loadCompaniesData();

@@ -12,7 +12,7 @@
 const { db } = require('../db');
 
 // ── Создание союза ────────────────────────────────────────────────────────────
-async function createUnion({ code, name, members }) {
+async function createUnion({ code, name, members, botMembers }) {
   const cleanCode = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
   if (!cleanCode) throw new Error('Укажи код союза (1–12 букв/цифр)');
   const exists = await db.unions.findOne({ code: cleanCode });
@@ -26,10 +26,17 @@ async function createUnion({ code, name, members }) {
     if (!user) throw new Error(`Государство ${m} не найдено`);
   }
 
+  const botMemberList = Array.isArray(botMembers) ? botMembers : [];
+  for (const b of botMemberList) {
+    const bot = await db.bots.findOne({ name: b });
+    if (!bot) throw new Error(`Бот ${b} не найден`);
+  }
+
   await db.unions.insert({
     code: cleanCode,
     name: cleanName,
     members: memberList,
+    botMembers: botMemberList,
     createdAt: Date.now(),
   });
 
@@ -52,6 +59,32 @@ async function removeMember(code, username) {
   const union = await db.unions.findOne({ code: c });
   if (!union) throw new Error('Союз не найден');
   await db.unions.update({ code: c }, { $set: { members: union.members.filter(m => m !== username) } });
+  return db.unions.findOne({ code: c });
+}
+
+// ── Боты в союзе ──────────────────────────────────────────────────────────────
+// Отдельно от db.users-участников: боты живут в db.bots, а не в db.users.
+// Единственный эффект членства — доступ к компаниям, вынесенным на биржу
+// этого союза (см. canBotTrade в game/bots.js): без этого боты либо вообще
+// не различали приватные/союзные компании, либо не могли участвовать в них.
+async function addBotMember(code, botName) {
+  const c = String(code || '').toUpperCase();
+  const union = await db.unions.findOne({ code: c });
+  if (!union) throw new Error('Союз не найден');
+  const bot = await db.bots.findOne({ name: botName });
+  if (!bot) throw new Error('Бот не найден');
+  const botMembers = union.botMembers || [];
+  if (botMembers.includes(botName)) return union;
+  await db.unions.update({ code: c }, { $set: { botMembers: [...botMembers, botName] } });
+  return db.unions.findOne({ code: c });
+}
+
+async function removeBotMember(code, botName) {
+  const c = String(code || '').toUpperCase();
+  const union = await db.unions.findOne({ code: c });
+  if (!union) throw new Error('Союз не найден');
+  const botMembers = (union.botMembers || []).filter(b => b !== botName);
+  await db.unions.update({ code: c }, { $set: { botMembers } });
   return db.unions.findOne({ code: c });
 }
 
@@ -147,23 +180,43 @@ async function canTrade(username, ticker) {
   return { ok: true };
 }
 
+// ── Допуск ботов к компаниям ──────────────────────────────────────────────────
+// Боты компаниями не владеют и точечных банов (tradeRestrictions) не имеют —
+// проверяем только видимость: приватная компания без союзного листинга для
+// бота недоступна вообще (нечего проверять на владение), а листинг на союз
+// открывает доступ ботам-участникам этого союза так же, как игрокам.
+async function canBotTrade(botName, ticker) {
+  const company = await db.companies.findOne({ ticker });
+  if (!company) return true;
+
+  const unionCodes = company.unionCodes || [];
+  if (unionCodes.length) {
+    const unions = await db.unions.find({ code: { $in: unionCodes } });
+    return unions.some(u => (u.botMembers || []).includes(botName));
+  }
+  if (company.visibility === 'private') return false;
+  return true; // legacy без visibility — публично, как раньше
+}
+
 // ── Списки для UI ─────────────────────────────────────────────────────────────
 async function listUnions(username) {
   const unions = await db.unions.find({});
   return unions
     .filter(u => !username || u.members.includes(username))
-    .map(u => ({ code: u.code, name: u.name, members: u.members }));
+    .map(u => ({ code: u.code, name: u.name, members: u.members, botMembers: u.botMembers || [] }));
 }
 
 async function listUnionsAdmin() {
   const unions = await db.unions.find({});
-  return unions.map(u => ({ code: u.code, name: u.name, members: u.members }));
+  return unions.map(u => ({ code: u.code, name: u.name, members: u.members, botMembers: u.botMembers || [] }));
 }
 
 module.exports = {
   createUnion,
   addMember,
   removeMember,
+  addBotMember,
+  removeBotMember,
   deleteUnion,
   addCompanyUnionListing,
   removeCompanyUnionListing,
@@ -172,6 +225,7 @@ module.exports = {
   listRestrictions,
   resolveReserveAccount,
   canTrade,
+  canBotTrade,
   listUnions,
   listUnionsAdmin,
 };

@@ -390,15 +390,42 @@ async function replaceBotState(name, state) {
   await db.bots.update({ name }, { $set: { usd: clean.usd, held: clean.held, avgP: clean.avgP, target: clean.target } });
 }
 
+// ── Допуск ботов к компаниям с ограниченным листингом ────────────────────────
+// Обычные монеты и компании без ограничений доступны всем ботам, как и
+// раньше. Приватная компания (без листинга на союз) боту недоступна вообще —
+// боты ими не владеют; листинг на союз открывает доступ только ботам-
+// участникам этого союза (game/unions.js#addBotMember). Строится один раз за
+// тик (не на каждого бота отдельно), чтобы не плодить лишние запросы к БД.
+async function buildBotCoinFilter(allCoins) {
+  const companies = await db.companies.find({});
+  if (!companies.length) return () => allCoins;
+
+  const companyByTicker = new Map(companies.map(c => [c.ticker, c]));
+  const unionCodes = [...new Set(companies.flatMap(c => c.unionCodes || []))];
+  const unions = unionCodes.length ? await db.unions.find({ code: { $in: unionCodes } }) : [];
+  const unionsByCode = new Map(unions.map(u => [u.code, u]));
+
+  return (botName) => allCoins.filter(coin => {
+    const company = companyByTicker.get(coin);
+    if (!company) return true;
+    const codes = company.unionCodes || [];
+    if (codes.length) return codes.some(c => (unionsByCode.get(c)?.botMembers || []).includes(botName));
+    return company.visibility !== 'private';
+  });
+}
+
 // ── Главный тик ──────────────────────────────────────────────────────────────────────────────────────
 async function botTick(io, currentPrices) {
   if (!currentPrices || Object.keys(currentPrices).length === 0) return;
-  const coins  = Object.keys(currentPrices);
-  const prices = { ...currentPrices };
-  const bots   = await listBotsRaw();
+  const allCoins = Object.keys(currentPrices);
+  const prices   = { ...currentPrices };
+  const bots     = await listBotsRaw();
+  const coinsFor = await buildBotCoinFilter(allCoins);
 
   for (const bot of bots) {
-    const b = sanitizeBot(bot);
+    const b     = sanitizeBot(bot);
+    const coins = coinsFor(b.name);
+    if (!coins.length) continue; // боту физически нечем торговать
     try {
       if      (b.type === 'bull') await bullTick(b, coins, prices);
       else if (b.type === 'fox')  await foxTick (b, coins, prices);

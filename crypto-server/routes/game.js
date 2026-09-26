@@ -100,14 +100,27 @@ router.get('/price-history', auth, async (req, res) => {
     const coin  = (req.query.coin || '').toUpperCase();
     const limit = Math.min(Math.max(parseInt(req.query.limit) || 500, 1), 5000);
     if (!coin) return res.json([]);
-    // Сортировка по убыванию + limit — иначе при истории длиннее limit
-    // (у любого актива старше ~500 тиков) отдавались бы САМЫЕ СТАРЫЕ точки,
-    // а не последние: график показывал бы устаревший кусок вместо свежего.
-    const docs = await db.priceHistory
-      .find({ coin })
-      .sort({ ts: -1 })
-      .limit(limit);
-    res.json(docs.reverse().map(d => d.price));
+
+    const total = await db.priceHistory.count({ coin });
+    let docs;
+    if (total <= limit) {
+      // Вся история умещается в лимит — отдаём как есть, по возрастанию.
+      docs = await db.priceHistory.find({ coin }).sort({ ts: 1 });
+    } else {
+      // История длиннее лимита — не отрезаем старое (тогда график всегда
+      // показывал бы только последнее окно, будто хранилище само себя
+      // стирает), а равномерно прореживаем ВЕСЬ диапазон от создания
+      // актива до сейчас, чтобы уложиться в лимит точек. Индекс
+      // {coin:1, ts:-1} делает даже сортировку сотен тысяч строк дешёвой,
+      // проредить в Node после этого — уже мелочь.
+      const all  = await db.priceHistory.find({ coin }).sort({ ts: 1 });
+      const step = Math.ceil(all.length / limit);
+      docs = all.filter((_, i) => i % step === 0);
+      const last = all[all.length - 1];
+      if (docs[docs.length - 1] !== last) docs.push(last); // текущая цена всегда точна
+    }
+
+    res.json(docs.map(d => ({ price: d.price, ts: d.ts })));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

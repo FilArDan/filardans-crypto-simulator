@@ -116,12 +116,12 @@ async function fetchCoinHistory(coin) {
     if (!resp.ok) return null;
     const data = await resp.json();
     if (!Array.isArray(data) || !data.length) return null;
-    return data.map((d, i) => {
-      if (typeof d === 'number') {
-        return { price: d, ts: Date.now() - (data.length - i) * 1000 };
-      }
-      return { price: Number(d.price), ts: Number(d.ts) };
-    }).filter(d => Number.isFinite(d.price) && Number.isFinite(d.ts));
+    // Сервер отдаёт реальные ts (а не только цену) — важно при прореживании
+    // всей истории актива: точки идут неравномерно по времени, синтетические
+    // "через секунду" метки исказили бы шкалу времени на графике.
+    return data
+      .map(d => ({ price: Number(d.price), ts: Number(d.ts) }))
+      .filter(d => Number.isFinite(d.price) && Number.isFinite(d.ts));
   } catch (_) {
     return null; // нет доступа — пропускаем
   }

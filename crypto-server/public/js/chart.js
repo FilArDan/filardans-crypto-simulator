@@ -39,7 +39,20 @@ let compareBaselines = {}; // coin -> цена первой точки, зафи
 function updateChartCoins(coins) {
   const prev = chartCoins;
   chartCoins = coins;
-  coins.forEach(c => { if (!priceHistory[c]) priceHistory[c] = []; });
+  // Новые тикеры (в первую очередь кастомные монеты/компании — initChart()
+  // при входе подгружает сохранённую историю только для дефолтного набора
+  // из 5 базовых монет, остальные становятся известны клиенту только тут,
+  // позже) — раньше просто заводили пустой массив и график по ним рисовал
+  // лишь то, что накопилось "вживую" с момента открытия вкладки, хотя на
+  // сервере вся история давно сохранена. Подгружаем её так же, как
+  // loadSavedHistory() делает при старте.
+  const newCoins = coins.filter(c => !priceHistory[c]);
+  newCoins.forEach(c => { priceHistory[c] = []; });
+  if (newCoins.length) {
+    Promise.all(newCoins.map(c => fetchCoinHistory(c).then(hist => {
+      if (hist) priceHistory[c] = hist;
+    }))).then(() => { if (chart) rebuildAllSeriesData(); });
+  }
   if (!coins.includes(selectedCoin)) selectedCoin = coins[0] || 'BTC';
   const changed = prev.length !== coins.length || prev.some((c, i) => c !== coins[i]);
   if (changed) {
@@ -62,22 +75,28 @@ function addPricePoint(prices) {
   updateLiveSeries();
 }
 
-// ── Загрузка сохранённой истории с сервера ────────────────────────────────────
+// ── Загрузка сохранённой истории с сервера (одна монета) ─────────────────────
+async function fetchCoinHistory(coin) {
+  try {
+    const resp = await fetch(`/api/price-history?coin=${coin}&limit=500`);
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!Array.isArray(data) || !data.length) return null;
+    return data.map((d, i) => {
+      if (typeof d === 'number') {
+        return { price: d, ts: Date.now() - (data.length - i) * 1000 };
+      }
+      return { price: Number(d.price), ts: Number(d.ts) };
+    }).filter(d => Number.isFinite(d.price) && Number.isFinite(d.ts));
+  } catch (_) {
+    return null; // нет доступа — пропускаем
+  }
+}
+
 async function loadSavedHistory() {
   for (const coin of chartCoins) {
-    try {
-      const resp = await fetch(`/api/price-history?coin=${coin}&limit=500`);
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      if (Array.isArray(data) && data.length > 0) {
-        priceHistory[coin] = data.map((d, i) => {
-          if (typeof d === 'number') {
-            return { price: d, ts: Date.now() - (data.length - i) * 1000 };
-          }
-          return { price: Number(d.price), ts: Number(d.ts) };
-        }).filter(d => Number.isFinite(d.price) && Number.isFinite(d.ts));
-      }
-    } catch (_) { /* нет доступа — пропускаем */ }
+    const hist = await fetchCoinHistory(coin);
+    if (hist) priceHistory[coin] = hist;
   }
 }
 

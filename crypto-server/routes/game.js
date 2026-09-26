@@ -100,11 +100,14 @@ router.get('/price-history', auth, async (req, res) => {
     const coin  = (req.query.coin || '').toUpperCase();
     const limit = Math.min(Math.max(parseInt(req.query.limit) || 500, 1), 500);
     if (!coin) return res.json([]);
+    // Сортировка по убыванию + limit — иначе при истории длиннее limit
+    // (у любого актива старше ~500 тиков) отдавались бы САМЫЕ СТАРЫЕ точки,
+    // а не последние: график показывал бы устаревший кусок вместо свежего.
     const docs = await db.priceHistory
       .find({ coin })
-      .sort({ ts: 1 })
+      .sort({ ts: -1 })
       .limit(limit);
-    res.json(docs.map(d => d.price));
+    res.json(docs.reverse().map(d => d.price));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

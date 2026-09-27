@@ -1,5 +1,5 @@
 const { db, getAllCoins, EXCHANGE_USERNAME, DEFAULT_LIQUIDITY } = require('../db');
-const { updatePriceHistory, botTick, priceHistory, getBotStats } = require('./bots');
+const { updatePriceHistory, botTick, priceHistory, getBotStats, forceBotUnfreeze } = require('./bots');
 const { accrueInterest } = require('./bank');
 const { getMarketStats } = require('./marketStats');
 const { hasConfirmedNoVolume } = require('./volume');
@@ -93,6 +93,15 @@ const DEAD_MARKET_NOISE_MULT = 0.12;
 // рынок в такой ситуации выглядел бы выкупленным, а на деле не замирал.
 const RESERVE_EPS = 1e-6;
 
+// Сколько тиков подряд рынок может простоять полностью замороженным, прежде
+// чем крупнейший бот-держатель сам продаст часть позиции обратно на биржу
+// (game/bots.js#forceBotUnfreeze) — иначе, не будь этого предохранителя,
+// полностью выкупленный актив замер бы навсегда: досыпать supply не
+// решение (max supply конечен, см. обсуждение с автором). Считается в
+// db.prices.frozenTicks — просто счётчик, обнуляется как только резерв
+// снова становится ненулевым (сам собой либо через разморозку).
+const FROZEN_UNFREEZE_TICKS = 18;
+
 async function isMonopolized(coin) {
   const exch = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
   const exchangeReserve = (exch && exch[coin]) || 0;
@@ -109,8 +118,17 @@ async function tick(io) {
 
     if (await isMonopolized(coin)) {
       prices[coin] = doc.price; // торговать нечем — цена замирает как есть
+
+      const frozenTicks = (doc.frozenTicks || 0) + 1;
+      if (frozenTicks >= FROZEN_UNFREEZE_TICKS) {
+        prices[coin] = await forceBotUnfreeze(coin, prices, io);
+        await db.prices.update({ coin }, { $set: { frozenTicks: 0 } });
+      } else {
+        await db.prices.update({ coin }, { $set: { frozenTicks } });
+      }
       continue;
     }
+    if (doc.frozenTicks) await db.prices.update({ coin }, { $set: { frozenTicks: 0 } });
 
     const baseVol = doc.vol       || 0.04;  // базовая нестабильность (задаётся ГМом)
     const drift   = doc.drift     || 0;     // тренд развития

@@ -220,6 +220,49 @@ async function accrueBotsInterest(prices, io) {
   }
 }
 
+// ── Разморозка полностью выкупленного рынка ──────────────────────────────────
+// Если резерв биржи по активу истощён (isMonopolized в market.js) — цена
+// замирает, пока кто-то не продаст актив обратно. Досыпать supply не
+// решение (max supply конечен, рано или поздно упрёмся в него окончательно).
+// Вместо этого, если заморозка держится слишком долго, крупнейший
+// бот-держатель сам продаёт часть позиции обратно на биржу — имитация
+// фиксации прибыли, пополняет резерв и снимает заморозку без участия ГМа.
+// Игроков это не касается: они всегда решают сами, продавать в застывший
+// рынок или нет (сама по себе выгодная цена — уже стимул).
+const FROZEN_UNFREEZE_SELL_FRACTION = 0.15;
+
+async function forceBotUnfreeze(coin, prices, io) {
+  const bots = await listBotsRaw();
+  let biggest = null;
+  for (const bot of bots) {
+    const held = (bot.held && bot.held[coin]) || 0;
+    if (held > 0 && (!biggest || held > biggest.held)) biggest = { name: bot.name, held };
+  }
+  if (!biggest) return prices[coin]; // актив держат только игроки — ботам разморозить нечем
+
+  const price = prices[coin] || 0;
+  const amt   = biggest.held * FROZEN_UNFREEZE_SELL_FRACTION;
+  if (amt <= 0 || price <= 0) return prices[coin];
+  const proceeds = amt * price * (1 - FEE);
+
+  // Как и в обычной продаже бота — не уводим кассу биржи в минус.
+  const exchWallet = await db.wallets.findOne({ username: EXCHANGE_USERNAME });
+  if (!exchWallet || (exchWallet.usd || 0) < proceeds) return prices[coin];
+
+  await db.bots.update({ name: biggest.name }, { $inc: { [`held.${coin}`]: -amt, usd: +proceeds } });
+  await syncExchange('sell', proceeds, coin, amt);
+  const newPrice = await applyTP(coin, amt, 'sell');
+
+  const ev = {
+    ts: Date.now(),
+    text: `📤 Рынок ${coin} разморожен: ${biggest.name} зафиксировал часть прибыли (${amt.toFixed(4)} ${coin}) — резерв биржи пополнен.`,
+  };
+  await db.events.insert(ev);
+  if (io) io.emit('newEvent', ev);
+
+  return newPrice;
+}
+
 // ── 🐂 Агрессор ────────────────────────────────────────────────────────────────────────────────────
 async function bullTick(bot, coins, prices) {
   const coin = coins[Math.floor(Math.random() * coins.length)];
@@ -579,5 +622,6 @@ module.exports = {
   setBotCash,
   setBotHoldings,
   updateBotPreset,
+  forceBotUnfreeze,
   priceHistory,
 };

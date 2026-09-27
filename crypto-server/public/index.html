@@ -125,7 +125,12 @@
         <div class="card section-gap">
           <h2 id="assetListTitle">📊 Активы рынка</h2>
           <div style="overflow-x:auto">
-            <table>
+            <table class="asset-list-table">
+              <colgroup>
+                <col style="width:160px"><col style="width:115px"><col style="width:85px">
+                <col style="width:95px"><col style="width:105px"><col style="width:95px">
+                <col style="width:150px"><col style="width:125px">
+              </colgroup>
               <thead><tr>
                 <th class="sortable" onclick="setAssetSort('name')">Актив <span class="sort-arrow" data-key="name"></span></th>
                 <th class="sortable" onclick="setAssetSort('price')">Цена <span class="sort-arrow" data-key="price"></span></th>

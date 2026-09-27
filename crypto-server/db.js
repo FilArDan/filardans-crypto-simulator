@@ -108,7 +108,7 @@ let mongoClient = null;
 const COLLECTION_NAMES = [
   'users', 'wallets', 'loans', 'events', 'prices', 'customCoins', 'bots',
   'priceHistory', 'orders', 'companies', 'currencies', 'unions', 'tradeRestrictions',
-  'settings',
+  'settings', 'ammPools',
 ];
 
 const DEFAULT_BOTS = [
@@ -208,6 +208,9 @@ async function initDb() {
   await db.unions.ensureIndex({ fieldName: 'code', unique: true });
   await db.tradeRestrictions.ensureIndex({ fieldName: 'username' });
   await db.tradeRestrictions.ensureIndex({ fieldName: 'ticker' });
+
+  // Индекс AMM-пулов (альтернативный рынок — см. game/amm.js) — один пул на тикер
+  await db.ammPools.ensureIndex({ fieldName: 'ticker', unique: true });
 
   const existingUserCount = await db.users.count({});
 

@@ -315,6 +315,20 @@ tr:last-child td{border-bottom:none;}
   border-color: var(--pri);
 }
 
+/* ===== AMM (альтернативный рынок) ===== */
+.amm-pools-list{display:flex;flex-direction:column;gap:14px;}
+.amm-pool-card{border:1px solid var(--bd);border-radius:12px;padding:14px;background:var(--sf2);}
+.amm-pool-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:8px;}
+.amm-pool-head .tk{font-size:16px;font-weight:800;}
+.amm-pool-stats{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px;font-size:12px;color:var(--mu);}
+.amm-pool-stats b{color:var(--txt);font-variant-numeric:tabular-nums;}
+.amm-pool-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:700px){.amm-pool-grid{grid-template-columns:1fr;}}
+.amm-mini-form{display:flex;flex-direction:column;gap:6px;}
+.amm-mini-form .row{display:flex;gap:6px;}
+.amm-mini-form select,.amm-mini-form input{padding:7px 9px;font-size:12px;}
+.amm-mini-form button{white-space:nowrap;}
+
 /* ===== КАРТА РЫНКА (treemap) — общая для админки и игрового интерфейса ===== */
 .treemap-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; font-size: 12px; color: var(--mu); }
 .tm-lg-item { display: flex; align-items: center; gap: 6px; }

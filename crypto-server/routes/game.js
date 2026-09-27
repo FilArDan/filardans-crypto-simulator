@@ -16,6 +16,7 @@ const {
   listUnions, listUnionsAdmin, returnHoldingsToReserve,
 } = require('../game/unions');
 const { getMarketStats } = require('../game/marketStats');
+const amm = require('../game/amm');
 
 const TRADE_FEE = 0.004;   // 0.4% комиссия
 // Спред теперь по-активно (db.prices[coin].spread, дефолт — DEFAULT_SPREAD из db.js)
@@ -1284,6 +1285,100 @@ router.get('/admin/exchange-assets', auth, adminOnly, async (req, res) => {
 
     res.json({ usd, coinAssets, totalCoinValue, totalAssets: usd + totalCoinValue });
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── AMM: альтернативный (свободный) рынок ───────────────────────────────────
+// Тот же самый тикер/актив, что и на официальной бирже (одно wallet[ticker]
+// на игрока) — просто ещё одна площадка с ценой из соотношения резервов
+// пула, независимой от db.prices. См. game/amm.js.
+router.get('/amm/pools', auth, async (req, res) => {
+  try {
+    const enabled = await amm.isAmmEnabled();
+    const pools = enabled ? await amm.listPools(req.session.username) : [];
+    res.json({ enabled, pools });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/amm/liquidity/add', auth, async (req, res) => {
+  try {
+    if (!(await amm.isAmmEnabled())) return res.json({ error: 'AMM-рынок временно отключён ГМом' });
+    const { ticker, usdAmt, coinAmt } = req.body;
+    const result = await amm.addLiquidity(req.session.username, String(ticker || '').toUpperCase(), usdAmt, coinAmt);
+    const wallet = await db.wallets.findOne({ username: req.session.username });
+    const io = req.app.get('io');
+    io.emit('walletUpdate', { username: req.session.username, wallet });
+    io.emit('ammPoolUpdate', { ticker: String(ticker || '').toUpperCase() });
+    res.json({ ok: true, ...result, wallet });
+  } catch(e) { res.json({ error: e.message }); }
+});
+
+router.post('/amm/liquidity/remove', auth, async (req, res) => {
+  try {
+    if (!(await amm.isAmmEnabled())) return res.json({ error: 'AMM-рынок временно отключён ГМом' });
+    const { ticker, shares } = req.body;
+    const result = await amm.removeLiquidity(req.session.username, String(ticker || '').toUpperCase(), shares);
+    const wallet = await db.wallets.findOne({ username: req.session.username });
+    const io = req.app.get('io');
+    io.emit('walletUpdate', { username: req.session.username, wallet });
+    io.emit('ammPoolUpdate', { ticker: String(ticker || '').toUpperCase() });
+    res.json({ ok: true, ...result, wallet });
+  } catch(e) { res.json({ error: e.message }); }
+});
+
+router.post('/amm/swap', auth, async (req, res) => {
+  try {
+    if (!(await amm.isAmmEnabled())) return res.json({ error: 'AMM-рынок временно отключён ГМом' });
+    const { ticker, action } = req.body;
+    const clean = String(ticker || '').toUpperCase();
+    const result = await amm.swap(req.session.username, clean, action, req.body.amount);
+    const wallet = await db.wallets.findOne({ username: req.session.username });
+    const io = req.app.get('io');
+    const txt = action === 'buy'
+      ? `${req.session.username} купил ${result.received.toFixed(6)} ${clean} на AMM за ${result.spent.toFixed(2)} USC`
+      : `${req.session.username} продал ${result.spent.toFixed(6)} ${clean} на AMM за ${result.received.toFixed(2)} USC`;
+    const ev = { ts: Date.now(), text: txt };
+    await db.events.insert(ev);
+    io.emit('newEvent', ev);
+    io.emit('walletUpdate', { username: req.session.username, wallet });
+    io.emit('ammPoolUpdate', { ticker: clean });
+    res.json({ ok: true, ...result, wallet });
+  } catch(e) { res.json({ error: e.message }); }
+});
+
+// ── AMM: администрирование ───────────────────────────────────────────────────
+router.get('/admin/amm/settings', auth, adminOnly, async (req, res) => {
+  try { res.json({ enabled: await amm.isAmmEnabled() }); }
+  catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/amm/settings', auth, adminOnly, async (req, res) => {
+  try {
+    await amm.setAmmEnabled(!!req.body.enabled);
+    const io = req.app.get('io');
+    io.emit('ammSettingsUpdate', { enabled: !!req.body.enabled });
+    res.json({ ok: true, enabled: !!req.body.enabled });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/admin/amm/pools', auth, adminOnly, async (req, res) => {
+  try { res.json(await amm.listPoolsAdmin()); }
+  catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/amm/pool/create', auth, adminOnly, async (req, res) => {
+  try {
+    const pool = await amm.createPool(req.body.ticker);
+    req.app.get('io').emit('ammPoolUpdate', { ticker: pool.ticker });
+    res.json({ ok: true, pool });
+  } catch(e) { res.json({ error: e.message }); }
+});
+
+router.delete('/admin/amm/pool/:ticker', auth, adminOnly, async (req, res) => {
+  try {
+    await amm.deletePool(String(req.params.ticker || '').toUpperCase());
+    req.app.get('io').emit('ammPoolUpdate', { ticker: String(req.params.ticker || '').toUpperCase() });
+    res.json({ ok: true });
+  } catch(e) { res.json({ error: e.message }); }
 });
 
 module.exports = router;

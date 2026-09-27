@@ -1184,6 +1184,93 @@ async function loadCompaniesData() {
   }
 }
 
+// ── AMM (альтернативный рынок) ────────────────────────────────────────────────
+let ammPools = [];
+
+function renderAmmStatus(enabled) {
+  const statusEl = document.getElementById('ammStatus');
+  const statusTxt = document.getElementById('ammStatusText');
+  const disableBtn = document.getElementById('ammDisableBtn');
+  const enableBtn  = document.getElementById('ammEnableBtn');
+  if (!statusEl) return;
+  statusEl.classList.toggle('is-paused', !enabled);
+  statusTxt.textContent = enabled ? 'Включён' : 'Отключён';
+  disableBtn.disabled = !enabled;
+  enableBtn.disabled  = enabled;
+}
+
+function fillAmmNewPoolSelect() {
+  const sel = document.getElementById('ammNewPoolTicker');
+  if (!sel) return;
+  const havePool = new Set(ammPools.map(p => p.ticker));
+  const available = Object.keys(coinMeta).filter(t => !havePool.has(t)).sort();
+  sel.innerHTML = available.length
+    ? available.map(t => `<option value="${t}">${t}</option>`).join('')
+    : '<option disabled>Для всех активов уже созданы пулы</option>';
+}
+
+function renderAmmPools() {
+  const tbody = document.getElementById('ammPoolsBody');
+  if (!tbody) return;
+  if (!ammPools.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="muted" style="text-align:center">Пулов пока нет</td></tr>';
+    return;
+  }
+  tbody.innerHTML = ammPools.map(p => `
+    <tr>
+      <td><strong>${p.ticker}</strong></td>
+      <td>${fmt(p.reserveCoin, 4)}</td>
+      <td>USC ${fmt(p.reserveUsd, 2)}</td>
+      <td>${p.reserveCoin > 0 ? 'USC ' + fmt(p.price, 4) : '<span class="muted">—</span>'}</td>
+      <td>${p.lpCount}</td>
+      <td>
+        <button class="btn btn-dan btn-sm" ${p.totalShares > 0 ? 'disabled title="Нельзя удалить, пока в пуле есть чужая ликвидность"' : ''} onclick="deleteAmmPool('${p.ticker}')">Удалить</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function loadAmmData() {
+  const [settingsRes, poolsRes] = await Promise.all([
+    api('GET', '/api/admin/amm/settings'),
+    api('GET', '/api/admin/amm/pools'),
+  ]);
+  if (!settingsRes.error) renderAmmStatus(settingsRes.enabled);
+  if (!poolsRes.error) ammPools = poolsRes;
+  renderAmmPools();
+  fillAmmNewPoolSelect();
+}
+
+async function deleteAmmPool(ticker) {
+  if (!confirm(`Удалить пул ${ticker}?`)) return;
+  const res = await api('DELETE', `/api/admin/amm/pool/${ticker}`);
+  if (res.error) { alert(res.error); return; }
+  await loadAmmData();
+}
+
+document.getElementById('ammDisableBtn')?.addEventListener('click', async () => {
+  const res = await api('POST', '/api/admin/amm/settings', { enabled: false });
+  if (res.error) { alert(res.error); return; }
+  renderAmmStatus(false);
+});
+
+document.getElementById('ammEnableBtn')?.addEventListener('click', async () => {
+  const res = await api('POST', '/api/admin/amm/settings', { enabled: true });
+  if (res.error) { alert(res.error); return; }
+  renderAmmStatus(true);
+});
+
+document.getElementById('ammCreatePoolForm')?.addEventListener('submit', async e => {
+  e.preventDefault();
+  const err = document.getElementById('ammCreatePoolError');
+  err.textContent = '';
+  const ticker = document.getElementById('ammNewPoolTicker').value;
+  if (!ticker) return;
+  const res = await api('POST', '/api/admin/amm/pool/create', { ticker });
+  if (res.error) { err.textContent = res.error; return; }
+  await loadAmmData();
+});
+
 // ── СОЮЗЫ ────────────────────────────────────────────────────────────────────
 // Союз — просто группа доступа (участники + список), без своего токена/резерва.
 let allUnions = [];
@@ -1384,6 +1471,7 @@ async function loadAdminData() {
   await loadRestrictionsData();
   await loadUnionsData();
   await loadCompaniesData();
+  await loadAmmData();
   renderPlayers();
   renderLoans();
   renderTreemap();
@@ -1446,6 +1534,9 @@ socket.on('marketStats', s => {
   marketStatsData = s;
   renderTreemap();
 });
+
+socket.on('ammPoolUpdate', () => loadAmmData());
+socket.on('ammSettingsUpdate', ({ enabled }) => renderAmmStatus(enabled));
 
 // Казна обновляется динамически на каждый тик и после любой операции с кредитами/торговлей
 socket.on('bankUpdate', ({ usd, totalIssued, totalDebt }) => {

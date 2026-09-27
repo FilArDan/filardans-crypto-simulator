@@ -237,6 +237,7 @@
     <button class="side-link" data-section="companies"><span class="ic">🏢</span> Компании</button>
     <button class="side-link" data-section="unions"><span class="ic">🤝</span> Союзы</button>
     <button class="side-link" data-section="market"><span class="ic">🎛️</span> Контроль рынка</button>
+    <button class="side-link" data-section="amm"><span class="ic">💧</span> AMM</button>
     <button class="side-link" data-section="treemap"><span class="ic">🗺️</span> Карта рынка</button>
   </nav>
 
@@ -649,6 +650,53 @@
         </thead>
         <tbody id="priceRows"></tbody>
       </table>
+    </div>
+
+  </section>
+
+
+  <!-- ═══════════════════ AMM (АЛЬТЕРНАТИВНЫЙ РЫНОК) ═══════════════════ -->
+  <section class="admin-section" id="section-amm" hidden>
+
+    <!-- ВКЛ/ВЫКЛ -->
+    <div class="card">
+      <h2>💧 AMM — альтернативный рынок</h2>
+      <div class="pause-bar">
+        <div class="pause-status" id="ammStatus">
+          <span class="pause-dot"></span>
+          <span id="ammStatusText">Включён</span>
+        </div>
+        <button class="btn btn-dan" id="ammDisableBtn">Отключить</button>
+        <button class="btn btn-secondary" id="ammEnableBtn" disabled>Включить</button>
+        <span class="lbl" style="margin:0">Отключение полностью блокирует AMM-эндпоинты и скрывает вкладку у игроков — уже внесённая ликвидность никуда не девается и станет доступна снова при включении.</span>
+      </div>
+    </div>
+
+    <!-- СОЗДАТЬ ПУЛ -->
+    <div class="card section-gap">
+      <h2>✨ Создать пул</h2>
+      <div class="lbl" style="margin-bottom:12px">Пул заводится пустым — стартовую цену задаст первый, кто внесёт ликвидность (и коин, и USC).</div>
+      <form id="ammCreatePoolForm" class="compact-form" style="max-width:320px">
+        <div class="fld">
+          <label class="lbl">Актив</label>
+          <select id="ammNewPoolTicker" required></select>
+        </div>
+        <button class="btn btn-secondary btn-sm" type="submit">Создать пул</button>
+        <div id="ammCreatePoolError" class="err-msg"></div>
+      </form>
+    </div>
+
+    <!-- ПУЛЫ -->
+    <div class="card section-gap">
+      <h2>💧 Пулы</h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Актив</th><th>Резерв монеты</th><th>Резерв USC</th><th>Цена</th><th>LP-держателей</th><th></th>
+          </tr></thead>
+          <tbody id="ammPoolsBody"></tbody>
+        </table>
+      </div>
     </div>
 
   </section>

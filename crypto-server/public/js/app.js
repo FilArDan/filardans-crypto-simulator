@@ -5,6 +5,8 @@ let prices = {};
 let basePrices = {};
 let currentCoins = [];
 let marketStats = {}; // ticker -> { supply, marketCap, change1, change10, volume10, icon } — из /api/state и сокета marketStats
+let ammEnabled = false; // AMM (альтернативный рынок) — ГМ может отключить целиком, тогда вкладка скрыта
+let ammPools   = [];
 
 function escapeAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -108,6 +110,7 @@ function showApp(username, profile) {
   try { currentTab = localStorage.getItem('playerActiveTab') || 'trading'; } catch (_) { currentTab = 'trading'; }
   showTab(currentTab);
   loadState().then(() => { loadOrders(); });
+  loadAmmPools(); // тоже определяет, показывать ли вкладку "AMM" в сайдбаре
 }
 
 // ── ПРОФИЛЬ (отображаемое имя, аватарка, режим интерфейса) ───────────────────
@@ -159,9 +162,14 @@ function renderProfileView() {
 let currentTab = 'trading';
 
 function showTab(tab) {
+  // AMM могли отключить ГМом уже после сохранения последней активной вкладки
+  // в localStorage — не даём открыть скрытую вкладку.
+  if (tab === 'amm' && !ammEnabled) tab = 'trading';
+
   currentTab = tab;
   document.getElementById('bankView')?.classList.toggle('hidden', tab !== 'bank');
   document.getElementById('treemapView')?.classList.toggle('hidden', tab !== 'treemap');
+  document.getElementById('ammView')?.classList.toggle('hidden', tab !== 'amm');
   document.getElementById('assetView')?.classList.add('hidden');
   document.getElementById('profileView')?.classList.add('hidden');
   currentAsset = null;
@@ -180,6 +188,7 @@ function showTab(tab) {
     l.classList.toggle('active', l.dataset.tab === tab));
 
   if (tab === 'treemap') renderPlayerTreemap();
+  if (tab === 'amm') loadAmmPools();
 
   try { localStorage.setItem('playerActiveTab', tab); } catch (_) {}
 }
@@ -694,6 +703,127 @@ window.addEventListener('resize', () => {
   window.__playerTreemapResizeTimer = setTimeout(() => {
     if (currentTab === 'treemap') renderPlayerTreemap();
   }, 200);
+});
+
+// ── AMM (альтернативный/свободный рынок) ────────────────────────────────────
+// Тот же тикер, что и на официальной бирже — просто другая площадка с ценой
+// из соотношения резервов пула (constant product), независимой от db.prices.
+// ГМ может отключить AMM целиком — тогда вкладка в сайдбаре скрывается сама.
+async function loadAmmPools() {
+  const res = await api('GET', '/api/amm/pools');
+  if (res.error) return;
+  ammEnabled = !!res.enabled;
+  ammPools   = res.pools || [];
+  document.getElementById('ammSideLink')?.classList.toggle('hidden', !ammEnabled);
+  if (!ammEnabled && currentTab === 'amm') { showTab('trading'); return; }
+  if (currentTab === 'amm') renderAmmPools();
+}
+
+function renderAmmPools() {
+  const list = document.getElementById('ammPoolsList');
+  if (!list) return;
+  if (!ammPools.length) {
+    list.innerHTML = '<div class="muted" style="padding:16px;text-align:center">Пулов пока нет — ГМ ещё не создал ни одного</div>';
+    return;
+  }
+  list.innerHTML = ammPools.map(p => {
+    const empty = p.totalShares <= 0;
+    const dec = p.price < 1 ? 4 : 2;
+    return `<div class="amm-pool-card" data-ticker="${p.ticker}">
+      <div class="amm-pool-head">
+        <span class="tk">${p.ticker}</span>
+        <span>${empty ? '<span class="muted">пул пуст — станьте первым поставщиком ликвидности</span>' : `Цена в пуле: <b>${fmtRef(p.price, dec)}</b>`}</span>
+      </div>
+      <div class="amm-pool-stats">
+        <span>Резерв: <b>${fmt(p.reserveCoin, 4)} ${p.ticker}</b> / <b>${fmtRef(p.reserveUsd, 2)}</b></span>
+        <span>Моя доля: <b>${fmt(p.myPct, 2)}%</b> (${fmt(p.myShares, 4)} LP)</span>
+      </div>
+      <div class="amm-pool-grid">
+        <div class="amm-mini-form">
+          <div class="lbl">Обмен (USC при покупке / ${p.ticker} при продаже)</div>
+          <div class="row">
+            <select class="amm-swap-action">
+              <option value="buy">Купить</option>
+              <option value="sell">Продать</option>
+            </select>
+            <input type="number" step="any" min="0" class="amm-swap-amount" placeholder="Сумма">
+            <button type="button" class="btn btn-primary btn-sm amm-swap-btn">OK</button>
+          </div>
+          <div class="err-msg amm-swap-error"></div>
+        </div>
+        <div class="amm-mini-form">
+          <div class="lbl">Ликвидность</div>
+          <div class="row">
+            <input type="number" step="any" min="0" class="amm-liq-usd" placeholder="Сумма USC">
+            ${empty ? `<input type="number" step="any" min="0" class="amm-liq-coin" placeholder="Кол-во ${p.ticker}">` : ''}
+            <button type="button" class="btn btn-secondary btn-sm amm-liq-add-btn">Внести</button>
+          </div>
+          <div class="row">
+            <input type="number" step="any" min="0" class="amm-liq-shares" placeholder="LP-долей на вывод" ${p.myShares > 0 ? '' : 'disabled'}>
+            <button type="button" class="btn btn-secondary btn-sm amm-liq-remove-btn" ${p.myShares > 0 ? '' : 'disabled'}>Вывести</button>
+            <button type="button" class="btn btn-secondary btn-sm amm-liq-remove-all-btn" ${p.myShares > 0 ? '' : 'disabled'}>Всё</button>
+          </div>
+          <div class="err-msg amm-liq-error"></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('ammPoolsList')?.addEventListener('click', async e => {
+  const swapBtn       = e.target.closest('.amm-swap-btn');
+  const addBtn        = e.target.closest('.amm-liq-add-btn');
+  const removeBtn     = e.target.closest('.amm-liq-remove-btn');
+  const removeAllBtn  = e.target.closest('.amm-liq-remove-all-btn');
+  if (!swapBtn && !addBtn && !removeBtn && !removeAllBtn) return;
+
+  const card   = e.target.closest('.amm-pool-card');
+  const ticker = card.dataset.ticker;
+
+  if (swapBtn) {
+    const errEl = card.querySelector('.amm-swap-error');
+    errEl.textContent = '';
+    const action = card.querySelector('.amm-swap-action').value;
+    const amount = parseFloat(card.querySelector('.amm-swap-amount').value);
+    if (!Number.isFinite(amount) || amount <= 0) { errEl.textContent = 'Введите количество'; return; }
+    swapBtn.disabled = true;
+    const res = await api('POST', '/api/amm/swap', { ticker, action, amount });
+    swapBtn.disabled = false;
+    if (res.error) { errEl.textContent = res.error; return; }
+    await loadAmmPools();
+    loadState();
+    return;
+  }
+
+  if (addBtn) {
+    const errEl = card.querySelector('.amm-liq-error');
+    errEl.textContent = '';
+    const usdAmt = parseFloat(card.querySelector('.amm-liq-usd').value);
+    const coinInput = card.querySelector('.amm-liq-coin');
+    const coinAmt = coinInput ? parseFloat(coinInput.value) : undefined;
+    if (!Number.isFinite(usdAmt) || usdAmt <= 0) { errEl.textContent = 'Введите сумму USC'; return; }
+    addBtn.disabled = true;
+    const res = await api('POST', '/api/amm/liquidity/add', { ticker, usdAmt, coinAmt });
+    addBtn.disabled = false;
+    if (res.error) { errEl.textContent = res.error; return; }
+    await loadAmmPools();
+    loadState();
+    return;
+  }
+
+  // removeBtn || removeAllBtn
+  const errEl = card.querySelector('.amm-liq-error');
+  errEl.textContent = '';
+  const pool = ammPools.find(p => p.ticker === ticker);
+  const shares = removeAllBtn ? (pool ? pool.myShares : 0) : parseFloat(card.querySelector('.amm-liq-shares').value);
+  if (!Number.isFinite(shares) || shares <= 0) { errEl.textContent = 'Введите количество долей'; return; }
+  const btn = removeBtn || removeAllBtn;
+  btn.disabled = true;
+  const res = await api('POST', '/api/amm/liquidity/remove', { ticker, shares });
+  btn.disabled = false;
+  if (res.error) { errEl.textContent = res.error; return; }
+  await loadAmmPools();
+  loadState();
 });
 
 // ── УПРОЩЁННЫЙ РЕЖИМ: плоский список активов, покупка/продажа по рынку ───────
@@ -1526,6 +1656,9 @@ socket.on('marketStats', s => {
   if (currentAsset) { renderAssetHeader(); renderExchangeReserve(); }
   if (currentTab === 'treemap') renderPlayerTreemap();
 });
+
+socket.on('ammPoolUpdate', () => loadAmmPools());
+socket.on('ammSettingsUpdate', () => loadAmmPools());
 
 socket.on('orderUpdate', ({ username }) => {
   if (username !== myUsername) return;

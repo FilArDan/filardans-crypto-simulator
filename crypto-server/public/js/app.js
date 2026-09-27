@@ -45,6 +45,24 @@ function fmtLocal(refAmount, dec = 2) { return myCurrency.symbol + fmt(toLocal(r
 const REF_SYMBOL = 'USC ';
 function fmtRef(refAmount, dec = 2) { return REF_SYMBOL + fmt(refAmount, dec); }
 
+// Компактная запись больших чисел (тыс./млн/млрд/трлн) — для Market Cap:
+// с ростом кастомных монет и компаний цельные суммы (десятки миллиардов
+// с разрядами) в списке активов трудно читать на глаз.
+function fmtCompact(n) {
+  const v = Number(n) || 0;
+  const sign = v < 0 ? '-' : '';
+  const abs = Math.abs(v);
+  const units = [[1e12, 'трлн'], [1e9, 'млрд'], [1e6, 'млн'], [1e3, 'тыс']];
+  for (const [div, suf] of units) {
+    if (abs >= div) {
+      const rounded = Math.round((abs / div) * 100) / 100; // до 2 знаков, без хвостовых нулей
+      return `${sign}${rounded.toLocaleString('ru', { maximumFractionDigits: 2 })} ${suf}`;
+    }
+  }
+  return sign + fmt(abs, 0);
+}
+function fmtCompactRef(refAmount) { return REF_SYMBOL + fmtCompact(refAmount); }
+
 // Госбюджет — укрупнённая единица измерения для казны (1 Госбюджет = 1 млрд
 // кредитов), исключительно для отображения масштаба государственных резервов.
 const CREDITS_PER_GOSBUDGET = 1_000_000_000;
@@ -569,7 +587,7 @@ function renderAssetList() {
       <td>${fmtRef(a.price, dec)}</td>
       <td>${pctHtml(a.change1)}</td>
       <td>${pctHtml(a.change10)}</td>
-      <td>${a.marketCap != null ? fmtRef(a.marketCap, 0) : '<span class="muted">—</span>'}</td>
+      <td>${a.marketCap != null ? `<span title="${escapeAttr(fmtRef(a.marketCap, 0))}">${fmtCompactRef(a.marketCap)}</span>` : '<span class="muted">—</span>'}</td>
       <td>${a.volume != null ? fmtRef(a.volume, 0) : '<span class="muted">—</span>'}</td>
       <td>${a.circulating != null ? fmt(a.circulating, 0) : '<span class="muted">—</span>'}</td>
       <td>${a.supply != null ? fmt(a.supply, 0) : '<span class="muted">—</span>'}</td>

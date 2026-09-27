@@ -108,7 +108,7 @@ let mongoClient = null;
 const COLLECTION_NAMES = [
   'users', 'wallets', 'loans', 'events', 'prices', 'customCoins', 'bots',
   'priceHistory', 'orders', 'companies', 'currencies', 'unions', 'tradeRestrictions',
-  'settings', 'ammPools',
+  'settings', 'ammPools', 'ammPriceHistory',
 ];
 
 const DEFAULT_BOTS = [
@@ -211,6 +211,8 @@ async function initDb() {
 
   // Индекс AMM-пулов (альтернативный рынок — см. game/amm.js) — один пул на тикер
   await db.ammPools.ensureIndex({ fieldName: 'ticker', unique: true });
+  // История цены AMM-пула для чарта (та же логика индекса, что и у priceHistory)
+  await db.ammPriceHistory.ensureIndex({ fields: { ticker: 1, ts: -1 } });
 
   const existingUserCount = await db.users.count({});
 

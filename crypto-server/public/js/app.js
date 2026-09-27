@@ -719,6 +719,12 @@ async function loadAmmPools() {
   if (currentTab === 'amm') renderAmmPools();
 }
 
+// Тикеры, у которых сейчас открыт мини-чарт — переживает перерисовку списка
+// (renderAmmPools вызывается заново после каждого свопа/операции с
+// ликвидностью и по сокет-событиям), иначе открытый график схлопывался бы
+// сам собой при любом обновлении данных.
+const ammChartOpen = new Set();
+
 function renderAmmPools() {
   const list = document.getElementById('ammPoolsList');
   if (!list) return;
@@ -733,7 +739,9 @@ function renderAmmPools() {
       <div class="amm-pool-head">
         <span class="tk">${p.ticker}</span>
         <span>${empty ? '<span class="muted">пул пуст — станьте первым поставщиком ликвидности</span>' : `Цена в пуле: <b>${fmtRef(p.price, dec)}</b>`}</span>
+        <button type="button" class="btn btn-secondary btn-sm amm-chart-btn">📈 График</button>
       </div>
+      <div class="amm-chart-container hidden" style="height:220px;margin:6px 0 10px"></div>
       <div class="amm-pool-stats">
         <span>Резерв: <b>${fmt(p.reserveCoin, 4)} ${p.ticker}</b> / <b>${fmtRef(p.reserveUsd, 2)}</b></span>
         <span>Моя доля: <b>${fmt(p.myPct, 2)}%</b> (${fmt(p.myShares, 4)} LP)</span>
@@ -768,17 +776,94 @@ function renderAmmPools() {
       </div>
     </div>`;
   }).join('');
+
+  // Графики, которые были открыты до перерисовки — перерисовываем заново
+  // (сама разметка/инстанс lightweight-charts были уничтожены innerHTML-ом выше)
+  ammChartOpen.forEach(ticker => {
+    if (ammPools.some(p => p.ticker === ticker)) loadAmmChart(ticker);
+    else ammChartOpen.delete(ticker); // пул удалили — нечего показывать
+  });
+}
+
+// Дедуп по секунде (lightweight-charts не принимает две точки с одинаковым
+// time в одной серии) — оставляем последнюю цену в рамках той же секунды.
+function toLwcPoints(points) {
+  const map = new Map();
+  (points || []).forEach(p => map.set(Math.floor(p.ts / 1000), p.price));
+  return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([time, value]) => ({ time, value }));
+}
+
+async function loadAmmChart(ticker) {
+  const card = document.querySelector(`.amm-pool-card[data-ticker="${ticker}"]`);
+  const container = card && card.querySelector('.amm-chart-container');
+  if (!container) return;
+  container.classList.remove('hidden');
+  container.innerHTML = '<div class="muted" style="padding:10px">Загрузка...</div>';
+
+  const [ammHist, cexHist] = await Promise.all([
+    api('GET', `/api/amm/price-history?ticker=${encodeURIComponent(ticker)}&limit=500`),
+    api('GET', `/api/price-history?coin=${encodeURIComponent(ticker)}&limit=500`),
+  ]);
+
+  if (!ammChartOpen.has(ticker)) return; // успели закрыть, пока грузились данные
+  if (!Array.isArray(ammHist) || !ammHist.length) {
+    container.innerHTML = '<div class="muted" style="padding:10px;text-align:center">Пока нет истории цены — не было ни одного свопа</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const gc = dark ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.07)';
+  const tc = dark ? '#797876' : '#9a9790';
+
+  const chart = LightweightCharts.createChart(container, {
+    height: 220,
+    layout: { background: { type: 'solid', color: 'transparent' }, textColor: tc },
+    grid: { vertLines: { color: gc }, horzLines: { color: gc } },
+    rightPriceScale: { borderColor: gc },
+    timeScale: { borderColor: gc, timeVisible: true, secondsVisible: false },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal, horzLine: { labelVisible: true } },
+    autoSize: true,
+  });
+
+  const ammSeries = chart.addSeries(LightweightCharts.LineSeries, {
+    color: '#4f98a3', lineWidth: 2, priceLineVisible: false, title: 'AMM',
+  });
+  ammSeries.setData(toLwcPoints(ammHist));
+
+  if (Array.isArray(cexHist) && cexHist.length) {
+    const cexSeries = chart.addSeries(LightweightCharts.LineSeries, {
+      color: '#d163a7', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, title: 'CEX (официальная биржа)',
+    });
+    cexSeries.setData(toLwcPoints(cexHist));
+  }
+
+  chart.timeScale().fitContent();
 }
 
 document.getElementById('ammPoolsList')?.addEventListener('click', async e => {
+  const chartBtn      = e.target.closest('.amm-chart-btn');
   const swapBtn       = e.target.closest('.amm-swap-btn');
   const addBtn        = e.target.closest('.amm-liq-add-btn');
   const removeBtn     = e.target.closest('.amm-liq-remove-btn');
   const removeAllBtn  = e.target.closest('.amm-liq-remove-all-btn');
-  if (!swapBtn && !addBtn && !removeBtn && !removeAllBtn) return;
+  if (!chartBtn && !swapBtn && !addBtn && !removeBtn && !removeAllBtn) return;
 
   const card   = e.target.closest('.amm-pool-card');
   const ticker = card.dataset.ticker;
+
+  if (chartBtn) {
+    const container = card.querySelector('.amm-chart-container');
+    if (ammChartOpen.has(ticker)) {
+      ammChartOpen.delete(ticker);
+      container.classList.add('hidden');
+      container.innerHTML = '';
+    } else {
+      ammChartOpen.add(ticker);
+      loadAmmChart(ticker);
+    }
+    return;
+  }
 
   if (swapBtn) {
     const errEl = card.querySelector('.amm-swap-error');

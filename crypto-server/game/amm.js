@@ -29,6 +29,26 @@ function poolPrice(pool) {
   return pool.reserveUsd / pool.reserveCoin;
 }
 
+// История цены пула для чарта — в отличие от db.priceHistory (тикается
+// каждый игровой цикл независимо от активности), цена AMM меняется только
+// в момент свопа, поэтому точки пишутся событийно (при свопе и при первом
+// вкладе, который и задаёт стартовую цену пула).
+async function recordAmmPrice(ticker, price) {
+  if (!(price > 0)) return;
+  await db.ammPriceHistory.insert({ ticker, price, ts: Date.now() });
+}
+
+async function getPriceHistory(ticker, limit) {
+  const lim = Math.min(Math.max(parseInt(limit) || 500, 1), 5000);
+  const docs = await db.ammPriceHistory.raw
+    .find({ ticker }, { projection: { _id: 0, price: 1, ts: 1 } })
+    .sort({ ts: -1 })
+    .limit(lim)
+    .toArray();
+  docs.reverse();
+  return docs;
+}
+
 async function listPools(username) {
   const pools = await db.ammPools.find({});
   return pools.map(p => {
@@ -117,11 +137,15 @@ async function addLiquidity(username, ticker, usdAmt, coinAmtForInitial) {
   const lpShares = { ...(pool.lpShares || {}) };
   lpShares[username] = (lpShares[username] || 0) + sharesMinted;
 
+  const isInitial = pool.totalShares <= 0;
+
   await db.wallets.update({ username }, { $inc: { usd: -usdAmt, [ticker]: -coinAmt } });
   await db.ammPools.update({ ticker }, {
     $inc: { reserveUsd: usdAmt, reserveCoin: coinAmt, totalShares: sharesMinted },
     $set: { lpShares },
   });
+
+  if (isInitial) await recordAmmPrice(ticker, usdAmt / coinAmt); // первый вклад задаёт стартовую цену
 
   return { coinAmt, sharesMinted };
 }
@@ -177,8 +201,11 @@ async function swap(username, ticker, action, amount) {
     if ((wallet.usd || 0) < amount) throw new Error('Недостаточно USC');
     const coinOut = swapOut(pool.reserveUsd, pool.reserveCoin, amount);
     if (coinOut >= pool.reserveCoin) throw new Error('Слишком крупная сделка для этого пула');
+    const newReserveUsd  = pool.reserveUsd + amount;
+    const newReserveCoin = pool.reserveCoin - coinOut;
     await db.wallets.update({ username }, { $inc: { usd: -amount, [ticker]: +coinOut } });
     await db.ammPools.update({ ticker }, { $inc: { reserveUsd: +amount, reserveCoin: -coinOut } });
+    await recordAmmPrice(ticker, newReserveUsd / newReserveCoin);
     return { spent: amount, received: coinOut };
   }
 
@@ -187,8 +214,11 @@ async function swap(username, ticker, action, amount) {
     if ((wallet[ticker] || 0) < amount) throw new Error(`Недостаточно ${ticker}`);
     const usdOut = swapOut(pool.reserveCoin, pool.reserveUsd, amount);
     if (usdOut >= pool.reserveUsd) throw new Error('Слишком крупная сделка для этого пула');
+    const newReserveCoin = pool.reserveCoin + amount;
+    const newReserveUsd  = pool.reserveUsd - usdOut;
     await db.wallets.update({ username }, { $inc: { [ticker]: -amount, usd: +usdOut } });
     await db.ammPools.update({ ticker }, { $inc: { reserveCoin: +amount, reserveUsd: -usdOut } });
+    await recordAmmPrice(ticker, newReserveUsd / newReserveCoin);
     return { spent: amount, received: usdOut };
   }
 
@@ -207,4 +237,5 @@ module.exports = {
   addLiquidity,
   removeLiquidity,
   swap,
+  getPriceHistory,
 };

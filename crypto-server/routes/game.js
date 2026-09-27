@@ -1299,6 +1299,14 @@ router.get('/amm/pools', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+router.get('/amm/price-history', auth, async (req, res) => {
+  try {
+    const ticker = String(req.query.ticker || '').toUpperCase();
+    if (!ticker) return res.json([]);
+    res.json(await amm.getPriceHistory(ticker, req.query.limit));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 router.post('/amm/liquidity/add', auth, async (req, res) => {
   try {
     if (!(await amm.isAmmEnabled())) return res.json({ error: 'AMM-рынок временно отключён ГМом' });

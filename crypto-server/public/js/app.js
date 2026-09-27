@@ -346,9 +346,16 @@ function renderTicker(p, prev) {
   }).join('');
 }
 
+// Рендерится не таблицей, а списком карточек-строк (.leader-list/.leader-item)
+// — таблица с 4 колонками (#/государство/капитал/полоска) в узкой боковой
+// колонке рядом со списком активов (см. .trading-top-grid) ломалась: длинные
+// названия государств и большие суммы капитала не помещались в колонки
+// фиксированной ширины и переносились вперемешку с полоской прогресса.
+// Список без табличной сетки переносит длинное имя как обычный текст, а
+// сумма и полоска всегда остаются на своих строках независимо от ширины card.
 function renderLeaderboard(players, currentPrices) {
-  const tbody = document.getElementById('leaderBody');
-  if (!tbody || !players) return;
+  const list = document.getElementById('leaderBody');
+  if (!list || !players) return;
   const p = currentPrices || prices;
   const withTotal = players.map(pl => {
     let coinsVal = 0;
@@ -363,23 +370,24 @@ function renderLeaderboard(players, currentPrices) {
   });
   const sorted = [...withTotal].sort((a, b) => b.total - a.total);
   const maxTotal = sorted[0] ? sorted[0].total : 1;
-  tbody.innerHTML = '';
-  sorted.forEach((pl, i) => {
+  list.innerHTML = sorted.map((pl, i) => {
     const isMine = pl.username === myUsername;
     const rank = i + 1;
     const medal = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
     const barW = maxTotal > 0 ? Math.round(pl.total / maxTotal * 100) : 0;
     const botBadge = pl.isBot ? ' <span style="font-size:11px;color:var(--mu);opacity:.7">[авт.]</span>' : '';
     const shownName = pl.displayName || pl.username;
-    const tr = document.createElement('tr');
-    if (isMine) tr.className = 'me';
-    tr.innerHTML = `
-      <td><span class="rank ${medal}">${rank}</span></td>
-      <td><span class="${isMine ? 'inv-name me' : 'inv-name'}">${shownName}${botBadge}</span></td>
-      <td>${fmtRef(pl.total)}</td>
-      <td><span class="bar-wrap"><span class="bar-fill" style="width:${barW}%"></span></span></td>`;
-    tbody.appendChild(tr);
-  });
+    return `<div class="leader-item${isMine ? ' me' : ''}">
+      <div class="leader-name-row">
+        <span class="rank ${medal}">${rank}</span>
+        <span class="${isMine ? 'inv-name me' : 'inv-name'}">${shownName}${botBadge}</span>
+      </div>
+      <div class="leader-bottom-row">
+        <span class="leader-total">${fmtRef(pl.total)}</span>
+        <span class="leader-bar"><span style="width:${barW}%"></span></span>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function renderTransferSelect(players) {

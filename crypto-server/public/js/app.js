@@ -87,7 +87,8 @@ function showApp(username, profile) {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('appScreen').classList.remove('hidden');
   initChart();
-  applyUiMode();
+  try { currentTab = localStorage.getItem('playerActiveTab') || 'trading'; } catch (_) { currentTab = 'trading'; }
+  showTab(currentTab);
   loadState().then(() => { loadOrders(); });
 }
 
@@ -131,18 +132,49 @@ function renderProfileView() {
     b.classList.toggle('on', b.dataset.mode === myProfile.uiMode));
 }
 
-// Какой «домашний» экран открыт помимо профиля/страницы актива — нужно,
-// чтобы кнопка «Назад» в профиле возвращала туда, откуда пришли.
-let lastMainView = 'home';
+// ── БОКОВОЕ МЕНЮ ИГРОКА (Трейдинг / Треймап / Банк) ──────────────────────────
+// Раньше был единственный «домашний» экран (homeView/simpleView в
+// зависимости от режима интерфейса) плюс отдельные страницы (актив/профиль).
+// Теперь верхнеуровневых вкладок три — переводы/кредиты переехали в «Банк»,
+// добавилась «Треймап» — переключение между ними работает так же, как
+// homeView/simpleView раньше: просто показать/скрыть нужный div.
+let currentTab = 'trading';
 
-function applyUiMode() {
-  const simple = myProfile.uiMode === 'simple';
-  document.getElementById('homeView')?.classList.toggle('hidden', simple);
-  document.getElementById('simpleView')?.classList.toggle('hidden', !simple);
+function showTab(tab) {
+  currentTab = tab;
+  document.getElementById('bankView')?.classList.toggle('hidden', tab !== 'bank');
+  document.getElementById('treemapView')?.classList.toggle('hidden', tab !== 'treemap');
   document.getElementById('assetView')?.classList.add('hidden');
+  document.getElementById('profileView')?.classList.add('hidden');
   currentAsset = null;
-  lastMainView = simple ? 'simple' : 'home';
-  if (simple) renderSimpleAssetList();
+
+  if (tab === 'trading') {
+    const simple = myProfile.uiMode === 'simple';
+    document.getElementById('homeView')?.classList.toggle('hidden', simple);
+    document.getElementById('simpleView')?.classList.toggle('hidden', !simple);
+    if (simple) renderSimpleAssetList();
+  } else {
+    document.getElementById('homeView')?.classList.add('hidden');
+    document.getElementById('simpleView')?.classList.add('hidden');
+  }
+
+  document.querySelectorAll('#playerSidebar .side-link').forEach(l =>
+    l.classList.toggle('active', l.dataset.tab === tab));
+
+  if (tab === 'treemap') renderPlayerTreemap();
+
+  try { localStorage.setItem('playerActiveTab', tab); } catch (_) {}
+}
+
+document.querySelectorAll('#playerSidebar .side-link').forEach(btn => {
+  btn.addEventListener('click', () => showTab(btn.dataset.tab));
+});
+
+// Переключение полный/упрощённый режим интерфейса влияет только на вкладку
+// «Трейдинг» — если сейчас открыт «Банк»/«Треймап», не должно перекидывать
+// игрока обратно на рынок.
+function applyUiMode() {
+  showTab(currentTab);
 }
 
 function openProfile() {
@@ -150,16 +182,14 @@ function openProfile() {
   document.getElementById('homeView')?.classList.add('hidden');
   document.getElementById('simpleView')?.classList.add('hidden');
   document.getElementById('assetView')?.classList.add('hidden');
+  document.getElementById('bankView')?.classList.add('hidden');
+  document.getElementById('treemapView')?.classList.add('hidden');
   document.getElementById('profileView')?.classList.remove('hidden');
 }
 
 function closeProfile() {
   document.getElementById('profileView')?.classList.add('hidden');
-  if (lastMainView === 'simple') {
-    document.getElementById('simpleView')?.classList.remove('hidden');
-  } else {
-    document.getElementById('homeView')?.classList.remove('hidden');
-  }
+  showTab(currentTab);
 }
 
 document.getElementById('profileBtn')?.addEventListener('click', openProfile);
@@ -538,6 +568,107 @@ function renderAssetList() {
     </tr>`;
   }).join('');
 }
+
+// ── КАРТА РЫНКА (squarified treemap) ────────────────────────────────────────
+// Тот же алгоритм и та же раскладка, что и в админке (public/js/admin.js) —
+// игроку показываем публичную сводку по всем видимым ему активам (marketStats
+// уже отфильтрован сервером по доступу конкретного игрока — компании и
+// союзные токены, к которым он не допущен, сюда просто не попадут).
+function worstAspectRatioPlayer(rowAreas, shortSide) {
+  const sum = rowAreas.reduce((a, b) => a + b, 0);
+  if (sum <= 0) return Infinity;
+  const rMax = Math.max(...rowAreas);
+  const rMin = Math.min(...rowAreas);
+  const s2 = shortSide * shortSide;
+  return Math.max((s2 * rMax) / (sum * sum), (sum * sum) / (s2 * rMin));
+}
+
+function squarifyPlayer(items, x, y, w, h) {
+  const out = [];
+  let remaining = items.slice();
+  let rx = x, ry = y, rw = w, rh = h;
+  while (remaining.length) {
+    const shortSide = Math.min(rw, rh);
+    let row = [remaining[0]];
+    for (let i = 1; i < remaining.length; i++) {
+      const candidate = row.concat(remaining[i]);
+      if (worstAspectRatioPlayer(candidate.map(d => d.area), shortSide) <= worstAspectRatioPlayer(row.map(d => d.area), shortSide)) {
+        row = candidate;
+      } else break;
+    }
+    const rowSum = row.reduce((s, d) => s + d.area, 0);
+    if (rw >= rh) {
+      const rowWidth = rh > 0 ? rowSum / rh : 0;
+      let cy = ry;
+      row.forEach(item => {
+        const itemH = rowWidth > 0 ? item.area / rowWidth : 0;
+        out.push({ ...item, x: rx, y: cy, w: rowWidth, h: itemH });
+        cy += itemH;
+      });
+      rx += rowWidth; rw -= rowWidth;
+    } else {
+      const rowHeight = rw > 0 ? rowSum / rw : 0;
+      let cx = rx;
+      row.forEach(item => {
+        const itemW = rowHeight > 0 ? item.area / rowHeight : 0;
+        out.push({ ...item, x: cx, y: ry, w: itemW, h: rowHeight });
+        cx += itemW;
+      });
+      ry += rowHeight; rh -= rowHeight;
+    }
+    remaining = remaining.slice(row.length);
+  }
+  return out;
+}
+
+function treemapColorPlayer(change) {
+  if (change == null || !isFinite(change)) return 'hsl(220 10% 30%)';
+  const clamped = Math.max(-10, Math.min(10, change));
+  const t = Math.abs(clamped) / 10;
+  const hue = clamped >= 0 ? 145 : 355;
+  const sat = 50 + t * 30;
+  const light = 26 + t * 16;
+  return `hsl(${hue} ${sat}% ${light}%)`;
+}
+
+function renderPlayerTreemap() {
+  const container = document.getElementById('playerTreemapContainer');
+  if (!container) return;
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  if (w <= 0 || h <= 0) return;
+
+  const items = Object.entries(marketStats)
+    .map(([ticker, s]) => ({ ticker, value: s.marketCap || 0, change: s.change1 }))
+    .filter(i => i.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  if (!items.length) {
+    container.innerHTML = '<div class="muted" style="padding:20px;text-align:center">Нет активов с рыночной капитализацией</div>';
+    return;
+  }
+
+  const total = items.reduce((s, i) => s + i.value, 0);
+  const scale = (w * h) / total;
+  const withArea = items.map(i => ({ ...i, area: i.value * scale }));
+  const tiles = squarifyPlayer(withArea, 0, 0, w, h);
+
+  container.innerHTML = tiles.map(t => {
+    const changeTxt = t.change == null ? '' : `${t.change > 0 ? '▲' : t.change < 0 ? '▼' : ''} ${fmt(Math.abs(t.change), 2)}%`;
+    const showLabel = t.w > 46 && t.h > 28;
+    const title = `${t.ticker} — Market Cap: ${fmtRef(t.value, 0)}${t.change != null ? `, Δ1: ${fmt(t.change, 2)}%` : ''}`;
+    return `<div class="treemap-tile" style="left:${t.x}px;top:${t.y}px;width:${t.w}px;height:${t.h}px;background:${treemapColorPlayer(t.change)}" title="${title}">
+      ${showLabel ? `<span class="tt-ticker">${t.ticker}</span><span class="tt-change">${changeTxt}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+
+window.addEventListener('resize', () => {
+  clearTimeout(window.__playerTreemapResizeTimer);
+  window.__playerTreemapResizeTimer = setTimeout(() => {
+    if (currentTab === 'treemap') renderPlayerTreemap();
+  }, 200);
+});
 
 // ── УПРОЩЁННЫЙ РЕЖИМ: плоский список активов, покупка/продажа по рынку ───────
 function renderSimpleAssetList() {
@@ -1367,6 +1498,7 @@ socket.on('marketStats', s => {
   marketStats = s;
   renderAssetList();
   if (currentAsset) { renderAssetHeader(); renderExchangeReserve(); }
+  if (currentTab === 'treemap') renderPlayerTreemap();
 });
 
 socket.on('orderUpdate', ({ username }) => {

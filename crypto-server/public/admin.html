@@ -224,21 +224,6 @@
       .sidebar { width: 100%; flex-direction: row; overflow-x: auto; position: static; padding-bottom: 2px; }
       .side-link { width: auto; white-space: nowrap; }
     }
-
-    /* Карта рынка (treemap) */
-    .treemap-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; font-size: 12px; color: var(--mu); }
-    .tm-lg-item { display: flex; align-items: center; gap: 6px; }
-    .tm-lg-swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
-    .treemap-container { position: relative; width: 100%; height: 560px; }
-    .treemap-tile {
-      position: absolute; box-sizing: border-box; border: 2px solid var(--bg);
-      border-radius: 4px; overflow: hidden; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; text-align: center;
-      color: #fff; cursor: default; transition: filter .1s;
-    }
-    .treemap-tile:hover { filter: brightness(1.15); }
-    .treemap-tile .tt-ticker { font-weight: 700; line-height: 1.2; }
-    .treemap-tile .tt-change { font-size: 11px; opacity: .9; line-height: 1.2; }
   </style>
 </head>
 <body>

@@ -224,6 +224,21 @@
       .sidebar { width: 100%; flex-direction: row; overflow-x: auto; position: static; padding-bottom: 2px; }
       .side-link { width: auto; white-space: nowrap; }
     }
+
+    /* Карта рынка (treemap) */
+    .treemap-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; font-size: 12px; color: var(--mu); }
+    .tm-lg-item { display: flex; align-items: center; gap: 6px; }
+    .tm-lg-swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+    .treemap-container { position: relative; width: 100%; height: 560px; }
+    .treemap-tile {
+      position: absolute; box-sizing: border-box; border: 2px solid var(--bg);
+      border-radius: 4px; overflow: hidden; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; text-align: center;
+      color: #fff; cursor: default; transition: filter .1s;
+    }
+    .treemap-tile:hover { filter: brightness(1.15); }
+    .treemap-tile .tt-ticker { font-weight: 700; line-height: 1.2; }
+    .treemap-tile .tt-change { font-size: 11px; opacity: .9; line-height: 1.2; }
   </style>
 </head>
 <body>
@@ -237,6 +252,7 @@
     <button class="side-link" data-section="companies"><span class="ic">🏢</span> Компании</button>
     <button class="side-link" data-section="unions"><span class="ic">🤝</span> Союзы</button>
     <button class="side-link" data-section="market"><span class="ic">🎛️</span> Контроль рынка</button>
+    <button class="side-link" data-section="treemap"><span class="ic">🗺️</span> Карта рынка</button>
   </nav>
 
   <div class="admin-main">
@@ -650,6 +666,23 @@
       </table>
     </div>
 
+  </section>
+
+
+  <!-- ═══════════════════ КАРТА РЫНКА (TREEMAP) ═══════════════════ -->
+  <section class="admin-section" id="section-treemap" hidden>
+    <div class="card section-gap">
+      <h2>🗺️ Карта рынка</h2>
+      <div class="muted" style="font-size:12px;margin-bottom:12px">
+        Размер плитки — Market Cap актива, цвет — изменение цены за последний тик.
+      </div>
+      <div class="treemap-legend">
+        <span class="tm-lg-item"><span class="tm-lg-swatch" style="background:hsl(355 75% 42%)"></span> Падение</span>
+        <span class="tm-lg-item"><span class="tm-lg-swatch" style="background:hsl(220 10% 30%)"></span> Без данных</span>
+        <span class="tm-lg-item"><span class="tm-lg-swatch" style="background:hsl(145 75% 42%)"></span> Рост</span>
+      </div>
+      <div id="treemapContainer" class="treemap-container"></div>
+    </div>
   </section>
 
 

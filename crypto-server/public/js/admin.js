@@ -6,6 +6,7 @@ let allLoans   = [];
 let allDisplayNames = {}; // username -> отображаемое имя, заданное игроком в профиле
 let allBots    = [];
 let allCurrencies = [];
+let marketStatsData = {}; // ticker -> { marketCap, change1, ... } — для карты рынка
 let dealCount  = 0;
 let COINS      = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 const BASE_COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
@@ -41,12 +42,119 @@ const PRESET_INFO = {
     try { localStorage.setItem('adminActiveSection', id); } catch (_) {}
   }
 
-  links.forEach(l => l.addEventListener('click', () => activate(l.dataset.section)));
+  links.forEach(l => l.addEventListener('click', () => {
+    activate(l.dataset.section);
+    // Контейнер карты рынка при hidden имеет ширину 0 (display:none), поэтому
+    // раскладка, посчитанная во время фонового обновления данных, была бы
+    // нулевой — пересчитываем размеры уже после того, как секция стала видимой.
+    if (l.dataset.section === 'treemap') renderTreemap();
+  }));
 
   let saved = 'overview';
   try { saved = localStorage.getItem('adminActiveSection') || 'overview'; } catch (_) {}
   activate(saved);
 })();
+
+// ── КАРТА РЫНКА (squarified treemap) ────────────────────────────────────────
+// Классический алгоритм Bruls/Huizing/Wijk — на каждом шаге собираем "ряд"
+// плиток, минимизирующий худшее соотношение сторон, и режем им прямоугольник
+// поперёк более длинной стороны. Даёт куда более читаемую раскладку, чем
+// наивное "нарезать по одной оси" (плитки не превращаются в тонкие полоски).
+function worstAspectRatio(rowAreas, shortSide) {
+  const sum = rowAreas.reduce((a, b) => a + b, 0);
+  if (sum <= 0) return Infinity;
+  const rMax = Math.max(...rowAreas);
+  const rMin = Math.min(...rowAreas);
+  const s2 = shortSide * shortSide;
+  return Math.max((s2 * rMax) / (sum * sum), (sum * sum) / (s2 * rMin));
+}
+
+function squarify(items, x, y, w, h) {
+  const out = [];
+  let remaining = items.slice();
+  let rx = x, ry = y, rw = w, rh = h;
+  while (remaining.length) {
+    const shortSide = Math.min(rw, rh);
+    let row = [remaining[0]];
+    for (let i = 1; i < remaining.length; i++) {
+      const candidate = row.concat(remaining[i]);
+      if (worstAspectRatio(candidate.map(d => d.area), shortSide) <= worstAspectRatio(row.map(d => d.area), shortSide)) {
+        row = candidate;
+      } else break;
+    }
+    const rowSum = row.reduce((s, d) => s + d.area, 0);
+    if (rw >= rh) {
+      const rowWidth = rh > 0 ? rowSum / rh : 0;
+      let cy = ry;
+      row.forEach(item => {
+        const itemH = rowWidth > 0 ? item.area / rowWidth : 0;
+        out.push({ ...item, x: rx, y: cy, w: rowWidth, h: itemH });
+        cy += itemH;
+      });
+      rx += rowWidth; rw -= rowWidth;
+    } else {
+      const rowHeight = rw > 0 ? rowSum / rw : 0;
+      let cx = rx;
+      row.forEach(item => {
+        const itemW = rowHeight > 0 ? item.area / rowHeight : 0;
+        out.push({ ...item, x: cx, y: ry, w: itemW, h: rowHeight });
+        cx += itemW;
+      });
+      ry += rowHeight; rh -= rowHeight;
+    }
+    remaining = remaining.slice(row.length);
+  }
+  return out;
+}
+
+// Цвет плитки по Δ за последний тик — красный/зелёный градиент, насыщеннее
+// при более сильном движении; без данных (свежесозданный актив) — нейтральный серый.
+function treemapColor(change) {
+  if (change == null || !isFinite(change)) return 'hsl(220 10% 30%)';
+  const clamped = Math.max(-10, Math.min(10, change));
+  const t = Math.abs(clamped) / 10;
+  const hue = clamped >= 0 ? 145 : 355;
+  const sat = 50 + t * 30;
+  const light = 26 + t * 16;
+  return `hsl(${hue} ${sat}% ${light}%)`;
+}
+
+function renderTreemap() {
+  const container = document.getElementById('treemapContainer');
+  if (!container) return;
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  if (w <= 0 || h <= 0) return; // секция скрыта — пересчитаем при активации вкладки
+
+  const items = Object.entries(marketStatsData)
+    .map(([ticker, s]) => ({ ticker, value: s.marketCap || 0, change: s.change1 }))
+    .filter(i => i.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  if (!items.length) {
+    container.innerHTML = '<div class="muted" style="padding:20px;text-align:center">Нет активов с рыночной капитализацией</div>';
+    return;
+  }
+
+  const total = items.reduce((s, i) => s + i.value, 0);
+  const scale = (w * h) / total;
+  const withArea = items.map(i => ({ ...i, area: i.value * scale }));
+  const tiles = squarify(withArea, 0, 0, w, h);
+
+  container.innerHTML = tiles.map(t => {
+    const changeTxt = t.change == null ? '' : `${t.change > 0 ? '▲' : t.change < 0 ? '▼' : ''} ${fmt(Math.abs(t.change), 2)}%`;
+    const showLabel = t.w > 46 && t.h > 28;
+    const title = `${t.ticker} — Market Cap: $${fmt(t.value, 0)}${t.change != null ? `, Δ1: ${fmt(t.change, 2)}%` : ''}`;
+    return `<div class="treemap-tile" style="left:${t.x}px;top:${t.y}px;width:${t.w}px;height:${t.h}px;background:${treemapColor(t.change)}" title="${title}">
+      ${showLabel ? `<span class="tt-ticker">${t.ticker}</span><span class="tt-change">${changeTxt}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+
+window.addEventListener('resize', () => {
+  clearTimeout(window.__treemapResizeTimer);
+  window.__treemapResizeTimer = setTimeout(renderTreemap, 200);
+});
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 async function api(method, path, body) {
@@ -1254,6 +1362,7 @@ async function loadAdminData() {
     prices = stateData.prices || {};
     if (stateData.coins) COINS = stateData.coins;
     if (stateData.paused !== undefined) applyPauseState(stateData.paused);
+    if (stateData.marketStats) marketStatsData = stateData.marketStats;
     const trades = (stateData.events || []).filter(e =>
       e.text.includes('купил') || e.text.includes('продал')
     );
@@ -1277,6 +1386,7 @@ async function loadAdminData() {
   await loadCompaniesData();
   renderPlayers();
   renderLoans();
+  renderTreemap();
 }
 
 // ── КНОПКИ ───────────────────────────────────────────────────────────────────
@@ -1330,6 +1440,11 @@ socket.on('priceUpdate', p => {
       row.cells[1].textContent = '$' + fmt(prices[coin] || 0, priceDec(coin));
     }
   });
+});
+
+socket.on('marketStats', s => {
+  marketStatsData = s;
+  renderTreemap();
 });
 
 // Казна обновляется динамически на каждый тик и после любой операции с кредитами/торговлей

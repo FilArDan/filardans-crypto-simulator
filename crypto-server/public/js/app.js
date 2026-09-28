@@ -748,7 +748,7 @@ function renderAmmPools() {
       </div>
       <div class="amm-pool-grid">
         <div class="amm-mini-form">
-          <div class="lbl">Обмен (USC при покупке / ${p.ticker} при продаже)</div>
+          <div class="lbl amm-swap-label">Сколько потратить (USC)</div>
           <div class="row">
             <select class="amm-swap-action">
               <option value="buy">Купить</option>
@@ -757,6 +757,7 @@ function renderAmmPools() {
             <input type="number" step="any" min="0" class="amm-swap-amount" placeholder="Сумма">
             <button type="button" class="btn btn-primary btn-sm amm-swap-btn">OK</button>
           </div>
+          <div class="amm-swap-preview muted" style="font-size:11px;min-height:14px"></div>
           <div class="err-msg amm-swap-error"></div>
         </div>
         <div class="amm-mini-form">
@@ -767,7 +768,7 @@ function renderAmmPools() {
             <button type="button" class="btn btn-secondary btn-sm amm-liq-add-btn">Внести</button>
           </div>
           <div class="row">
-            <input type="number" step="any" min="0" class="amm-liq-shares" placeholder="LP-долей на вывод" ${p.myShares > 0 ? '' : 'disabled'}>
+            <input type="number" step="any" min="0" max="100" class="amm-liq-pct" placeholder="% моей доли на вывод" ${p.myShares > 0 ? '' : 'disabled'}>
             <button type="button" class="btn btn-secondary btn-sm amm-liq-remove-btn" ${p.myShares > 0 ? '' : 'disabled'}>Вывести</button>
             <button type="button" class="btn btn-secondary btn-sm amm-liq-remove-all-btn" ${p.myShares > 0 ? '' : 'disabled'}>Всё</button>
           </div>
@@ -841,6 +842,56 @@ async function loadAmmChart(ticker) {
   chart.timeScale().fitContent();
 }
 
+// Клиентский предпросмотр свопа — та же формула (constant product с
+// комиссией 0.3%), что и на сервере в game/amm.js#swapOut. Не заменяет
+// серверный расчёт (сервер всё равно пересчитывает сам и не доверяет
+// клиенту), только чтобы игрок видел ожидаемый результат ДО подтверждения.
+const AMM_FEE_PREVIEW = 0.003;
+function ammSwapOutPreview(reserveIn, reserveOut, amountIn) {
+  const amountInWithFee = amountIn * (1 - AMM_FEE_PREVIEW);
+  return (amountInWithFee * reserveOut) / (reserveIn + amountInWithFee);
+}
+
+function updateAmmSwapUi(card, ticker) {
+  const pool = ammPools.find(p => p.ticker === ticker);
+  const action = card.querySelector('.amm-swap-action').value;
+  const labelEl = card.querySelector('.amm-swap-label');
+  const previewEl = card.querySelector('.amm-swap-preview');
+  const amountInput = card.querySelector('.amm-swap-amount');
+  if (labelEl) labelEl.textContent = action === 'buy' ? 'Сколько потратить (USC)' : `Сколько продать (${ticker})`;
+  if (amountInput) amountInput.placeholder = action === 'buy' ? 'Сумма в USC' : `Количество ${ticker}`;
+  if (!previewEl) return;
+
+  const amount = parseFloat(amountInput?.value);
+  if (!pool || !(pool.reserveCoin > 0) || !(pool.reserveUsd > 0) || !Number.isFinite(amount) || amount <= 0) {
+    previewEl.textContent = '';
+    return;
+  }
+  if (action === 'buy') {
+    const coinOut = ammSwapOutPreview(pool.reserveUsd, pool.reserveCoin, amount);
+    const avgPrice = amount / coinOut;
+    const impact = (avgPrice / pool.price - 1) * 100;
+    previewEl.textContent = `≈ ${fmt(coinOut, 6)} ${ticker} (курс ≈ ${fmtRef(avgPrice, 2)}${impact > 0.5 ? `, цена сдвинется на ~${fmt(impact, 1)}%` : ''})`;
+  } else {
+    const usdOut = ammSwapOutPreview(pool.reserveCoin, pool.reserveUsd, amount);
+    const avgPrice = usdOut / amount;
+    const impact = (1 - avgPrice / pool.price) * 100;
+    previewEl.textContent = `≈ ${fmtRef(usdOut, 2)} (курс ≈ ${fmtRef(avgPrice, 2)}${impact > 0.5 ? `, цена сдвинется на ~${fmt(impact, 1)}%` : ''})`;
+  }
+}
+
+document.getElementById('ammPoolsList')?.addEventListener('input', e => {
+  if (!e.target.classList.contains('amm-swap-amount')) return;
+  const card = e.target.closest('.amm-pool-card');
+  updateAmmSwapUi(card, card.dataset.ticker);
+});
+
+document.getElementById('ammPoolsList')?.addEventListener('change', e => {
+  if (!e.target.classList.contains('amm-swap-action')) return;
+  const card = e.target.closest('.amm-pool-card');
+  updateAmmSwapUi(card, card.dataset.ticker);
+});
+
 document.getElementById('ammPoolsList')?.addEventListener('click', async e => {
   const chartBtn      = e.target.closest('.amm-chart-btn');
   const swapBtn       = e.target.closest('.amm-swap-btn');
@@ -896,12 +947,22 @@ document.getElementById('ammPoolsList')?.addEventListener('click', async e => {
     return;
   }
 
-  // removeBtn || removeAllBtn
+  // removeBtn || removeAllBtn — вывод по проценту от своей доли (не по
+  // сырым LP-долям, которые сами по себе ничего не говорят без сравнения
+  // с totalShares пула)
   const errEl = card.querySelector('.amm-liq-error');
   errEl.textContent = '';
   const pool = ammPools.find(p => p.ticker === ticker);
-  const shares = removeAllBtn ? (pool ? pool.myShares : 0) : parseFloat(card.querySelector('.amm-liq-shares').value);
-  if (!Number.isFinite(shares) || shares <= 0) { errEl.textContent = 'Введите количество долей'; return; }
+  const myShares = pool ? pool.myShares : 0;
+  let shares;
+  if (removeAllBtn) {
+    shares = myShares;
+  } else {
+    const pct = parseFloat(card.querySelector('.amm-liq-pct').value);
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) { errEl.textContent = 'Введите % от 0 до 100'; return; }
+    shares = myShares * (pct / 100);
+  }
+  if (!Number.isFinite(shares) || shares <= 0) { errEl.textContent = 'Нечего выводить'; return; }
   const btn = removeBtn || removeAllBtn;
   btn.disabled = true;
   const res = await api('POST', '/api/amm/liquidity/remove', { ticker, shares });

@@ -1065,8 +1065,7 @@ function showHome() {
 function renderAssetHeader() {
   const ticker = currentAsset;
   if (!ticker) return;
-  const comp = lastCompanies.find(c => c.ticker === ticker);
-  const name = comp ? comp.name : null;
+  const name = (marketStats[ticker] || {}).name || null;
   const price = prices[ticker] || 0;
   const dec = price < 1 ? 4 : 2;
   const change = pctChange(ticker);

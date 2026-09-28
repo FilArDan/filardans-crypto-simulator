@@ -1,4 +1,4 @@
-const { db, EXCHANGE_USERNAME } = require('../db');
+const { db, EXCHANGE_USERNAME, COIN_META } = require('../db');
 const { priceHistory } = require('./bots');
 const { getVolume } = require('./volume');
 
@@ -21,10 +21,28 @@ const { getVolume } = require('./volume');
 // в JS на каждый /api/state, умноженное на число монет — легло сервером на
 // ~3-4с каждые несколько секунд. Кэш в памяти убирает обращение к БД для
 // этой метрики вовсе.
+// Человекочитаемое имя актива (для подписи рядом с тикером в UI) — берём из
+// того же источника, что и остальная часть проекта: COIN_META для базовых
+// монет, db.customCoins/db.companies для всего остального. Раньше это имя
+// клиенту вообще не приходило (только для компаний, отдельным полем) —
+// у BTC/ETH/... на странице актива рядом с тикером не было подписи вовсе.
+async function getAssetNames() {
+  const [custom, companies] = await Promise.all([
+    db.customCoins.find({}),
+    db.companies.find({}),
+  ]);
+  const names = {};
+  for (const [ticker, meta] of Object.entries(COIN_META)) names[ticker] = meta.name;
+  custom.forEach(c => { names[c.ticker] = c.name; });
+  companies.forEach(c => { names[c.ticker] = c.name; });
+  return names;
+}
+
 async function getMarketStats() {
-  const [docs, exchWallet] = await Promise.all([
+  const [docs, exchWallet, names] = await Promise.all([
     db.prices.find({}),
     db.wallets.findOne({ username: EXCHANGE_USERNAME }),
+    getAssetNames(),
   ]);
   const stats = {};
   for (const d of docs) {
@@ -40,6 +58,7 @@ async function getMarketStats() {
     const maxSupply   = d.supply || 0;
     const circulating = Math.max(0, maxSupply - (d.vaultRemaining || 0));
     stats[d.coin] = {
+      name:        names[d.coin] || null,
       supply:      maxSupply,
       circulating,
       // Сколько актива реально можно купить прямо сейчас — фактический

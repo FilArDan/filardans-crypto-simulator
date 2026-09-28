@@ -1383,9 +1383,23 @@ router.post('/admin/amm/pool/create', auth, adminOnly, async (req, res) => {
 
 router.delete('/admin/amm/pool/:ticker', auth, adminOnly, async (req, res) => {
   try {
-    await amm.deletePool(String(req.params.ticker || '').toUpperCase());
-    req.app.get('io').emit('ammPoolUpdate', { ticker: String(req.params.ticker || '').toUpperCase() });
-    res.json({ ok: true });
+    const ticker = String(req.params.ticker || '').toUpperCase();
+    const refunds = await amm.deletePool(ticker, { force: !!req.body?.force });
+    const io = req.app.get('io');
+
+    if (refunds.length) {
+      for (const r of refunds) {
+        const wallet = await db.wallets.findOne({ username: r.username });
+        io.emit('walletUpdate', { username: r.username, wallet });
+      }
+      const txt = `🛑 ГМ принудительно удалил AMM-пул ${ticker} — ликвидность возвращена ${refunds.length} держател${refunds.length === 1 ? 'ю' : 'ям'} (${refunds.map(r => `${r.username}: ${r.coinOut.toFixed(4)} ${ticker} + ${r.usdOut.toFixed(2)} USC`).join(', ')})`;
+      const ev = { ts: Date.now(), text: txt };
+      await db.events.insert(ev);
+      io.emit('newEvent', ev);
+    }
+
+    io.emit('ammPoolUpdate', { ticker });
+    res.json({ ok: true, refunds });
   } catch(e) { res.json({ error: e.message }); }
 });
 

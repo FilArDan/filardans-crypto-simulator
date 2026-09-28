@@ -93,13 +93,29 @@ async function createPool(ticker) {
   return pool;
 }
 
-// Удалить можно только полностью пустой пул (без LP-долей) — иначе пришлось
-// бы решать, кому и как принудительно возвращать чужую внесённую ликвидность.
-async function deletePool(ticker) {
+// По умолчанию удалить можно только полностью пустой пул. С force:true ГМ
+// может снести пул и при живой ликвидности — тогда каждому держателю
+// LP-долей сначала возвращается его пропорциональная часть текущих
+// резервов (и монета, и USC) на кошелёк, и только потом пул удаляется.
+async function deletePool(ticker, { force } = {}) {
   const pool = await db.ammPools.findOne({ ticker });
   if (!pool) throw new Error('Пул не найден');
-  if (pool.totalShares > 0) throw new Error('Нельзя удалить пул, пока в нём есть чужая ликвидность');
+
+  const refunds = [];
+  if (pool.totalShares > 0) {
+    if (!force) throw new Error('Нельзя удалить пул, пока в нём есть чужая ликвидность');
+    for (const [username, shares] of Object.entries(pool.lpShares || {})) {
+      if (!(shares > 0)) continue;
+      const frac    = shares / pool.totalShares;
+      const coinOut = pool.reserveCoin * frac;
+      const usdOut  = pool.reserveUsd  * frac;
+      await db.wallets.update({ username }, { $inc: { usd: +usdOut, [ticker]: +coinOut } });
+      refunds.push({ username, coinOut, usdOut });
+    }
+  }
+
   await db.ammPools.remove({ ticker }, {});
+  return refunds;
 }
 
 // ── Ликвидность ──────────────────────────────────────────────────────────────

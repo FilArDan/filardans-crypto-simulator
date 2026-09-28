@@ -1224,7 +1224,7 @@ function renderAmmPools() {
       <td>${p.reserveCoin > 0 ? 'USC ' + fmt(p.price, 4) : '<span class="muted">—</span>'}</td>
       <td>${p.lpCount}</td>
       <td>
-        <button class="btn btn-dan btn-sm" ${p.totalShares > 0 ? 'disabled title="Нельзя удалить, пока в пуле есть чужая ликвидность"' : ''} onclick="deleteAmmPool('${p.ticker}')">Удалить</button>
+        <button class="btn btn-dan btn-sm" onclick="deleteAmmPool('${p.ticker}', ${p.totalShares > 0}, ${p.lpCount})">Удалить</button>
       </td>
     </tr>
   `).join('');
@@ -1241,9 +1241,12 @@ async function loadAmmData() {
   fillAmmNewPoolSelect();
 }
 
-async function deleteAmmPool(ticker) {
-  if (!confirm(`Удалить пул ${ticker}?`)) return;
-  const res = await api('DELETE', `/api/admin/amm/pool/${ticker}`);
+async function deleteAmmPool(ticker, hasLiquidity, lpCount) {
+  const msg = hasLiquidity
+    ? `В пуле ${ticker} есть ликвидность ${lpCount} держател${lpCount === 1 ? 'я' : 'ей'} — при удалении она будет возвращена им на баланс пропорционально их LP-долям, а сам пул исчезнет безвозвратно. Продолжить?`
+    : `Удалить пул ${ticker}?`;
+  if (!confirm(msg)) return;
+  const res = await api('DELETE', `/api/admin/amm/pool/${ticker}`, { force: hasLiquidity });
   if (res.error) { alert(res.error); return; }
   await loadAmmData();
 }

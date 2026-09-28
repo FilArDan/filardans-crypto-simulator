@@ -295,6 +295,43 @@ tr:last-child td{border-bottom:none;}
 @media(max-width:600px){.g3{grid-template-columns:1fr;}.g2{grid-template-columns:1fr;}.stats{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:400px){.stats{grid-template-columns:1fr;}.app{padding:10px;}}
 
+/* Таблицы с большим числом колонок (список активов/портфель/ордера) на узком
+   экране превращаются в список карточек — свайпать вбок на телефоне неудобно.
+   Классический CSS-приём: разбираем табличную раскладку, подписи колонок
+   берём из data-label каждой ячейки (см. renderAssetList/renderPortfolio/
+   renderOrders в app.js). Строки-заглушки ("Резервы пусты" и т.п., td[colspan])
+   в эту раскладку не участвуют — просто центрированный текст без подписи. */
+@media(max-width:640px){
+  .responsive-table{table-layout:auto;}
+  .responsive-table thead{display:none;}
+  .responsive-table,.responsive-table tbody,.responsive-table tr{display:block;width:100%;}
+  .responsive-table tr{border:1px solid var(--bd);border-radius:10px;padding:8px 10px;margin-bottom:8px;background:var(--sf2);}
+  .responsive-table tr:last-child{margin-bottom:0;}
+  .responsive-table td{
+    display:flex;justify-content:space-between;align-items:center;gap:10px;
+    padding:5px 0;border-bottom:none;white-space:normal;overflow:visible;text-overflow:clip;
+  }
+  .responsive-table td::before{
+    content:attr(data-label);font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--mu);font-weight:600;flex-shrink:0;
+  }
+  .responsive-table td:first-child{
+    border-bottom:1px solid var(--bd);padding-bottom:8px;margin-bottom:4px;font-weight:700;
+  }
+  .responsive-table td:first-child::before{content:none;}
+  .responsive-table td[colspan]{display:block;text-align:center;}
+  .responsive-table td[colspan]::before{content:none;}
+}
+
+/* Мини-формы DEX/трейдинга (селект+поле+кнопка в один ряд) — на узком экране
+   не сжимаются в кашу, а переносятся на несколько строк. */
+@media(max-width:480px){
+  .amm-mini-form .row{flex-wrap:wrap;}
+  .amm-mini-form .row > *{flex:1 1 120px;}
+  .order-grid{grid-template-columns:1fr;}
+  .simple-trade-cell{flex-wrap:wrap;}
+}
+
 #priceChart {
   width: 100%;
   height: 380px;

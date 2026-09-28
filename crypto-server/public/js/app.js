@@ -463,7 +463,7 @@ function renderPortfolio(wallet, coins) {
       const lockNote = locked > 0
         ? ` <span class="muted" title="Зарезервировано под лимитные ордера">🔒${fmt(locked, 4)}</span>`
         : '';
-      return `<tr><td>${c}</td><td>${fmt(free, 5)}${lockNote}</td><td>${fmtRef(prices[c] || 0, dec)}</td><td>${fmtRef(val)}</td></tr>`;
+      return `<tr><td data-label="Актив">${c}</td><td data-label="Объём">${fmt(free, 5)}${lockNote}</td><td data-label="Курс">${fmtRef(prices[c] || 0, dec)}</td><td data-label="Стоимость">${fmtRef(val)}</td></tr>`;
     });
   body.innerHTML = rows.length
     ? rows.join('')
@@ -592,14 +592,14 @@ function renderAssetList() {
     const dec = a.price < 1 ? 4 : 2;
     const iconImg = a.icon ? `<img src="${escapeAttr(a.icon)}" class="asset-icon" onerror="this.style.display='none'">` : '';
     return `<tr class="asset-row" data-asset="${a.ticker}">
-      <td><div style="display:flex;align-items:center;gap:8px">${iconImg}<div><strong>${a.ticker}</strong>${a.name ? `<div class="muted" style="font-size:11px">${a.name}</div>` : ''}</div></div></td>
-      <td>${fmtRef(a.price, dec)}</td>
-      <td>${pctHtml(a.change1)}</td>
-      <td>${pctHtml(a.change10)}</td>
-      <td>${a.marketCap != null ? `<span title="${escapeAttr(fmtRef(a.marketCap, 0))}">${fmtCompactRef(a.marketCap)}</span>` : '<span class="muted">—</span>'}</td>
-      <td>${a.volume != null ? fmtRef(a.volume, 0) : '<span class="muted">—</span>'}</td>
-      <td>${a.circulating != null ? fmt(a.circulating, 0) : '<span class="muted">—</span>'}</td>
-      <td>${a.supply != null ? fmt(a.supply, 0) : '<span class="muted">—</span>'}</td>
+      <td data-label="Актив"><div style="display:flex;align-items:center;gap:8px">${iconImg}<div><strong>${a.ticker}</strong>${a.name ? `<div class="muted" style="font-size:11px">${a.name}</div>` : ''}</div></div></td>
+      <td data-label="Цена">${fmtRef(a.price, dec)}</td>
+      <td data-label="Δ 1 тик">${pctHtml(a.change1)}</td>
+      <td data-label="Δ 10 тиков">${pctHtml(a.change10)}</td>
+      <td data-label="Market Cap">${a.marketCap != null ? `<span title="${escapeAttr(fmtRef(a.marketCap, 0))}">${fmtCompactRef(a.marketCap)}</span>` : '<span class="muted">—</span>'}</td>
+      <td data-label="Volume">${a.volume != null ? fmtRef(a.volume, 0) : '<span class="muted">—</span>'}</td>
+      <td data-label="Circulating Supply">${a.circulating != null ? fmt(a.circulating, 0) : '<span class="muted">—</span>'}</td>
+      <td data-label="Max Supply">${a.supply != null ? fmt(a.supply, 0) : '<span class="muted">—</span>'}</td>
     </tr>`;
   }).join('');
 }
@@ -1323,22 +1323,22 @@ function renderOrders(data) {
     const dec  = o.price < 1 ? 5 : 2;
     const pct  = o.amount > 0 ? Math.min(100, Math.round(o.filled / o.amount * 100)) : 0;
     rows.push(`<tr>
-      <td>${o.coin}</td>
-      <td><span class="${o.side === 'buy' ? 'ord-side-buy' : 'ord-side-sell'}">${o.side === 'buy' ? 'Покупка' : 'Продажа'}</span></td>
-      <td>${fmtRef(o.price, dec)}</td>
-      <td>${fmt(o.filled, 4)} / ${fmt(o.amount, 4)}<span class="ord-fill"><span style="width:${pct}%"></span></span></td>
-      <td><button class="ord-cancel" data-cancel="${o._id}">✕</button></td>
+      <td data-label="Актив">${o.coin}</td>
+      <td data-label="Тип"><span class="${o.side === 'buy' ? 'ord-side-buy' : 'ord-side-sell'}">${o.side === 'buy' ? 'Покупка' : 'Продажа'}</span></td>
+      <td data-label="Цена">${fmtRef(o.price, dec)}</td>
+      <td data-label="Исполнено">${fmt(o.filled, 4)} / ${fmt(o.amount, 4)}<span class="ord-fill"><span style="width:${pct}%"></span></span></td>
+      <td data-label="Действие"><button class="ord-cancel" data-cancel="${o._id}">✕</button></td>
     </tr>`);
   }
   for (const o of closed.slice(0, 5)) {
     const dec = o.price < 1 ? 5 : 2;
     const st  = o.status === 'filled' ? 'исполнен ✅' : 'отменён';
     rows.push(`<tr class="ord-done">
-      <td>${o.coin}</td>
-      <td>${o.side === 'buy' ? 'Покупка' : 'Продажа'}</td>
-      <td>${fmtRef(o.price, dec)}</td>
-      <td>${fmt(o.filled, 4)} / ${fmt(o.amount, 4)}</td>
-      <td>${st}</td>
+      <td data-label="Актив">${o.coin}</td>
+      <td data-label="Тип">${o.side === 'buy' ? 'Покупка' : 'Продажа'}</td>
+      <td data-label="Цена">${fmtRef(o.price, dec)}</td>
+      <td data-label="Исполнено">${fmt(o.filled, 4)} / ${fmt(o.amount, 4)}</td>
+      <td data-label="Статус">${st}</td>
     </tr>`);
   }
 

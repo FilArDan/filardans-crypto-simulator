@@ -98,8 +98,7 @@ async function emitPlayersUpdate(io) {
 // ── ИСТОРИЯ ЦЕН ДЛЯ ЧАРТА ────────────────────────────────────────────────────
 router.get('/price-history', auth, async (req, res) => {
   try {
-    const coin  = (req.query.coin || '').toUpperCase();
-    const limit = Math.min(Math.max(parseInt(req.query.limit) || 1000, 1), 7500);
+    const coin = (req.query.coin || '').toUpperCase();
     if (!coin) return res.json([]);
 
     // Просто последние `limit` тиков — без прореживания/агрегации всей
@@ -108,6 +107,16 @@ router.get('/price-history', auth, async (req, res) => {
     // ограничений (см. отдельный фикс "история не удаляется") — тут лишь
     // окно отображения на графике. Индекс {coin:1, ts:-1} делает сортировку
     // с limit дешёвой даже при сотнях тысяч строк истории у монеты.
+    //
+    // full=1 — по явному запросу игрока ("Показать всю историю" в чарте)
+    // отдаём вообще всё без ограничения окна (те же сырые точки, не
+    // даунсемплинг) — верхний потолок здесь чисто защитный, на случай
+    // совсем экстремальных объёмов, а не настоящее прореживание.
+    const full  = req.query.full === '1' || req.query.full === 'true';
+    const limit = full
+      ? 2_000_000
+      : Math.min(Math.max(parseInt(req.query.limit) || 1000, 1), 7500);
+
     const docs = await db.priceHistory.raw
       .find({ coin }, { projection: { _id: 0, price: 1, ts: 1 } })
       .sort({ ts: -1 })

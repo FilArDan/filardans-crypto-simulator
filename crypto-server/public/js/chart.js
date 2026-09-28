@@ -22,6 +22,10 @@ function coinColor(ticker) {
 
 // Храним полную историю: { price, ts }
 const priceHistory = {};
+// Монеты, для которых игрок явно запросил всю историю (кнопка "Показать всю
+// историю") — как только это случилось, addPricePoint() перестаёт обрезать
+// массив до MAX_HISTORY_POINTS (иначе следующий же тик срезал бы обратно).
+const fullHistoryLoaded = new Set();
 let selectedCoin = 'BTC';
 let chart        = null;
 let seriesMap     = {}; // coin -> ISeriesApi (одна серия на монету, живёт постоянно)
@@ -101,7 +105,7 @@ function addPricePoint(prices) {
     if (prices[c] == null) return;
     if (!priceHistory[c]) priceHistory[c] = [];
     priceHistory[c].push({ price: prices[c], ts: now });
-    if (priceHistory[c].length > MAX_HISTORY_POINTS) {
+    if (!fullHistoryLoaded.has(c) && priceHistory[c].length > MAX_HISTORY_POINTS) {
       priceHistory[c].splice(0, priceHistory[c].length - MAX_HISTORY_POINTS);
     }
   });
@@ -131,6 +135,39 @@ async function loadSavedHistory() {
   for (const coin of chartCoins) {
     const hist = await fetchCoinHistory(coin);
     if (hist) priceHistory[coin] = hist;
+  }
+}
+
+// ── "Показать всю историю" — по кнопке, без даунсемплинга/прореживания ───────
+// По умолчанию грузим/держим только последние MAX_HISTORY_POINTS (быстро для
+// всех) — игроку, которому реально нужна вся история актива с начала, это
+// отдаётся отдельно и явно, а не всегда и всем сразу (при тике в 5с история
+// растёт на ~17 тыс. точек в сутки на актив — тянуть это на каждый заход
+// на страницу было бы тяжело и для сервера, и для телефонов).
+function updateFullHistoryButton() {
+  const btn = document.getElementById('loadFullHistoryBtn');
+  if (!btn) return;
+  const loaded = fullHistoryLoaded.has(selectedCoin);
+  btn.textContent = loaded ? '✅ Вся история загружена' : '📜 Показать всю историю';
+  btn.disabled = loaded;
+}
+
+async function loadFullHistory() {
+  const coin = selectedCoin;
+  const btn = document.getElementById('loadFullHistoryBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Загрузка…'; }
+  try {
+    const resp = await fetch(`/api/price-history?coin=${coin}&full=1`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!Array.isArray(data) || !data.length) return;
+    priceHistory[coin] = data
+      .map(d => ({ price: Number(d.price), ts: Number(d.ts) }))
+      .filter(d => Number.isFinite(d.price) && Number.isFinite(d.ts));
+    fullHistoryLoaded.add(coin);
+    if (chart) rebuildAllSeriesData();
+  } finally {
+    updateFullHistoryButton();
   }
 }
 
@@ -207,6 +244,7 @@ function selectCoin(coin) {
 
   if (chart) chart.timeScale().fitContent();
   updateInfoLabel();
+  updateFullHistoryButton();
   cancelPendingDrawing();
   renderDrawToolbar();
   redrawOverlay();
@@ -319,6 +357,7 @@ function createChartInstance() {
   setupDrawing(container);
   renderDrawToolbar();
   updateInfoLabel();
+  updateFullHistoryButton();
 }
 
 // ── Гарантирует, что для каждой монеты есть своя серия ────────────────────────

@@ -1088,6 +1088,19 @@ function renderAssetHeader() {
     changeEl.textContent = change == null ? '' : `${change > 0 ? '▲' : change < 0 ? '▼' : ''} ${fmt(Math.abs(change), 2)}%`;
     changeEl.className = 'asset-change-big ' + (change > 0 ? 'up' : change < 0 ? 'dn' : '');
   }
+
+  // Статы шапки (24ч макс/мин — из уже загруженной истории графика, chart.js;
+  // объём — из marketStats, та же цифра, что и в списке активов).
+  const highEl = document.getElementById('assetHigh24');
+  const lowEl  = document.getElementById('assetLow24');
+  const volEl  = document.getElementById('assetVolume');
+  const stats24 = (typeof get24hStats === 'function') ? get24hStats(ticker) : null;
+  if (highEl) highEl.textContent = stats24 ? fmtRef(stats24.high, dec) : '—';
+  if (lowEl)  lowEl.textContent  = stats24 ? fmtRef(stats24.low, dec)  : '—';
+  if (volEl) {
+    const vol = (marketStats[ticker] || {}).volume10;
+    volEl.textContent = vol != null ? fmtCompactRef(vol) : '—';
+  }
 }
 
 function openAsset(ticker) {
@@ -1245,6 +1258,34 @@ document.querySelectorAll('.trade-mode-btn').forEach(btn => {
 ['tradeType','tradeAmount','tradeUsd'].forEach(id => {
   document.getElementById(id)?.addEventListener('input', updateTradeHint);
   document.getElementById(id)?.addEventListener('change', updateTradeHint);
+});
+
+// Быстрые пресеты суммы ($100/$1000/$10000/Max) — только в режиме "По сумме".
+// Max считается так, чтобы при обратном пересчёте на сервере (usd -> qty по
+// bid-цене с учётом комиссии) итоговое количество точно не превышало то,
+// чем игрок реально владеет — иначе сделка могла бы быть отклонена из-за
+// крошечного расхождения в округлении.
+document.querySelectorAll('.trade-preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const coin = currentAsset;
+    const action = document.getElementById('tradeType')?.value;
+    const input = document.getElementById('tradeUsd');
+    if (!input || !coin) return;
+    let value;
+    if (btn.dataset.preset === 'max') {
+      if (action === 'buy') {
+        value = lastWallet ? (lastWallet.usd || 0) : 0;
+      } else {
+        const qtyOwned = lastWallet ? (lastWallet[coin] || 0) : 0;
+        const bidPrice = (prices[coin] || 0) * (1 - spreadFor(coin));
+        value = qtyOwned * bidPrice * (1 - TRADE_FEE);
+      }
+    } else {
+      value = parseFloat(btn.dataset.preset);
+    }
+    input.value = value > 0 ? value.toFixed(2) : '';
+    updateTradeHint();
+  });
 });
 
 // ── ЛИМИТНЫЕ ОРДЕРА ───────────────────────────────────────────────────────────

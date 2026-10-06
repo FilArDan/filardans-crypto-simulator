@@ -29,6 +29,8 @@ const fullHistoryLoaded = new Set();
 let selectedCoin = 'BTC';
 let chart        = null;
 let seriesMap     = {}; // coin -> ISeriesApi (одна серия на монету, живёт постоянно)
+let smaSeries    = null; // индикатор SMA(20) — только для выбранной монеты, не живёт в compare
+const SMA_PERIOD = 20;
 let chartMode    = 'line'; // 'line' | 'candles' | 'compare'
 let chartCoins   = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 let tooltipEl    = null;
@@ -243,6 +245,7 @@ function selectCoin(coin) {
   });
 
   if (chart) chart.timeScale().fitContent();
+  updateSmaData(); // SMA — серия только выбранной монеты, сменился выбор — пересчитать
   updateInfoLabel();
   updateFullHistoryButton();
   cancelPendingDrawing();
@@ -253,6 +256,21 @@ function selectCoin(coin) {
 
 function getHistory(coin) {
   return (priceHistory[coin] || []).filter(d => typeof d.price === 'number' && isFinite(d.price));
+}
+
+// Макс/мин цена за последние 24 часа — из уже загруженной в памяти истории
+// (той же, что рисует график), без отдельного запроса к серверу. Если
+// загруженной истории меньше суток (например, актив только что создан, или
+// ещё не нажимали "Показать всю историю") — просто берём всё, что есть.
+function get24hStats(coin) {
+  const hist = getHistory(coin);
+  if (!hist.length) return null;
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const windowed = hist.filter(d => d.ts >= cutoff);
+  const points = windowed.length ? windowed : hist;
+  let high = -Infinity, low = Infinity;
+  points.forEach(d => { if (d.price > high) high = d.price; if (d.price < low) low = d.price; });
+  return { high, low };
 }
 
 function toLwcTime(ts) {
@@ -313,7 +331,55 @@ function dedupAscending(points) {
   return out;
 }
 
-// ── Создание графика и ВСЕХ серий (вызывается редко: старт + смена режима) ───
+// ── Индикатор SMA(20) — только для выбранной монеты, одна серия (не per-coin,
+// в отличие от основных ценовых серий) — т.к. это дополнительный слой поверх
+// текущего выбора, а не отдельный актив. В режиме "Сравнение" не имеет
+// смысла (там серия в процентах от базовой точки, а не в цене).
+function computeSMA(hist, period) {
+  if (hist.length < period) return [];
+  const out = [];
+  let sum = 0;
+  for (let i = 0; i < hist.length; i++) {
+    sum += hist[i].price;
+    if (i >= period) sum -= hist[i - period].price;
+    if (i >= period - 1) out.push({ time: toLwcTime(hist[i].ts), value: sum / period });
+  }
+  return dedupAscending(out);
+}
+
+function latestSmaPoint(coin) {
+  const hist = getHistory(coin);
+  if (hist.length < SMA_PERIOD) return null;
+  const slice = hist.slice(-SMA_PERIOD);
+  const avg = slice.reduce((s, d) => s + d.price, 0) / SMA_PERIOD;
+  return { time: toLwcTime(hist[hist.length - 1].ts), value: avg };
+}
+
+function ensureSmaSeries() {
+  const label = document.getElementById('smaLabel');
+  if (chartMode === 'compare') {
+    if (smaSeries) { chart.removeSeries(smaSeries); smaSeries = null; }
+    if (label) label.classList.add('hidden');
+    return;
+  }
+  if (!smaSeries) {
+    smaSeries = chart.addSeries(LightweightCharts.LineSeries, {
+      color: 'rgba(130,170,255,.9)',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
+  }
+  if (label) label.classList.remove('hidden');
+}
+
+function updateSmaData() {
+  if (!smaSeries) return;
+  smaSeries.setData(computeSMA(getHistory(selectedCoin), SMA_PERIOD));
+}
+
+
 function createChartInstance() {
   const container = document.getElementById('priceChart');
   if (!container) return;
@@ -324,6 +390,7 @@ function createChartInstance() {
 
   if (chart) { chart.remove(); chart = null; }
   seriesMap = {};
+  smaSeries = null; // chart.remove() уже уничтожил старую серию вместе с графиком
 
   chart = LightweightCharts.createChart(container, {
     layout: { background: { type: 'solid', color: 'transparent' }, textColor: tc },
@@ -353,6 +420,8 @@ function createChartInstance() {
 
   ensureAllSeries();
   rebuildAllSeriesData();
+  ensureSmaSeries();
+  updateSmaData();
   setupTooltip(container, dark, gc);
   setupDrawing(container);
   renderDrawToolbar();
@@ -452,6 +521,7 @@ function rebuildAllSeriesData() {
     }
   });
   if (chart) chart.timeScale().fitContent();
+  updateSmaData();
   redrawOverlay();
   if (refreshLegendBox) refreshLegendBox();
 }
@@ -487,6 +557,10 @@ function updateLiveSeries() {
       s.update({ time: toLwcTime(last.ts), value: last.price });
     }
   });
+  if (smaSeries) {
+    const pt = latestSmaPoint(selectedCoin);
+    if (pt) smaSeries.update(pt);
+  }
   updateInfoLabel();
   redrawOverlay();
   if (refreshLegendBox) refreshLegendBox();
@@ -629,10 +703,10 @@ function renderDrawToolbar() {
   const btn = (tool, label, title) =>
     `<button type="button" class="draw-tool-btn${drawTool === tool ? ' on' : ''}" title="${title}" onclick="armTool('${tool}')">${label}</button>`;
   wrap.innerHTML = [
-    btn('trend', '／ Линия тренда', 'Провести линию тренда: клик — первая точка, клик — вторая'),
-    btn('hline', '─ Горизонталь', 'Поставить горизонтальный уровень: один клик'),
-    btn('erase', '🩹 Ластик', 'Клик по линии — удалить её'),
-    `<button type="button" class="draw-tool-btn" title="Стереть все линии для ${selectedCoin}" onclick="clearCurrentDrawings()">🗑️ Очистить</button>`,
+    btn('trend', '／', 'Линия тренда: клик — первая точка, клик — вторая'),
+    btn('hline', '─', 'Горизонтальный уровень: один клик'),
+    btn('erase', '🩹', 'Ластик: клик по линии — удалить её'),
+    `<button type="button" class="draw-tool-btn" title="Стереть все линии для ${selectedCoin}" onclick="clearCurrentDrawings()">🗑️</button>`,
   ].join('');
 }
 

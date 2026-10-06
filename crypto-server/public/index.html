@@ -291,6 +291,11 @@
           <span id="assetSubtitle" class="asset-name-inline"></span>
         </div>
       </div>
+      <div class="asset-stats-row" id="assetStatsRow">
+        <div class="a-stat"><span class="a-stat-lbl">24ч макс.</span><span class="a-stat-val" id="assetHigh24">—</span></div>
+        <div class="a-stat"><span class="a-stat-lbl">24ч мин.</span><span class="a-stat-val" id="assetLow24">—</span></div>
+        <div class="a-stat"><span class="a-stat-lbl">Объём</span><span class="a-stat-val" id="assetVolume">—</span></div>
+      </div>
       <div class="asset-header-right">
         <div id="assetPriceBig" class="asset-price-big"></div>
         <div id="assetChangeBig" class="asset-change-big"></div>
@@ -301,8 +306,11 @@
     <div class="card section-gap">
       <h2>📈 Динамика</h2>
       <div id="chartLegend" class="tabs" style="display:none"></div>
-      <div id="drawToolbar" class="draw-toolbar"></div>
-      <div class="cw"><div id="priceChart"></div></div>
+      <div class="cw">
+        <div id="drawToolbar" class="draw-toolbar"></div>
+        <div id="smaLabel" class="chart-sma-label hidden">SMA 20</div>
+        <div id="priceChart"></div>
+      </div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
         <div id="chartModeToggle" class="chart-mode-toggle"></div>
         <button type="button" id="loadFullHistoryBtn" class="btn btn-secondary btn-sm" style="width:auto" onclick="loadFullHistory()">📜 Показать всю историю</button>
@@ -333,6 +341,12 @@
             </div>
             <div id="fieldUsd" class="fld hidden">
               <input id="tradeUsd" type="number" step="any" min="0" placeholder="Сумма в USC">
+              <div class="trade-presets">
+                <button type="button" class="trade-preset-btn" data-preset="100">100</button>
+                <button type="button" class="trade-preset-btn" data-preset="1000">1 000</button>
+                <button type="button" class="trade-preset-btn" data-preset="10000">10 000</button>
+                <button type="button" class="trade-preset-btn" data-preset="max">Max</button>
+              </div>
             </div>
             <div id="tradeHint" class="trade-hint"></div>
             <button type="submit" class="btn btn-primary trade-btn-main">Провести сделку</button>

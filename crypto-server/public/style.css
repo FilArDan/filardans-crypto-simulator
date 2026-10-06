@@ -186,11 +186,15 @@ h1{font-size:clamp(18px,2.5vw,24px);font-weight:800;letter-spacing:-.5px;}
 .asset-row:hover{background:var(--sf2);}
 
 /* ===== СТРАНИЦА АКТИВА ===== */
-.asset-header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;}
+.asset-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;}
 .asset-title{font-size:clamp(22px,3vw,30px);font-weight:800;letter-spacing:-.5px;}
 .asset-title-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
 .asset-name-inline{font-size:clamp(13px,1.6vw,16px);font-weight:600;color:var(--txt);opacity:.45;}
 .asset-icon-lg{width:clamp(24px,3vw,32px);height:clamp(24px,3vw,32px);border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--sf2);align-self:center;}
+.asset-stats-row{display:flex;gap:22px;flex-wrap:wrap;}
+.a-stat{display:flex;flex-direction:column;gap:2px;}
+.a-stat-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--mu);}
+.a-stat-val{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;}
 .asset-header-right{text-align:right;}
 .asset-price-big{font-size:clamp(20px,2.6vw,26px);font-weight:800;font-variant-numeric:tabular-nums;}
 .asset-change-big{font-size:14px;font-weight:700;}
@@ -207,12 +211,24 @@ h1{font-size:clamp(18px,2.5vw,24px);font-weight:800;letter-spacing:-.5px;}
 .chart-range-btn:hover{background:var(--sf3);color:var(--txt);}
 .chart-range-btn.on{background:var(--pri);color:#fff;border-color:transparent;}
 .cw{position:relative;height:380px;}
-.draw-toolbar{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
-.draw-tool-btn{padding:6px 10px;min-height:30px;border:1px solid var(--bd);background:var(--sf2);border-radius:8px;font-size:13px;line-height:1;transition:background .15s,color .15s;}
+.draw-toolbar{
+  position:absolute;top:10px;left:10px;z-index:10;
+  display:flex;flex-direction:column;gap:5px;
+}
+.draw-tool-btn{
+  width:32px;height:32px;padding:0;min-height:0;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--bd);background:var(--sf);box-shadow:var(--sh);
+  border-radius:8px;font-size:15px;line-height:1;transition:background .15s,color .15s;
+}
 .draw-tool-btn:hover:not(.on){background:var(--sf3);}
 .draw-tool-btn.on{background:var(--pri);color:#fff;border-color:transparent;}
 .draw-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5;}
-.chart-compare-box{position:absolute;top:8px;left:8px;z-index:15;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700;pointer-events:none;display:none;}
+.chart-sma-label{
+  position:absolute;top:48px;left:54px;z-index:10;pointer-events:none;
+  font-size:11px;font-weight:600;color:rgba(130,170,255,.9);
+}
+.chart-compare-box{position:absolute;top:10px;left:54px;z-index:15;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700;pointer-events:none;display:none;}
 
 /* ===== LAYOUT ===== */
 .section-gap{margin-top:14px;}
@@ -234,6 +250,10 @@ h1{font-size:clamp(18px,2.5vw,24px);font-weight:800;letter-spacing:-.5px;}
 /* Малые кнопки быстрых действий */
 .trade-quick{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
 .trade-btn-quick{padding:7px 8px;font-size:12px;font-weight:600;width:100%!important;}
+/* Пресеты суммы ($100/$1000/$10000/Max) */
+.trade-presets{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:6px;}
+.trade-preset-btn{padding:6px 4px;font-size:11px;font-weight:700;border-radius:7px;border:1px solid var(--bd);background:var(--sf2);color:var(--mu);transition:background .15s,color .15s;}
+.trade-preset-btn:hover{background:var(--sf3);color:var(--txt);}
 /* Переключатель режима */
 .trade-mode-tabs{display:flex;gap:5px;background:var(--sf2);border:1px solid var(--bd);border-radius:9px;padding:3px;}
 .trade-mode-btn{flex:1;padding:6px 8px;border-radius:7px;border:none;font-size:12px;font-weight:600;color:var(--mu);background:transparent;transition:background .15s,color .15s;}

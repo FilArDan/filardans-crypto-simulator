@@ -281,9 +281,16 @@ function toLwcTime(ts) {
   return Math.floor(ts / 1000);
 }
 
+// Для свежих точек (моложе 24ч) — просто время, как и раньше. Для точек
+// старше суток (актуально теперь, когда "Показать всю историю" реально
+// может утащить за много дней назад) добавляем дату — иначе "14:32:10" в
+// тултипе наведения ничего не говорит о том, какой это вообще день.
 function formatTickTime(ts) {
   const d = new Date(ts);
-  return d.toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const isOld = Date.now() - ts > 24 * 60 * 60 * 1000;
+  return d.toLocaleString('ru-RU', isOld
+    ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }
+    : { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 function aggregateCandles(history, bucketMs) {
@@ -408,9 +415,24 @@ function createChartInstance() {
       // при истории в тысячи точек (см. прореживание в /api/price-history)
       // это мешает раззумиться и увидеть её целиком одним экраном.
       minBarSpacing: 0.02,
-      tickMarkFormatter: (time) => {
+      tickMarkFormatter: (time, tickMarkType) => {
         const d = new Date(time * 1000);
-        return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+        const hh = d.getHours().toString().padStart(2, '0');
+        const mm = d.getMinutes().toString().padStart(2, '0');
+        // Lightweight Charts сама помечает, где на оси проходит граница дня/
+        // месяца/года (а не только "год тиков назад" — считает по самим
+        // данным) — на этих делениях показываем дату, а не время. Раньше
+        // всегда было только "ЧЧ:ММ", и при просмотре истории за несколько
+        // дней/недель ("Показать всю историю") по оси было не понять, где
+        // заканчивается один день и начинается следующий.
+        if (tickMarkType === LightweightCharts.TickMarkType.Year) return d.getFullYear().toString();
+        if (tickMarkType === LightweightCharts.TickMarkType.Month) {
+          return d.toLocaleDateString('ru-RU', { month: 'short' });
+        }
+        if (tickMarkType === LightweightCharts.TickMarkType.DayOfMonth) {
+          return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+        }
+        return `${hh}:${mm}`;
       },
     },
     crosshair: {
